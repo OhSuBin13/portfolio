@@ -2,10 +2,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from portfolio_app.api import accounts, assets, goals, summary, transactions
+from portfolio_app.api import accounts, assets, backups, goals, summary, transactions
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
+from portfolio_app.services.backups import create_backup
 
 
 def _validation_error_message(error: dict[str, object]) -> str:
@@ -30,6 +31,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     db = connect(app_settings.database_path)
     migrate(db)
     db.close()
+    if app_settings.database_path.exists():
+        create_backup(
+            db_path=app_settings.database_path,
+            backup_dir=app_settings.backup_dir,
+            reason="startup",
+        )
 
     app = FastAPI(title="Personal Finance Portfolio", version="0.1.0")
     app.state.settings = app_settings
@@ -54,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(assets.router)
     app.include_router(transactions.router)
     app.include_router(goals.router)
+    app.include_router(backups.router)
 
     return app
 
