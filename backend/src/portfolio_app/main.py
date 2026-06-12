@@ -6,7 +6,7 @@ from portfolio_app.api import accounts, assets, backups, goals, summary, transac
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
-from portfolio_app.services.backups import create_backup
+from portfolio_app.services.backups import create_recorded_backup
 
 
 def _validation_error_message(error: dict[str, object]) -> str:
@@ -29,14 +29,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings.backup_dir.mkdir(parents=True, exist_ok=True)
 
     db = connect(app_settings.database_path)
-    migrate(db)
-    db.close()
+    try:
+        migrate(db)
+    finally:
+        db.close()
+
     if app_settings.database_path.exists():
-        create_backup(
-            db_path=app_settings.database_path,
-            backup_dir=app_settings.backup_dir,
-            reason="startup",
-        )
+        db = connect(app_settings.database_path)
+        try:
+            create_recorded_backup(
+                db,
+                db_path=app_settings.database_path,
+                backup_dir=app_settings.backup_dir,
+                reason="startup",
+            )
+        finally:
+            db.close()
 
     app = FastAPI(title="Personal Finance Portfolio", version="0.1.0")
     app.state.settings = app_settings
@@ -64,6 +72,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(backups.router)
 
     return app
-
-
-app = create_app()
