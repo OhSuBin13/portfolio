@@ -4,6 +4,28 @@ from portfolio_app.config import Settings
 from portfolio_app.main import create_app
 
 
+def create_test_client(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+    )
+    app = create_app(settings=settings)
+    return TestClient(app)
+
+
+def assert_korean_validation_error(response, expected_text):
+    detail = response.json()["detail"]
+    detail_text = str(detail)
+
+    assert response.status_code in {400, 422}
+    assert expected_text in detail_text
+    assert "Field required" not in detail_text
+    assert "Extra inputs are not permitted" not in detail_text
+    assert "valid integer" not in detail_text
+    assert "Unable to parse input string" not in detail_text
+
+
 def test_health_returns_ok():
     client = TestClient(create_app())
 
@@ -14,13 +36,7 @@ def test_health_returns_ok():
 
 
 def test_summary_endpoint_returns_empty_snapshot(tmp_path):
-    settings = Settings(
-        data_dir=tmp_path,
-        database_path=tmp_path / "portfolio.sqlite",
-        backup_dir=tmp_path / "backups",
-    )
-    app = create_app(settings=settings)
-    client = TestClient(app)
+    client = create_test_client(tmp_path)
 
     response = client.get("/api/summary")
 
@@ -30,13 +46,7 @@ def test_summary_endpoint_returns_empty_snapshot(tmp_path):
 
 
 def test_can_create_account_asset_and_transaction(tmp_path):
-    settings = Settings(
-        data_dir=tmp_path,
-        database_path=tmp_path / "portfolio.sqlite",
-        backup_dir=tmp_path / "backups",
-    )
-    app = create_app(settings=settings)
-    client = TestClient(app)
+    client = create_test_client(tmp_path)
 
     account = client.post(
         "/api/accounts",
@@ -75,13 +85,7 @@ def test_can_create_account_asset_and_transaction(tmp_path):
 
 
 def test_can_create_and_list_goal(tmp_path):
-    settings = Settings(
-        data_dir=tmp_path,
-        database_path=tmp_path / "portfolio.sqlite",
-        backup_dir=tmp_path / "backups",
-    )
-    app = create_app(settings=settings)
-    client = TestClient(app)
+    client = create_test_client(tmp_path)
 
     response = client.post(
         "/api/goals",
@@ -96,3 +100,52 @@ def test_can_create_and_list_goal(tmp_path):
     goal = response.json()
     assert goal["name"] == "순자산 1억"
     assert client.get("/api/goals").json()[0]["id"] == goal["id"]
+
+
+def test_account_create_validation_error_is_korean_for_missing_required_field(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/accounts",
+        json={"type": "cash", "currency": "KRW"},
+    )
+
+    assert_korean_validation_error(response, "필수 입력값")
+
+
+def test_asset_create_validation_error_is_korean_for_extra_field(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/assets",
+        json={
+            "symbol": None,
+            "name": "KRW",
+            "type": "cash",
+            "currency": "KRW",
+            "market": "KR",
+            "unexpected": True,
+        },
+    )
+
+    assert_korean_validation_error(response, "허용되지 않는 입력값")
+
+
+def test_transaction_create_validation_error_is_korean_for_wrong_type(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": "not-an-integer",
+            "asset_id": 1,
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "초기 입금",
+        },
+    )
+
+    assert_korean_validation_error(response, "입력값 형식")

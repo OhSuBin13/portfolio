@@ -1,9 +1,25 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from portfolio_app.api import accounts, assets, goals, summary, transactions
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
+
+
+def _validation_error_message(error: dict[str, object]) -> str:
+    location = error.get("loc", ())
+    field = str(location[-1]) if isinstance(location, tuple | list) and location else "요청"
+    error_type = str(error.get("type", ""))
+
+    if error_type == "missing":
+        return f"{field}: 필수 입력값이 누락되었습니다."
+    if error_type == "extra_forbidden":
+        return f"{field}: 허용되지 않는 입력값입니다."
+    if "parsing" in error_type or "type" in error_type:
+        return f"{field}: 입력값 형식이 올바르지 않습니다."
+    return f"{field}: 입력값이 올바르지 않습니다."
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +38,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.exception_handler(RequestValidationError)
+    def validation_exception_handler(
+        _request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": [_validation_error_message(error) for error in exc.errors()]},
+        )
 
     app.include_router(summary.router)
     app.include_router(accounts.router)
