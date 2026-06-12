@@ -1,5 +1,6 @@
 import csv
 import io
+import math
 import re
 from dataclasses import dataclass
 
@@ -13,7 +14,8 @@ ASSET_TYPE_MAP = {
     "부채": "debt",
 }
 
-FORMULA_ERRORS = {"#DIV/0!", "#REF!"}
+FORMULA_ERRORS = {"#DIV/0!", "#REF!", "#N/A", "#VALUE!", "#NAME?", "#NUM!", "#NULL!"}
+SYMBOL_COLUMNS = ("티커", "심볼", "symbol")
 
 
 @dataclass
@@ -21,6 +23,7 @@ class ImportRow:
     row_number: int
     asset_type: str
     name: str
+    symbol: str | None
     quantity: float
     price: float | None
     average_cost: float | None
@@ -46,7 +49,10 @@ def parse_number(value: str) -> float | None:
     cleaned = re.sub(r"[₩$€¥원,\s%]", "", cleaned)
     if cleaned.upper() in {"", "-", *FORMULA_ERRORS}:
         return None
-    return float(cleaned)
+    number = float(cleaned)
+    if not math.isfinite(number):
+        raise ValueError("숫자 값을 읽을 수 없습니다.")
+    return number
 
 
 def _parse_required_number(row: dict[str, str], column: str) -> float | None:
@@ -57,8 +63,16 @@ def _parse_optional_number(row: dict[str, str], column: str) -> float | None:
     return parse_number(row.get(column) or "")
 
 
+def _parse_symbol(row: dict[str, str]) -> str | None:
+    for column in SYMBOL_COLUMNS:
+        symbol = (row.get(column) or "").strip().upper()
+        if symbol:
+            return symbol
+    return None
+
+
 def parse_portfolio_csv(csv_text: str) -> ImportPreview:
-    reader = csv.DictReader(io.StringIO(csv_text))
+    reader = csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff")))
     mapped: list[ImportRow] = []
     ignored: list[IgnoredRow] = []
 
@@ -92,6 +106,7 @@ def parse_portfolio_csv(csv_text: str) -> ImportPreview:
                 row_number=row_number,
                 asset_type=asset_type,
                 name=name,
+                symbol=_parse_symbol(row),
                 quantity=quantity,
                 price=price,
                 average_cost=average_cost,
