@@ -8,8 +8,8 @@ GoalType = Literal["net_worth", "monthly_income"]
 
 class HoldingValue(BaseModel):
     asset_type: AssetType
-    value_krw: float = Field(ge=0)
-    monthly_income_krw: float = Field(default=0, ge=0)
+    value_krw: float = Field(ge=0, allow_inf_nan=False)
+    monthly_income_krw: float = Field(default=0, ge=0, allow_inf_nan=False)
 
 
 class PortfolioSummary(BaseModel):
@@ -23,11 +23,11 @@ class Goal(BaseModel):
     id: int
     name: str
     type: GoalType
-    target_amount_krw: float = Field(gt=0)
+    target_amount_krw: float = Field(gt=0, allow_inf_nan=False)
 
 
 class GoalProgress(BaseModel):
     goal: Goal
-    current_amount_krw: float = Field(ge=0)
-    percent: float = Field(ge=0, le=100)
-    remaining_krw: float = Field(ge=0)
+    current_amount_krw: float = Field(ge=0, allow_inf_nan=False)
+    percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+    remaining_krw: float = Field(ge=0, allow_inf_nan=False)

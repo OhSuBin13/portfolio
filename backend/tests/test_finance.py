@@ -5,7 +5,7 @@ from portfolio_app.finance import calculate_asset_mix, calculate_goal_progress, 
 from portfolio_app.models import Goal, HoldingValue
 
 
-def test_net_worth_subtracts_debt_and_converts_to_krw():
+def test_net_worth_subtracts_debt_from_krw_values():
     values = [
         HoldingValue(asset_type="cash", value_krw=1_000_000, monthly_income_krw=0),
         HoldingValue(asset_type="stock_etf", value_krw=2_500_000, monthly_income_krw=30_000),
@@ -80,6 +80,31 @@ def test_goal_rejects_unknown_type():
 def test_holding_value_rejects_negative_value():
     with pytest.raises(ValidationError):
         HoldingValue(asset_type="cash", value_krw=-1, monthly_income_krw=0)
+
+
+def test_holding_value_rejects_infinite_value():
+    with pytest.raises(ValidationError):
+        HoldingValue(asset_type="cash", value_krw=float("inf"))
+
+
+def test_holding_value_rejects_nan_value():
+    with pytest.raises(ValidationError):
+        HoldingValue(asset_type="cash", value_krw=float("nan"))
+
+
+def test_holding_value_rejects_negative_monthly_income():
+    with pytest.raises(ValidationError):
+        HoldingValue(asset_type="cash", value_krw=1, monthly_income_krw=-1)
+
+
+def test_goal_rejects_zero_target_amount():
+    with pytest.raises(ValidationError):
+        Goal(id=1, name="bad", type="net_worth", target_amount_krw=0)
+
+
+def test_goal_rejects_infinite_target_amount():
+    with pytest.raises(ValidationError):
+        Goal(id=1, name="bad", type="net_worth", target_amount_krw=float("inf"))
 
 
 def test_goal_progress_clamps_negative_current_amount():
