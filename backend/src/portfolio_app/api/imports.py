@@ -97,9 +97,13 @@ def _manual_price_krw(row: ImportRowPayload) -> float | None:
     return row.price
 
 
-def _market_for(currency: str) -> str:
+def _market_for(asset_type: str, currency: str) -> str:
+    if asset_type == "crypto":
+        return "CRYPTO"
     if currency == "KRW":
         return "KR"
+    if currency == "USD":
+        return "US"
     return currency
 
 
@@ -135,6 +139,8 @@ def _validate_rows(
             _raise_bad_row(row, "숫자 값이 올바르지 않습니다.")
         if row.fx_rate_to_krw is not None and not _is_finite_positive(row.fx_rate_to_krw):
             _raise_bad_row(row, "환율이 올바르지 않습니다.")
+        if row.asset_type in MARKET_ASSET_TYPES and row.value_krw > 0 and row.quantity <= 0:
+            _raise_bad_row(row, "수량이 0보다 커야 합니다.")
 
         quantity = _initial_quantity(row, _row_currency(row))
         if not _is_finite_non_negative(quantity):
@@ -313,7 +319,7 @@ def confirm_import(
                     name=name,
                     asset_type=row.asset_type,
                     currency=currency,
-                    market=_market_for(currency),
+                    market=_market_for(row.asset_type, currency),
                     manual_price_krw=_manual_price_krw(row),
                 )
                 created_assets += 1

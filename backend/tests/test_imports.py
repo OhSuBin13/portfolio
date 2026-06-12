@@ -338,3 +338,71 @@ def test_import_confirm_values_market_assets_from_import_price(tmp_path):
     summary = client.get("/api/summary").json()
     assert summary["net_worth_krw"] == 1_400_000
     assert summary["asset_mix"] == {"stock_etf": 100.0}
+
+
+def test_import_confirm_maps_stock_etf_market_from_currency(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/imports/confirm",
+        json={
+            "occurred_on": "2026-06-12",
+            "mapped_rows": [
+                {
+                    "row_number": 2,
+                    "asset_type": "stock_etf",
+                    "symbol": "VOO",
+                    "name": "S&P 500",
+                    "quantity": 2,
+                    "price": 500,
+                    "average_cost": 450,
+                    "fx_rate_to_krw": 1400,
+                    "value_krw": 1_400_000,
+                },
+                {
+                    "row_number": 3,
+                    "asset_type": "stock_etf",
+                    "symbol": "005930",
+                    "name": "삼성전자",
+                    "quantity": 1,
+                    "price": 70_000,
+                    "average_cost": 70_000,
+                    "fx_rate_to_krw": None,
+                    "value_krw": 70_000,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    assets = {asset["symbol"]: asset for asset in client.get("/api/assets").json()}
+    assert assets["VOO"]["market"] == "US"
+    assert assets["005930"]["market"] == "KR"
+
+
+def test_import_confirm_rejects_positive_value_market_asset_without_quantity(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/imports/confirm",
+        json={
+            "occurred_on": "2026-06-12",
+            "mapped_rows": [
+                {
+                    "row_number": 2,
+                    "asset_type": "stock_etf",
+                    "symbol": "VOO",
+                    "name": "S&P 500",
+                    "quantity": 0,
+                    "price": 500,
+                    "average_cost": 450,
+                    "fx_rate_to_krw": 1400,
+                    "value_krw": 700_000,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "수량" in response.json()["detail"]
+    assert_no_import_records(client)
