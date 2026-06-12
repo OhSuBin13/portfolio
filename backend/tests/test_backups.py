@@ -111,6 +111,23 @@ def test_prune_backups_ignores_portfolio_prefixed_non_backup_files(tmp_path):
     assert len(list(backup_dir.glob("portfolio-*.sqlite"))) == 2
 
 
+def test_prune_backups_ignores_backup_like_file_with_invalid_timestamp(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    invalid = backup_dir / "portfolio-20269999-999999-000000-manual.sqlite"
+    invalid.write_text("do not delete", encoding="utf-8")
+    os.utime(invalid, (1, 1))
+
+    for index in range(2):
+        path = backup_dir / f"portfolio-20260612-120000-{index + 1:06d}-manual.sqlite"
+        path.write_text(str(index), encoding="utf-8")
+
+    prune_backups(backup_dir=backup_dir, keep=1)
+
+    assert invalid.exists()
+    assert len(list(backup_dir.glob("portfolio-*.sqlite"))) == 2
+
+
 def test_create_app_creates_startup_backup_after_migration(tmp_path):
     from portfolio_app.main import create_app
 
@@ -207,6 +224,18 @@ def test_backup_api_backfills_orphan_service_owned_files_only(tmp_path):
     paths = {backup["path"] for backup in response.json()}
     assert str(orphan_path) in paths
     assert str(ignored_path) not in paths
+
+
+def test_backup_api_ignores_backup_like_file_with_invalid_timestamp(tmp_path):
+    client = create_test_client(tmp_path)
+    invalid_path = tmp_path / "backups" / "portfolio-20269999-999999-000000-manual.sqlite"
+    invalid_path.write_text("not a backup", encoding="utf-8")
+
+    response = client.get("/api/backups")
+
+    assert response.status_code == 200
+    paths = {backup["path"] for backup in response.json()}
+    assert str(invalid_path) not in paths
 
 
 def test_readme_runtime_command_uses_importable_asgi_app(tmp_path, monkeypatch):

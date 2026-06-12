@@ -36,8 +36,24 @@ def _backup_name_match(path: Path) -> re.Match[str] | None:
     return BACKUP_NAME_RE.match(path.name)
 
 
+def _metadata_from_filename(path: Path) -> tuple[str, str] | None:
+    match = _backup_name_match(path)
+    if match is None:
+        return None
+
+    try:
+        timestamp = datetime.strptime(
+            f"{match['date']}{match['time']}{match['microsecond']}",
+            "%Y%m%d%H%M%S%f",
+        )
+    except ValueError:
+        return None
+
+    return match["reason"], timestamp.isoformat(timespec="seconds")
+
+
 def _is_service_owned_backup(path: Path) -> bool:
-    return _backup_name_match(path) is not None
+    return _metadata_from_filename(path) is not None
 
 
 def _backup_files(backup_dir: Path) -> list[Path]:
@@ -46,19 +62,6 @@ def _backup_files(backup_dir: Path) -> list[Path]:
         for path in backup_dir.iterdir()
         if path.is_file() and _is_service_owned_backup(path)
     ]
-
-
-def _metadata_from_filename(path: Path) -> tuple[str, str]:
-    match = _backup_name_match(path)
-    if match is None:
-        created_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
-        return "backup", created_at
-
-    timestamp = datetime.strptime(
-        f"{match['date']}{match['time']}{match['microsecond']}",
-        "%Y%m%d%H%M%S%f",
-    )
-    return match["reason"], timestamp.isoformat(timespec="seconds")
 
 
 def create_backup(*, db_path: Path, backup_dir: Path, reason: str) -> Path:
@@ -161,7 +164,10 @@ def reconcile_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> Non
         for path in _backup_files(backup_dir):
             if str(path) in recorded_paths:
                 continue
-            reason, created_at = _metadata_from_filename(path)
+            metadata = _metadata_from_filename(path)
+            if metadata is None:
+                continue
+            reason, created_at = metadata
             db.execute(
                 """
                 insert into backups(path, reason, created_at)
