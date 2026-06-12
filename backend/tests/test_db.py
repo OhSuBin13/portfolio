@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from portfolio_app import migrations
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 
@@ -84,6 +85,46 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
 
     with pytest.raises(RuntimeError, match="newer"):
         migrate(db)
+
+
+def test_migrate_rolls_back_partial_schema_when_schema_application_fails(tmp_path, monkeypatch):
+    schema_path = tmp_path / "broken_schema.sql"
+    schema_path.write_text(
+        """
+        create table partial_table (id integer primary key);
+        create table broken_table (
+        """,
+        encoding="utf-8",
+    )
+    db = connect(tmp_path / "portfolio.sqlite")
+    monkeypatch.setattr(migrations, "SCHEMA_PATH", schema_path)
+
+    with pytest.raises((sqlite3.Error, RuntimeError)):
+        migrate(db)
+
+    assert "partial_table" not in table_names(db)
+    assert "schema_migrations" not in table_names(db) or migration_versions(db) == []
+
+
+def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path, monkeypatch):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.execute(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        )
+        """
+    )
+    db.execute("insert into schema_migrations(version) values (1)")
+    db.commit()
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 2)
+
+    with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
+        migrate(db)
+
+    assert migration_versions(db) == [1]
 
 
 def test_holdings_require_existing_account_and_asset(tmp_path):
