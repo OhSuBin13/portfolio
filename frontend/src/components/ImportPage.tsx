@@ -24,6 +24,7 @@ export function ImportPage() {
   const [confirmError, setConfirmError] = useState("")
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [hasConfirmed, setHasConfirmed] = useState(false)
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setFile(event.target.files?.[0] ?? null)
@@ -32,6 +33,7 @@ export function ImportPage() {
     setPreviewError("")
     setConfirmMessage("")
     setConfirmError("")
+    setHasConfirmed(false)
   }
 
   const handlePreviewSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -40,6 +42,7 @@ export function ImportPage() {
     setPreviewError("")
     setConfirmMessage("")
     setConfirmError("")
+    setHasConfirmed(false)
 
     if (!file) {
       setPreviewError("CSV 파일을 선택하세요.")
@@ -65,6 +68,16 @@ export function ImportPage() {
     setConfirmMessage("")
     setConfirmError("")
 
+    if (isPreviewing) {
+      setConfirmError("미리보기 확인이 끝난 뒤 가져오기를 실행하세요.")
+      return
+    }
+
+    if (hasConfirmed) {
+      setConfirmError("이미 반영한 미리보기입니다. 다시 가져오려면 미리보기를 새로 실행하세요.")
+      return
+    }
+
     if (!preview) {
       setConfirmError("먼저 CSV 미리보기를 실행하세요.")
       return
@@ -89,12 +102,16 @@ export function ImportPage() {
       setConfirmMessage(
         `가져오기를 완료했습니다. 계좌 ${result.created_accounts.toLocaleString("ko-KR")}개, 자산 ${result.created_assets.toLocaleString("ko-KR")}개, 보유 ${result.created_holdings.toLocaleString("ko-KR")}개, 거래 ${result.created_transactions.toLocaleString("ko-KR")}개를 반영했습니다. 백업: ${result.backup_path}`,
       )
+      setHasConfirmed(true)
     } catch (err) {
       setConfirmError(getErrorMessage(err))
     } finally {
       setIsConfirming(false)
     }
   }
+
+  const isConfirmDisabled =
+    isPreviewing || isConfirming || hasConfirmed || !occurredOn || !preview || preview.mapped_rows.length === 0
 
   return (
     <section className="screen-stack">
@@ -128,11 +145,11 @@ export function ImportPage() {
           </button>
           <button
             className="primary-button"
-            disabled={isConfirming || !preview || preview.mapped_rows.length === 0}
+            disabled={isConfirmDisabled}
             onClick={handleConfirm}
             type="button"
           >
-            {isConfirming ? "가져오는 중" : "백업 후 가져오기"}
+            {hasConfirmed ? "반영 완료" : isConfirming ? "가져오는 중" : "백업 후 가져오기"}
           </button>
         </div>
         {previewError && <p className="form-message error-text">{previewError}</p>}

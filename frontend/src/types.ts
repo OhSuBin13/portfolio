@@ -66,7 +66,6 @@ export type ImportConfirmResult = {
 }
 
 export type BackupRecord = {
-  id: number
   path: string
   reason: string
   created_at: string

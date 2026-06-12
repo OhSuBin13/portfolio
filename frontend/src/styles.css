@@ -311,6 +311,7 @@ select:focus {
   border-radius: 6px;
   font-size: 13px;
   margin: 0;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
 }
 
