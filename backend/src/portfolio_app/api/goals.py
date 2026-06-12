@@ -12,6 +12,9 @@ from portfolio_app.api import (
     require_positive_number,
     row_to_dict,
 )
+from portfolio_app.api.summary import build_summary
+from portfolio_app.finance import calculate_goal_progress
+from portfolio_app.models import Goal
 
 GOAL_TYPES = {"net_worth", "monthly_income"}
 
@@ -25,6 +28,15 @@ class GoalCreate(BaseModel):
     name: str
     type: str
     target_amount_krw: float
+
+
+def _goal_from_row(row: sqlite3.Row) -> Goal:
+    return Goal(
+        id=int(row["id"]),
+        name=str(row["name"]),
+        type=row["type"],
+        target_amount_krw=float(row["target_amount_krw"]),
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -55,3 +67,17 @@ def create_goal_endpoint(payload: GoalCreate, db: Db) -> dict[str, object]:
 def list_goals(db: Db) -> list[dict[str, object]]:
     rows = db.execute("select * from goals order by id").fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+@router.get("/progress")
+def list_goal_progress(db: Db) -> list[dict[str, object]]:
+    summary, _asset_mix = build_summary(db)
+    rows = db.execute("select * from goals order by id").fetchall()
+    progress_rows = []
+    for row in rows:
+        goal = _goal_from_row(row)
+        current_amount = (
+            summary.net_worth_krw if goal.type == "net_worth" else summary.monthly_income_krw
+        )
+        progress_rows.append(calculate_goal_progress(goal, current_amount).model_dump())
+    return progress_rows

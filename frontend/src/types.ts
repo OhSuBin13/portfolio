@@ -31,7 +31,22 @@ export type Transaction = {
   quantity: number | null
   amount: number
   currency: string
+  fx_rate_to_krw: number | null
   memo: string
+}
+
+export type Goal = {
+  id: number
+  name: string
+  type: "net_worth" | "monthly_income"
+  target_amount_krw: number
+}
+
+export type GoalProgress = {
+  goal: Goal
+  current_amount_krw: number
+  percent: number
+  remaining_krw: number
 }
 
 export type ImportMappedRow = {

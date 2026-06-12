@@ -284,6 +284,55 @@ def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
     assert "500 Internal Server Error" in latest["error_message"]
 
 
+def test_sync_sanitizes_http_provider_error_without_leaking_alpha_vantage_key(
+    tmp_path,
+    httpx_mock,
+):
+    secret_key = "secret-alpha-key-123"
+    client = create_test_client(
+        tmp_path,
+        alpha_vantage_api_key=secret_key,
+        raise_server_exceptions=False,
+    )
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    db = connect(client.app.state.settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into price_snapshots(
+                asset_id, source, price, currency, price_krw, fetched_at, status, error_message
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+        )
+        db.commit()
+    finally:
+        db.close()
+    httpx_mock.add_response(status_code=500, json={"message": "provider down"})
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+
+    assert response.status_code == 200
+    error_message = response.json()["results"][0]["error_message"]
+    assert error_message == "시세 제공자 요청 실패: HTTP 500 Internal Server Error"
+    assert latest["error_message"] == error_message
+    assert secret_key not in str(response.json())
+    assert secret_key not in str(latest)
+    assert "apikey=" not in str(response.json()).lower()
+    assert "apikey=" not in str(latest).lower()
+
+
 def test_sync_records_failed_status_without_previous_price_and_preserves_fallback_summary(
     tmp_path,
     httpx_mock,

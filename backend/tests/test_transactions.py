@@ -82,6 +82,170 @@ def test_sell_more_than_holding_is_rejected(tmp_path):
         raise AssertionError("expected ValueError")
 
 
+@pytest.mark.parametrize(
+    "transaction_type",
+    ["deposit", "withdrawal", "dividend", "interest", "fee"],
+)
+def test_cashflow_transaction_on_stock_asset_is_rejected_without_changes(
+    tmp_path,
+    transaction_type,
+):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    asset_id = create_asset(
+        db,
+        symbol="005930.KS",
+        name="삼성전자",
+        type="stock_etf",
+        currency="KRW",
+        market="KR",
+    )
+    apply_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type="buy",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=10,
+        amount=700_000,
+        currency="KRW",
+        memo="초기 매수",
+    )
+
+    with pytest.raises(ValueError, match="현금성 자산"):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-13",
+            type=transaction_type,
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=1,
+            currency="KRW",
+            memo="잘못된 현금흐름",
+        )
+
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    assert holding["quantity"] == 10
+    assert holding["average_cost"] == 70_000
+    assert count_transactions(db, transaction_type) == 0
+
+
+@pytest.mark.parametrize("transaction_type", ["dividend", "interest"])
+def test_cash_income_transactions_increase_cash_asset(tmp_path, transaction_type):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+
+    tx_id = apply_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type=transaction_type,
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=50_000,
+        currency="KRW",
+        memo="현금 소득",
+    )
+
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    assert tx_id > 0
+    assert holding["quantity"] == 50_000
+    assert count_transactions(db, transaction_type) == 1
+
+
+def test_fee_transaction_decreases_cash_asset(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+    apply_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type="deposit",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=100_000,
+        currency="KRW",
+        memo="초기 입금",
+    )
+
+    tx_id = apply_transaction(
+        db,
+        occurred_on="2026-06-13",
+        type="fee",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=1_000,
+        currency="KRW",
+        memo="수수료",
+    )
+
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    assert tx_id > 0
+    assert holding["quantity"] == 99_000
+    assert count_transactions(db, "fee") == 1
+
+
+def test_debt_payment_on_cash_asset_is_rejected_without_changes(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+    apply_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type="deposit",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=100_000,
+        currency="KRW",
+        memo="초기 입금",
+    )
+
+    with pytest.raises(ValueError, match="부채 자산"):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-13",
+            type="debt_payment",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=1_000,
+            currency="KRW",
+            memo="잘못된 부채 상환",
+        )
+
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    assert holding["quantity"] == 100_000
+    assert count_transactions(db, "debt_payment") == 0
+
+
+def test_buy_transaction_on_cash_asset_is_rejected_without_changes(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+
+    with pytest.raises(ValueError, match="시장성 자산"):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="buy",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=1,
+            amount=1_000,
+            currency="KRW",
+            memo="잘못된 매수",
+        )
+
+    assert count_transactions(db, "buy") == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
 def test_direct_holding_edit_creates_adjustment_transaction(tmp_path):
     db = setup_db(tmp_path)
     account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")

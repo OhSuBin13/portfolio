@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { apiPost } from "../api"
+import { useEffect, useState } from "react"
+import { apiGet, apiPost } from "../api"
+import type { GoalProgress } from "../types"
 
 const goalTypes = [
   ["net_worth", "순자산"],
@@ -7,6 +8,8 @@ const goalTypes = [
 ]
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const formatKrw = (value: number) => `${value.toLocaleString("ko-KR")} 원`
+const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
 
 type GoalForm = {
   name: string
@@ -20,8 +23,33 @@ export function GoalsPage() {
     type: "net_worth",
     targetAmountKrw: "",
   })
+  const [progress, setProgress] = useState<GoalProgress[]>([])
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+
+  const refreshProgress = async () => {
+    const data = await apiGet<GoalProgress[]>("/api/goals/progress")
+    setProgress(data)
+  }
+
+  useEffect(() => {
+    let ignore = false
+    apiGet<GoalProgress[]>("/api/goals/progress")
+      .then((data) => {
+        if (!ignore) {
+          setProgress(data)
+          setError("")
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setError(getErrorMessage(err))
+        }
+      })
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -46,6 +74,7 @@ export function GoalsPage() {
         type: form.type,
         target_amount_krw: targetAmountKrw,
       })
+      await refreshProgress()
       setForm((prev) => ({ ...prev, name: "", targetAmountKrw: "" }))
       setMessage("목표를 저장했습니다.")
     } catch (err) {
@@ -103,6 +132,45 @@ export function GoalsPage() {
         {error && <p className="form-message error-text">{error}</p>}
         {message && <p className="form-message success-text">{message}</p>}
       </form>
+
+      <section className="panel">
+        <div className="section-heading">
+          <h3>목표 현황</h3>
+          <span>{progress.length.toLocaleString("ko-KR")}개 목표</span>
+        </div>
+        {progress.length > 0 ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>목표</th>
+                  <th>유형</th>
+                  <th className="numeric-cell">현재</th>
+                  <th className="numeric-cell">목표</th>
+                  <th className="numeric-cell">진행률</th>
+                  <th className="numeric-cell">남은 금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                {progress.map((row) => (
+                  <tr key={row.goal.id}>
+                    <td>{row.goal.name}</td>
+                    <td>{goalTypeLabel(row.goal.type)}</td>
+                    <td className="numeric-cell">{formatKrw(row.current_amount_krw)}</td>
+                    <td className="numeric-cell">{formatKrw(row.goal.target_amount_krw)}</td>
+                    <td className="numeric-cell">
+                      {row.percent.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} %
+                    </td>
+                    <td className="numeric-cell">{formatKrw(row.remaining_krw)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="empty-state">등록된 목표가 없습니다.</p>
+        )}
+      </section>
     </section>
   )
 }

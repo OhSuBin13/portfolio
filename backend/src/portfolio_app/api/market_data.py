@@ -112,6 +112,16 @@ def _snapshot_response(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def _safe_error_message(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        reason = response.reason_phrase or "Unknown"
+        return f"시세 제공자 요청 실패: HTTP {response.status_code} {reason}"
+    if isinstance(exc, httpx.HTTPError):
+        return f"시세 제공자 요청 실패: {exc.__class__.__name__}"
+    return str(exc)
+
+
 async def _price_krw(
     quote: MarketQuote,
     *,
@@ -252,7 +262,7 @@ async def _sync_market_data(
                 }
             )
         except (ValueError, sqlite3.Error, httpx.HTTPError) as exc:
-            error_message = str(exc)
+            error_message = _safe_error_message(exc)
             previous = _latest_snapshot(db, asset_id)
             with db:
                 if previous is None:

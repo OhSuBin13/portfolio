@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from portfolio_app.api import get_db
 from portfolio_app.finance import calculate_asset_mix, calculate_net_worth
-from portfolio_app.models import HoldingValue
+from portfolio_app.models import HoldingValue, PortfolioSummary
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
@@ -50,8 +50,34 @@ def _holding_value(row: sqlite3.Row) -> HoldingValue:
     return HoldingValue(asset_type=asset_type, value_krw=max(0.0, value_krw))
 
 
-@router.get("")
-def get_summary(db: Db) -> dict[str, object]:
+def _income_amount_to_krw(row: sqlite3.Row) -> float:
+    amount = float(row["amount"] or 0)
+    currency = str(row["currency"]).upper()
+    if currency == "KRW" or amount == 0:
+        return amount
+
+    rate = row["fx_rate_to_krw"]
+    if rate is None or float(rate) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{currency} 소득 거래에 필요한 환율 정보가 없습니다.",
+        )
+    return amount * float(rate)
+
+
+def _monthly_income_krw(db: sqlite3.Connection) -> float:
+    rows = db.execute(
+        """
+        select amount, currency, fx_rate_to_krw
+        from transactions
+        where type in ('dividend', 'interest')
+        order by id
+        """
+    ).fetchall()
+    return sum(_income_amount_to_krw(row) for row in rows)
+
+
+def build_summary(db: sqlite3.Connection) -> tuple[PortfolioSummary, dict[str, float]]:
     rows = db.execute(
         """
         select h.quantity,
@@ -92,8 +118,16 @@ def get_summary(db: Db) -> dict[str, object]:
         """
     ).fetchall()
     values = [_holding_value(row) for row in rows]
-    summary = calculate_net_worth(values)
+    summary = calculate_net_worth(values).model_copy(
+        update={"monthly_income_krw": _monthly_income_krw(db)}
+    )
+    return summary, calculate_asset_mix(values)
+
+
+@router.get("")
+def get_summary(db: Db) -> dict[str, object]:
+    summary, asset_mix = build_summary(db)
     return {
         **summary.model_dump(),
-        "asset_mix": calculate_asset_mix(values),
+        "asset_mix": asset_mix,
     }

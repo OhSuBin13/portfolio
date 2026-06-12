@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
 import type { Account, Asset, Transaction } from "../types"
 
@@ -23,6 +23,10 @@ const today = () => {
 }
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const transactionTypeLabel = (type: string) =>
+  transactionTypes.find(([value]) => value === type)?.[1] ?? type
+const formatNumber = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 6 })
+const formatAmount = (amount: number, currency: string) => `${formatNumber(amount)} ${currency}`
 
 type TransactionForm = {
   occurredOn: string
@@ -39,6 +43,7 @@ type TransactionForm = {
 export function TransactionsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadError, setLoadError] = useState("")
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -54,11 +59,21 @@ export function TransactionsPage() {
     memo: "",
   })
 
+  const loadTransactions = useCallback(async () => {
+    const data = await apiGet<Transaction[]>("/api/transactions")
+    setTransactions(data)
+  }, [])
+
   useEffect(() => {
-    Promise.all([apiGet<Account[]>("/api/accounts"), apiGet<Asset[]>("/api/assets")])
-      .then(([accountData, assetData]) => {
+    Promise.all([
+      apiGet<Account[]>("/api/accounts"),
+      apiGet<Asset[]>("/api/assets"),
+      apiGet<Transaction[]>("/api/transactions"),
+    ])
+      .then(([accountData, assetData, transactionData]) => {
         setAccounts(accountData)
         setAssets(assetData)
+        setTransactions(transactionData)
         setLoadError("")
         setForm((prev) => ({
           ...prev,
@@ -122,6 +137,7 @@ export function TransactionsPage() {
         memo: form.memo.trim(),
         fx_rate_to_krw: fxRateToKrw,
       })
+      await loadTransactions()
       setForm((prev) => ({
         ...prev,
         occurredOn: today(),
@@ -135,6 +151,11 @@ export function TransactionsPage() {
       setError(getErrorMessage(err))
     }
   }
+
+  const accountNames = new Map(accounts.map((account) => [account.id, account.name]))
+  const assetNames = new Map(
+    assets.map((asset) => [asset.id, asset.symbol ? `${asset.name} (${asset.symbol})` : asset.name]),
+  )
 
   return (
     <section className="screen-stack">
@@ -257,6 +278,53 @@ export function TransactionsPage() {
         {error && <p className="form-message error-text">{error}</p>}
         {message && <p className="form-message success-text">{message}</p>}
       </form>
+
+      <section className="panel">
+        <div className="section-heading">
+          <h3>거래 장부</h3>
+          <span>{transactions.length.toLocaleString("ko-KR")}건</span>
+        </div>
+        {transactions.length > 0 ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>일자</th>
+                  <th>유형</th>
+                  <th>계좌</th>
+                  <th>자산</th>
+                  <th className="numeric-cell">수량</th>
+                  <th className="numeric-cell">금액</th>
+                  <th className="numeric-cell">환율</th>
+                  <th>메모</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>{transaction.occurred_on}</td>
+                    <td>{transactionTypeLabel(transaction.type)}</td>
+                    <td>{accountNames.get(transaction.account_id) ?? transaction.account_id}</td>
+                    <td>{assetNames.get(transaction.asset_id) ?? transaction.asset_id}</td>
+                    <td className="numeric-cell">
+                      {transaction.quantity === null ? "-" : formatNumber(transaction.quantity)}
+                    </td>
+                    <td className="numeric-cell">
+                      {formatAmount(transaction.amount, transaction.currency)}
+                    </td>
+                    <td className="numeric-cell">
+                      {transaction.fx_rate_to_krw === null ? "-" : formatNumber(transaction.fx_rate_to_krw)}
+                    </td>
+                    <td>{transaction.memo || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="empty-state">저장된 거래가 없습니다.</p>
+        )}
+      </section>
     </section>
   )
 }

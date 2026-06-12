@@ -8,6 +8,9 @@ INCREASE_TYPES = {"deposit", "interest", "dividend"}
 DECREASE_TYPES = {"withdrawal", "fee", "debt_payment"}
 NORMAL_TYPES = {"buy", "sell"} | INCREASE_TYPES | DECREASE_TYPES
 SUPPORTED_TYPES = NORMAL_TYPES | {"adjustment"}
+CASHFLOW_TYPES = {"deposit", "withdrawal", "dividend", "interest", "fee"}
+CASH_LIKE_ASSET_TYPES = {"cash", "savings"}
+MARKET_ASSET_TYPES = {"stock_etf", "crypto"}
 
 
 def _current_holding(
@@ -29,6 +32,13 @@ def _asset_currency(db: sqlite3.Connection, asset_id: int) -> str:
     if row is None:
         return "KRW"
     return str(row["currency"])
+
+
+def _asset_type(db: sqlite3.Connection, asset_id: int) -> str:
+    row = db.execute("select type from assets where id = ?", (asset_id,)).fetchone()
+    if row is None:
+        raise ValueError("자산을 찾을 수 없습니다.")
+    return str(row["type"])
 
 
 def _is_finite_number(value: float | None) -> bool:
@@ -57,6 +67,21 @@ def _validate_fx_rate(fx_rate_to_krw: float | None) -> None:
         raise ValueError("환율은 0보다 커야 합니다.")
 
 
+def _validate_asset_type_for_transaction(
+    db: sqlite3.Connection,
+    *,
+    transaction_type: str,
+    asset_id: int,
+) -> None:
+    asset_type = _asset_type(db, asset_id)
+    if transaction_type in CASHFLOW_TYPES and asset_type not in CASH_LIKE_ASSET_TYPES:
+        raise ValueError("입출금, 배당, 이자, 수수료는 현금성 자산에만 기록할 수 있습니다.")
+    if transaction_type == "debt_payment" and asset_type != "debt":
+        raise ValueError("부채 상환은 부채 자산에만 기록할 수 있습니다.")
+    if transaction_type in {"buy", "sell"} and asset_type not in MARKET_ASSET_TYPES:
+        raise ValueError("매수와 매도는 시장성 자산에만 기록할 수 있습니다.")
+
+
 def apply_transaction(
     db: sqlite3.Connection,
     *,
@@ -79,6 +104,8 @@ def apply_transaction(
         _validate_adjustment_amount(amount)
     else:
         _validate_positive_amount(amount)
+
+    _validate_asset_type_for_transaction(db, transaction_type=type, asset_id=asset_id)
 
     with db:
         current_quantity, current_average = _current_holding(db, account_id, asset_id)

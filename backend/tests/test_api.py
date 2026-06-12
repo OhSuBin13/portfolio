@@ -136,6 +136,189 @@ def test_can_create_and_list_goal(tmp_path):
     assert client.get("/api/goals").json()[0]["id"] == goal["id"]
 
 
+def test_goal_progress_reports_one_percent_for_net_worth_goal(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": None, "name": "KRW", "type": "cash", "currency": "KRW", "market": "KR"},
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "초기 입금",
+        },
+    )
+    goal = client.post(
+        "/api/goals",
+        json={
+            "name": "순자산 1억",
+            "type": "net_worth",
+            "target_amount_krw": 100_000_000,
+        },
+    ).json()
+
+    response = client.get("/api/goals/progress")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "goal": {
+                "id": goal["id"],
+                "name": "순자산 1억",
+                "type": "net_worth",
+                "target_amount_krw": 100_000_000,
+            },
+            "current_amount_krw": 1_000_000,
+            "percent": 1,
+            "remaining_krw": 99_000_000,
+        }
+    ]
+
+
+def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": None, "name": "KRW", "type": "cash", "currency": "KRW", "market": "KR"},
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "dividend",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 30_000,
+            "currency": "KRW",
+            "memo": "배당",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "interest",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 70_000,
+            "currency": "KRW",
+            "memo": "이자",
+        },
+    )
+    goal = client.post(
+        "/api/goals",
+        json={
+            "name": "월 소득 100만",
+            "type": "monthly_income",
+            "target_amount_krw": 1_000_000,
+        },
+    ).json()
+
+    summary = client.get("/api/summary").json()
+    progress = client.get("/api/goals/progress").json()
+
+    assert summary["monthly_income_krw"] == 100_000
+    assert progress == [
+        {
+            "goal": {
+                "id": goal["id"],
+                "name": "월 소득 100만",
+                "type": "monthly_income",
+                "target_amount_krw": 1_000_000,
+            },
+            "current_amount_krw": 100_000,
+            "percent": 10,
+            "remaining_krw": 900_000,
+        }
+    ]
+
+
+def test_summary_converts_non_krw_monthly_income_with_transaction_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "달러 현금", "type": "cash", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": "USD", "name": "USD", "type": "cash", "currency": "USD", "market": "US"},
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "interest",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 100,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "달러 이자",
+        },
+    )
+
+    assert response.status_code == 201
+    assert client.get("/api/summary").json()["monthly_income_krw"] == 140_000
+
+
+def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "달러 현금", "type": "cash", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": "USD", "name": "USD", "type": "cash", "currency": "USD", "market": "US"},
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "interest",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 100,
+            "currency": "USD",
+            "memo": "환율 누락 이자",
+        },
+    )
+    db = connect(client.app.state.settings.database_path)
+    db.execute(
+        """
+        insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
+        values (?, ?, ?, ?, ?)
+        """,
+        ("USD", "KRW", 1400, "test", "2026-06-13T00:00:00"),
+    )
+    db.commit()
+    db.close()
+
+    response = client.get("/api/summary")
+
+    assert response.status_code == 400
+    assert "환율" in response.json()["detail"]
+
+
 def test_summary_converts_usd_stock_holding_to_krw_with_transaction_fx_rate(tmp_path):
     client = create_test_client(tmp_path)
 

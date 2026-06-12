@@ -189,6 +189,56 @@ button {
   text-align: right;
 }
 
+.progress-list {
+  display: grid;
+  gap: 14px;
+}
+
+.progress-row {
+  border-top: 1px solid #eef2f7;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.progress-row-main,
+.progress-row-meta {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.progress-row-main strong {
+  color: #111827;
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.progress-row-main b {
+  color: #047857;
+  flex: 0 0 auto;
+  font-size: 15px;
+}
+
+.progress-row-meta span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.progress-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: #10b981;
+  height: 100%;
+}
+
 .empty-state {
   color: #64748b;
   font-size: 14px;
