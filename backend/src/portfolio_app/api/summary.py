@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -65,19 +66,37 @@ def _income_amount_to_krw(row: sqlite3.Row) -> float:
     return amount * float(rate)
 
 
-def _monthly_income_krw(db: sqlite3.Connection) -> float:
+def _current_month_bounds(today: date | None = None) -> tuple[str, str]:
+    current_day = today or date.today()
+    start = current_day.replace(day=1)
+    if start.month == 12:
+        next_month = start.replace(year=start.year + 1, month=1)
+    else:
+        next_month = start.replace(month=start.month + 1)
+    return start.isoformat(), next_month.isoformat()
+
+
+def _monthly_income_krw(db: sqlite3.Connection, *, today: date | None = None) -> float:
+    month_start, next_month_start = _current_month_bounds(today)
     rows = db.execute(
         """
         select amount, currency, fx_rate_to_krw
         from transactions
         where type in ('dividend', 'interest')
+          and occurred_on >= ?
+          and occurred_on < ?
         order by id
-        """
+        """,
+        (month_start, next_month_start),
     ).fetchall()
     return sum(_income_amount_to_krw(row) for row in rows)
 
 
-def build_summary(db: sqlite3.Connection) -> tuple[PortfolioSummary, dict[str, float]]:
+def build_summary(
+    db: sqlite3.Connection,
+    *,
+    today: date | None = None,
+) -> tuple[PortfolioSummary, dict[str, float]]:
     rows = db.execute(
         """
         select h.quantity,
@@ -119,7 +138,7 @@ def build_summary(db: sqlite3.Connection) -> tuple[PortfolioSummary, dict[str, f
     ).fetchall()
     values = [_holding_value(row) for row in rows]
     summary = calculate_net_worth(values).model_copy(
-        update={"monthly_income_krw": _monthly_income_krw(db)}
+        update={"monthly_income_krw": _monthly_income_krw(db, today=today)}
     )
     return summary, calculate_asset_mix(values)
 

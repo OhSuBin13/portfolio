@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
@@ -29,6 +31,14 @@ def assert_korean_validation_error(response, expected_text):
     assert "valid date" not in detail_text
     assert "valid integer" not in detail_text
     assert "Unable to parse input string" not in detail_text
+
+
+def current_month_date() -> str:
+    return date.today().isoformat()
+
+
+def previous_month_date() -> str:
+    return (date.today().replace(day=1) - timedelta(days=1)).isoformat()
 
 
 def test_health_returns_ok():
@@ -199,7 +209,7 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
     client.post(
         "/api/transactions",
         json={
-            "occurred_on": "2026-06-12",
+            "occurred_on": current_month_date(),
             "type": "dividend",
             "account_id": account["id"],
             "asset_id": asset["id"],
@@ -212,7 +222,7 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
     client.post(
         "/api/transactions",
         json={
-            "occurred_on": "2026-06-12",
+            "occurred_on": current_month_date(),
             "type": "interest",
             "account_id": account["id"],
             "asset_id": asset["id"],
@@ -250,6 +260,85 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
     ]
 
 
+def test_summary_counts_only_current_month_income_for_monthly_income_progress(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": None, "name": "KRW", "type": "cash", "currency": "KRW", "market": "KR"},
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": current_month_date(),
+            "type": "dividend",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 40_000,
+            "currency": "KRW",
+            "memo": "이번 달 배당",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": current_month_date(),
+            "type": "interest",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 60_000,
+            "currency": "KRW",
+            "memo": "이번 달 이자",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": previous_month_date(),
+            "type": "dividend",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 900_000,
+            "currency": "KRW",
+            "memo": "지난 달 배당",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": previous_month_date(),
+            "type": "interest",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 800_000,
+            "currency": "KRW",
+            "memo": "지난 달 이자",
+        },
+    )
+    client.post(
+        "/api/goals",
+        json={
+            "name": "월 소득 100만",
+            "type": "monthly_income",
+            "target_amount_krw": 1_000_000,
+        },
+    )
+
+    summary = client.get("/api/summary").json()
+    progress = client.get("/api/goals/progress").json()[0]
+
+    assert summary["monthly_income_krw"] == 100_000
+    assert progress["current_amount_krw"] == 100_000
+    assert progress["percent"] == 10
+
+
 def test_summary_converts_non_krw_monthly_income_with_transaction_fx_rate(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
@@ -263,7 +352,7 @@ def test_summary_converts_non_krw_monthly_income_with_transaction_fx_rate(tmp_pa
     response = client.post(
         "/api/transactions",
         json={
-            "occurred_on": "2026-06-12",
+            "occurred_on": current_month_date(),
             "type": "interest",
             "account_id": account["id"],
             "asset_id": asset["id"],
@@ -292,7 +381,7 @@ def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_
     client.post(
         "/api/transactions",
         json={
-            "occurred_on": "2026-06-12",
+            "occurred_on": current_month_date(),
             "type": "interest",
             "account_id": account["id"],
             "asset_id": asset["id"],
