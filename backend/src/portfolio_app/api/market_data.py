@@ -18,6 +18,12 @@ from portfolio_app.services.market_data import (
 
 router = APIRouter(prefix="/api/market-data", tags=["market-data"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
+COINGECKO_IDS_BY_SYMBOL = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "XRP": "ripple",
+}
 
 
 class ManualPriceCreate(BaseModel):
@@ -135,8 +141,16 @@ async def _fetch_quote(
     asset_type = str(asset["type"])
     symbol = str(asset["symbol"])
     if asset_type == "crypto":
-        return await coingecko_provider.fetch_crypto_quote(symbol.lower(), vs_currency="krw")
-    return await alpha_provider.fetch_equity_quote(symbol)
+        coin_id = COINGECKO_IDS_BY_SYMBOL.get(symbol.strip().upper(), symbol.strip().lower())
+        return await coingecko_provider.fetch_crypto_quote(coin_id, vs_currency="krw")
+
+    market = str(asset["market"]).upper()
+    currency = str(asset["currency"]).upper()
+    if asset_type == "stock_etf" and market == "US" and currency == "USD":
+        return await alpha_provider.fetch_equity_quote(symbol)
+    if asset_type == "stock_etf" and market == "KR" and currency == "KRW":
+        raise ValueError("KR 시장 시세 동기화는 아직 지원하지 않습니다.")
+    raise ValueError(f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다.")
 
 
 @router.post("/manual-price", status_code=status.HTTP_201_CREATED)

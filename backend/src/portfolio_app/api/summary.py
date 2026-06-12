@@ -82,6 +82,7 @@ def get_summary(db: Db) -> dict[str, object]:
                  select ps.price_krw
                  from price_snapshots ps
                  where ps.asset_id = a.id
+                   and ps.status in ('ok', 'manual', 'stale')
                  order by ps.fetched_at desc, ps.id desc
                  limit 1
                ) as latest_price_krw

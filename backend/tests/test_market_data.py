@@ -284,7 +284,7 @@ def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
     assert "500 Internal Server Error" in latest["error_message"]
 
 
-def test_sync_records_failed_status_when_http_provider_fails_without_previous_price(
+def test_sync_records_failed_status_without_previous_price_and_preserves_fallback_summary(
     tmp_path,
     httpx_mock,
 ):
@@ -293,6 +293,10 @@ def test_sync_records_failed_status_when_http_provider_fails_without_previous_pr
         alpha_vantage_api_key="demo-key",
         raise_server_exceptions=False,
     )
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+    ).json()
     asset = client.post(
         "/api/assets",
         json={
@@ -303,10 +307,25 @@ def test_sync_records_failed_status_when_http_provider_fails_without_previous_pr
             "market": "US",
         },
     ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "fallback valuation",
+        },
+    )
     httpx_mock.add_response(status_code=500, json={"message": "provider down"})
 
     response = client.post("/api/market-data/sync")
     latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary").json()
 
     assert response.status_code == 200
     assert response.json()["results"][0]["status"] == "failed"
@@ -315,3 +334,223 @@ def test_sync_records_failed_status_when_http_provider_fails_without_previous_pr
     assert latest["status"] == "failed"
     assert latest["price_krw"] == 0
     assert "500 Internal Server Error" in latest["error_message"]
+    assert summary["net_worth_krw"] == 700_000
+
+
+def test_summary_uses_manual_price_when_later_failed_snapshot_exists(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "국내 증권", "type": "brokerage", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "005930",
+            "name": "삼성전자",
+            "type": "stock_etf",
+            "currency": "KRW",
+            "market": "KR",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 2,
+            "amount": 100_000,
+            "currency": "KRW",
+            "memo": "manual fallback",
+        },
+    )
+    client.post(
+        "/api/market-data/manual-price",
+        json={"asset_id": asset["id"], "price_krw": 75_000},
+    )
+    db = connect(client.app.state.settings.database_path)
+    try:
+        db.execute(
+            "update price_snapshots set fetched_at = ? where asset_id = ? and status = ?",
+            ("2026-06-12T09:00:00", asset["id"], "manual"),
+        )
+        db.execute(
+            """
+            insert into price_snapshots(
+                asset_id, source, price, currency, price_krw, fetched_at, status, error_message
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                asset["id"],
+                "market_data",
+                0,
+                "KRW",
+                0,
+                "2026-06-12T10:00:00",
+                "failed",
+                "provider down",
+            ),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary").json()
+
+    assert latest["status"] == "failed"
+    assert latest["price_krw"] == 0
+    assert summary["net_worth_krw"] == 150_000
+
+
+def test_kr_stock_sync_records_unsupported_provider_and_preserves_summary(
+    tmp_path,
+    monkeypatch,
+):
+    client = create_test_client(
+        tmp_path,
+        alpha_vantage_api_key="demo-key",
+        raise_server_exceptions=False,
+    )
+    account = client.post(
+        "/api/accounts",
+        json={"name": "국내 증권", "type": "brokerage", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "005930",
+            "name": "삼성전자",
+            "type": "stock_etf",
+            "currency": "KRW",
+            "market": "KR",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 2,
+            "amount": 100_000,
+            "currency": "KRW",
+            "memo": "KR fallback",
+        },
+    )
+
+    async def fail_if_alpha_is_called(_self, _symbol):
+        raise AssertionError("Alpha Vantage must not be called for KR assets.")
+
+    monkeypatch.setattr(
+        "portfolio_app.services.market_data.AlphaVantageProvider.fetch_equity_quote",
+        fail_if_alpha_is_called,
+    )
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary").json()
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "failed"
+    assert "KR 시장 시세 동기화" in response.json()["results"][0]["error_message"]
+    assert latest["asset_id"] == asset["id"]
+    assert latest["status"] == "failed"
+    assert "KR 시장 시세 동기화" in latest["error_message"]
+    assert summary["net_worth_krw"] == 100_000
+
+
+def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_mock):
+    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 2,
+            "amount": 1000,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "US stock",
+        },
+    )
+    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+    httpx_mock.add_response(json={"base": "USD", "quote": "KRW", "rate": 1300})
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary").json()
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "ok"
+    assert latest["status"] == "ok"
+    assert latest["source"] == "alpha_vantage"
+    assert latest["price_krw"] == 780_000
+    assert summary["net_worth_krw"] == 1_560_000
+
+
+def test_crypto_sync_maps_common_ticker_to_coingecko_id_and_updates_summary(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "코인 지갑", "type": "crypto_wallet", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "BTC",
+            "name": "Bitcoin",
+            "type": "crypto",
+            "currency": "KRW",
+            "market": "CRYPTO",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 0.5,
+            "amount": 50_000_000,
+            "currency": "KRW",
+            "memo": "BTC",
+        },
+    )
+    httpx_mock.add_response(json={"bitcoin": {"krw": 150_000_000}})
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary").json()
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "ok"
+    assert latest["asset_id"] == asset["id"]
+    assert latest["status"] == "ok"
+    assert latest["source"] == "coingecko"
+    assert latest["price_krw"] == 150_000_000
+    assert summary["net_worth_krw"] == 75_000_000
