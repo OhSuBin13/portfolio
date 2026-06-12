@@ -14,7 +14,13 @@ const transactionTypes = [
   ["adjustment", "조정"],
 ]
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -71,6 +77,7 @@ export function TransactionsPage() {
     const accountId = Number(form.accountId)
     const assetId = Number(form.assetId)
     const amount = Number(form.amount)
+    const isAdjustment = form.type === "adjustment"
     const needsQuantity = form.type === "buy" || form.type === "sell"
     const quantityValue = Number(form.quantity)
     const quantity = needsQuantity ? quantityValue : null
@@ -81,7 +88,14 @@ export function TransactionsPage() {
       return
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!form.amount.trim() || !Number.isFinite(amount) || amount < 0) {
+      setError(
+        isAdjustment ? "조정 금액은 0 이상 숫자로 입력하세요." : "금액은 0보다 큰 숫자로 입력하세요.",
+      )
+      return
+    }
+
+    if (!isAdjustment && amount <= 0) {
       setError("금액은 0보다 큰 숫자로 입력하세요.")
       return
     }

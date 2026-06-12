@@ -10,6 +10,8 @@ const emptySummary: PortfolioSummary = {
   asset_mix: {},
 }
 
+const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
 export function Dashboard() {
   const [summary, setSummary] = useState<PortfolioSummary>(emptySummary)
   const [error, setError] = useState("")
@@ -20,7 +22,7 @@ export function Dashboard() {
         setSummary(data)
         setError("")
       })
-      .catch((err) => setError(String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
   }, [])
 
   const assetMixEntries = Object.entries(summary.asset_mix)
@@ -63,7 +65,7 @@ export function Dashboard() {
             {assetMixEntries.map(([type, value]) => (
               <div className="mix-row" key={type}>
                 <span>{type}</span>
-                <strong>{value.toLocaleString("ko-KR")} 원</strong>
+                <strong>{value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} %</strong>
               </div>
             ))}
           </div>

@@ -18,7 +18,18 @@ const assetTypes = [
   ["debt", "부채"],
 ]
 
-const today = () => new Date().toISOString().slice(0, 10)
+const initialTransactionTypes = [
+  ["adjustment", "잔액/수량 조정"],
+  ["buy", "초기 매수 보유"],
+]
+
+const today = () => {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -37,11 +48,14 @@ type AssetForm = {
 }
 
 type BalanceForm = {
+  type: string
   occurredOn: string
   accountId: string
   assetId: string
+  quantity: string
   amount: string
   currency: string
+  fxRateToKrw: string
   memo: string
 }
 
@@ -63,11 +77,14 @@ export function HoldingsPage() {
     market: "KR",
   })
   const [balanceForm, setBalanceForm] = useState<BalanceForm>({
+    type: "adjustment",
     occurredOn: today(),
     accountId: "",
     assetId: "",
+    quantity: "",
     amount: "",
     currency: "KRW",
+    fxRateToKrw: "",
     memo: "초기 잔액",
   })
 
@@ -165,30 +182,57 @@ export function HoldingsPage() {
     const amount = Number(balanceForm.amount)
     const accountId = Number(balanceForm.accountId)
     const assetId = Number(balanceForm.assetId)
+    const quantity = Number(balanceForm.quantity)
+    const fxRateToKrw = balanceForm.fxRateToKrw.trim() ? Number(balanceForm.fxRateToKrw) : null
+    const isBuy = balanceForm.type === "buy"
 
     if (!accountId || !assetId) {
       setBalanceError("계좌와 자산을 선택하세요.")
       return
     }
 
+    if (isBuy && (!balanceForm.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0)) {
+      setBalanceError("초기 매수 보유는 0보다 큰 수량이 필요합니다.")
+      return
+    }
+
     if (!balanceForm.amount.trim() || !Number.isFinite(amount) || amount < 0) {
-      setBalanceError("초기 금액은 0 이상 숫자로 입력하세요.")
+      setBalanceError(
+        isBuy ? "초기 매수 금액은 0보다 큰 숫자로 입력하세요." : "조정 금액은 0 이상 숫자로 입력하세요.",
+      )
+      return
+    }
+
+    if (isBuy && amount <= 0) {
+      setBalanceError("초기 매수 금액은 0보다 큰 숫자로 입력하세요.")
+      return
+    }
+
+    if (fxRateToKrw !== null && (!Number.isFinite(fxRateToKrw) || fxRateToKrw <= 0)) {
+      setBalanceError("환율은 비워두거나 0보다 큰 숫자로 입력하세요.")
       return
     }
 
     try {
       await apiPost<Transaction>("/api/transactions", {
         occurred_on: balanceForm.occurredOn,
-        type: "adjustment",
+        type: balanceForm.type,
         account_id: accountId,
         asset_id: assetId,
-        quantity: null,
+        quantity: isBuy ? quantity : null,
         amount,
         currency: balanceForm.currency.trim().toUpperCase(),
         memo: balanceForm.memo.trim(),
+        fx_rate_to_krw: fxRateToKrw,
       })
-      setBalanceForm((prev) => ({ ...prev, amount: "", memo: "초기 잔액" }))
-      setBalanceMessage("초기 잔액을 반영했습니다.")
+      setBalanceForm((prev) => ({
+        ...prev,
+        quantity: "",
+        amount: "",
+        fxRateToKrw: "",
+        memo: prev.type === "buy" ? "초기 매수" : "초기 잔액",
+      }))
+      setBalanceMessage("초기 거래를 저장했습니다.")
     } catch (err) {
       setBalanceError(getErrorMessage(err))
     }
@@ -310,10 +354,29 @@ export function HoldingsPage() {
 
       <form className="panel form-panel compact-form" onSubmit={handleBalanceSubmit}>
         <div className="section-heading">
-          <h3>초기 잔액 반영</h3>
-          <span>조정 거래</span>
+          <h3>초기 잔액/보유 반영</h3>
+          <span>{balanceForm.type === "buy" ? "매수 거래" : "조정 거래"}</span>
         </div>
         <div className="field-row triple">
+          <label>
+            반영 방식
+            <select
+              value={balanceForm.type}
+              onChange={(event) =>
+                setBalanceForm((prev) => ({
+                  ...prev,
+                  type: event.target.value,
+                  memo: event.target.value === "buy" ? "초기 매수" : "초기 잔액",
+                }))
+              }
+            >
+              {initialTransactionTypes.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             기준일
             <input
@@ -324,6 +387,15 @@ export function HoldingsPage() {
               }
             />
           </label>
+          <label>
+            통화
+            <input
+              value={balanceForm.currency}
+              onChange={(event) => setBalanceForm((prev) => ({ ...prev, currency: event.target.value }))}
+            />
+          </label>
+        </div>
+        <div className="field-row triple">
           <label>
             계좌
             <select
@@ -352,10 +424,19 @@ export function HoldingsPage() {
               ))}
             </select>
           </label>
+          <label>
+            수량
+            <input
+              inputMode="decimal"
+              value={balanceForm.quantity}
+              onChange={(event) => setBalanceForm((prev) => ({ ...prev, quantity: event.target.value }))}
+              placeholder={balanceForm.type === "buy" ? "필수" : "비움"}
+            />
+          </label>
         </div>
         <div className="field-row triple">
           <label>
-            금액/수량
+            {balanceForm.type === "buy" ? "금액" : "목표 잔액/수량"}
             <input
               inputMode="decimal"
               value={balanceForm.amount}
@@ -364,10 +445,14 @@ export function HoldingsPage() {
             />
           </label>
           <label>
-            통화
+            원화 환율
             <input
-              value={balanceForm.currency}
-              onChange={(event) => setBalanceForm((prev) => ({ ...prev, currency: event.target.value }))}
+              inputMode="decimal"
+              value={balanceForm.fxRateToKrw}
+              onChange={(event) =>
+                setBalanceForm((prev) => ({ ...prev, fxRateToKrw: event.target.value }))
+              }
+              placeholder="선택"
             />
           </label>
           <label>
@@ -379,7 +464,7 @@ export function HoldingsPage() {
           </label>
         </div>
         <button className="secondary-button" type="submit">
-          초기 잔액 저장
+          초기 거래 저장
         </button>
         {balanceError && <p className="form-message error-text">{balanceError}</p>}
         {balanceMessage && <p className="form-message success-text">{balanceMessage}</p>}
