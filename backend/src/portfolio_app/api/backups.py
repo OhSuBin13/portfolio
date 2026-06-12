@@ -36,9 +36,11 @@ def create_backup_endpoint(request: Request, db: Db) -> dict[str, object]:
 
 
 @router.get("")
-def list_backups(db: Db) -> list[dict[str, object]]:
+def list_backups(request: Request, db: Db) -> list[dict[str, object]]:
+    settings = request.app.state.settings
+
     try:
-        rows = list_backup_records(db)
+        rows = list_backup_records(db, backup_dir=settings.backup_dir)
     except sqlite3.Error as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

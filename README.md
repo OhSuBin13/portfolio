@@ -14,5 +14,5 @@ python -m venv .venv
 Run the API locally:
 
 ```bash
-.venv/bin/python -m uvicorn portfolio_app.main:app --reload
+.venv/bin/python -m uvicorn portfolio_app.asgi:app --reload
 ```

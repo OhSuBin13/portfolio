@@ -4,7 +4,15 @@ from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-BACKUP_PATTERN = "portfolio-*.sqlite"
+BACKUP_NAME_RE = re.compile(
+    r"^portfolio-"
+    r"(?P<date>\d{8})-"
+    r"(?P<time>\d{6})-"
+    r"(?P<microsecond>\d{6})-"
+    r"(?P<reason>[A-Za-z0-9_-]+?)"
+    r"(?:-\d+)?"
+    r"\.sqlite$"
+)
 
 
 def _safe_reason(reason: str) -> str:
@@ -22,6 +30,35 @@ def _backup_target(*, backup_dir: Path, reason: str) -> Path:
         suffix += 1
 
     return target
+
+
+def _backup_name_match(path: Path) -> re.Match[str] | None:
+    return BACKUP_NAME_RE.match(path.name)
+
+
+def _is_service_owned_backup(path: Path) -> bool:
+    return _backup_name_match(path) is not None
+
+
+def _backup_files(backup_dir: Path) -> list[Path]:
+    return [
+        path
+        for path in backup_dir.iterdir()
+        if path.is_file() and _is_service_owned_backup(path)
+    ]
+
+
+def _metadata_from_filename(path: Path) -> tuple[str, str]:
+    match = _backup_name_match(path)
+    if match is None:
+        created_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+        return "backup", created_at
+
+    timestamp = datetime.strptime(
+        f"{match['date']}{match['time']}{match['microsecond']}",
+        "%Y%m%d%H%M%S%f",
+    )
+    return match["reason"], timestamp.isoformat(timespec="seconds")
 
 
 def create_backup(*, db_path: Path, backup_dir: Path, reason: str) -> Path:
@@ -60,7 +97,7 @@ def prune_backups(*, backup_dir: Path, keep: int = 30) -> list[Path]:
         return []
 
     backups = sorted(
-        backup_dir.glob(BACKUP_PATTERN),
+        _backup_files(backup_dir),
         key=lambda path: (path.stat().st_mtime_ns, path.name),
         reverse=True,
     )
@@ -110,18 +147,35 @@ def delete_backup_records(db: sqlite3.Connection, paths: list[Path]) -> None:
     db.commit()
 
 
-def reconcile_backup_records(db: sqlite3.Connection) -> None:
+def reconcile_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> None:
     rows = db.execute("select id, path from backups").fetchall()
     stale_ids = [(row["id"],) for row in rows if not Path(row["path"]).exists()]
-    if not stale_ids:
-        return
+    if stale_ids:
+        db.executemany("delete from backups where id = ?", stale_ids)
 
-    db.executemany("delete from backups where id = ?", stale_ids)
+    recorded_paths = {
+        row["path"]
+        for row in db.execute("select path from backups").fetchall()
+    }
+    if backup_dir.exists():
+        for path in _backup_files(backup_dir):
+            if str(path) in recorded_paths:
+                continue
+            reason, created_at = _metadata_from_filename(path)
+            db.execute(
+                """
+                insert into backups(path, reason, created_at)
+                values (?, ?, ?)
+                """,
+                (str(path), reason, created_at),
+            )
+            recorded_paths.add(str(path))
+
     db.commit()
 
 
-def list_backup_records(db: sqlite3.Connection) -> list[sqlite3.Row]:
-    reconcile_backup_records(db)
+def list_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> list[sqlite3.Row]:
+    reconcile_backup_records(db, backup_dir=backup_dir)
     return db.execute(
         """
         select path, reason, created_at
@@ -149,5 +203,5 @@ def create_recorded_backup(
 
     deleted_paths = prune_backups(backup_dir=backup_dir, keep=keep)
     delete_backup_records(db, deleted_paths)
-    reconcile_backup_records(db)
+    reconcile_backup_records(db, backup_dir=backup_dir)
     return row
