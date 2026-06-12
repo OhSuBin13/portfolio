@@ -22,6 +22,8 @@ def assert_korean_validation_error(response, expected_text):
     assert expected_text in detail_text
     assert "Field required" not in detail_text
     assert "Extra inputs are not permitted" not in detail_text
+    assert "Input should be" not in detail_text
+    assert "valid date" not in detail_text
     assert "valid integer" not in detail_text
     assert "Unable to parse input string" not in detail_text
 
@@ -102,6 +104,81 @@ def test_can_create_and_list_goal(tmp_path):
     assert client.get("/api/goals").json()[0]["id"] == goal["id"]
 
 
+def test_summary_converts_usd_stock_holding_to_krw_with_transaction_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "첫 해외 ETF 매수",
+        },
+    )
+
+    assert response.status_code == 201
+    summary = client.get("/api/summary").json()
+    assert summary["net_worth_krw"] == 700_000
+    assert summary["asset_mix"] == {"stock_etf": 100.0}
+
+
+def test_summary_rejects_non_krw_holding_without_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "USD",
+            "memo": "환율 누락 매수",
+        },
+    )
+
+    response = client.get("/api/summary")
+
+    assert response.status_code == 400
+    assert "환율" in response.json()["detail"]
+
+
 def test_account_create_validation_error_is_korean_for_missing_required_field(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -145,6 +222,26 @@ def test_transaction_create_validation_error_is_korean_for_wrong_type(tmp_path):
             "amount": 1_000_000,
             "currency": "KRW",
             "memo": "초기 입금",
+        },
+    )
+
+    assert_korean_validation_error(response, "입력값 형식")
+
+
+def test_transaction_create_validation_error_is_korean_for_invalid_date(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "not-a-date",
+            "type": "deposit",
+            "account_id": 1,
+            "asset_id": 1,
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "잘못된 날짜",
         },
     )
 
