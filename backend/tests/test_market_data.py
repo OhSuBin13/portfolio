@@ -12,7 +12,12 @@ from portfolio_app.services.market_data import (
 )
 
 
-def create_test_client(tmp_path, *, alpha_vantage_api_key: str = ""):
+def create_test_client(
+    tmp_path,
+    *,
+    alpha_vantage_api_key: str = "",
+    raise_server_exceptions: bool = True,
+):
     settings = Settings(
         data_dir=tmp_path,
         database_path=tmp_path / "portfolio.sqlite",
@@ -20,7 +25,7 @@ def create_test_client(tmp_path, *, alpha_vantage_api_key: str = ""):
         alpha_vantage_api_key=alpha_vantage_api_key,
     )
     app = create_app(settings=settings)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 def test_keep_last_good_quote_uses_previous_value_on_error():
@@ -230,3 +235,83 @@ def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
     assert latest["price_krw"] == 700_000
     assert "Alpha Vantage API 키" in latest["error_message"]
     assert client.get("/api/summary").json()["net_worth_krw"] == 700_000
+
+
+def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(
+        tmp_path,
+        alpha_vantage_api_key="demo-key",
+        raise_server_exceptions=False,
+    )
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    db = connect(client.app.state.settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into price_snapshots(
+                asset_id, source, price, currency, price_krw, fetched_at, status, error_message
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+        )
+        db.commit()
+    finally:
+        db.close()
+    httpx_mock.add_response(status_code=500, json={"message": "provider down"})
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "stale"
+    assert "500 Internal Server Error" in response.json()["results"][0]["error_message"]
+    assert latest["asset_id"] == asset["id"]
+    assert latest["status"] == "stale"
+    assert latest["price_krw"] == 700_000
+    assert "500 Internal Server Error" in latest["error_message"]
+
+
+def test_sync_records_failed_status_when_http_provider_fails_without_previous_price(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(
+        tmp_path,
+        alpha_vantage_api_key="demo-key",
+        raise_server_exceptions=False,
+    )
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    httpx_mock.add_response(status_code=500, json={"message": "provider down"})
+
+    response = client.post("/api/market-data/sync")
+    latest = client.get("/api/market-data/status").json()[0]
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "failed"
+    assert "500 Internal Server Error" in response.json()["results"][0]["error_message"]
+    assert latest["asset_id"] == asset["id"]
+    assert latest["status"] == "failed"
+    assert latest["price_krw"] == 0
+    assert "500 Internal Server Error" in latest["error_message"]

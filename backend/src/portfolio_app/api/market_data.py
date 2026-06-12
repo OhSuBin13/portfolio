@@ -3,6 +3,7 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
@@ -236,7 +237,7 @@ async def _sync_market_data(
                     "error_message": quote.error_message,
                 }
             )
-        except (ValueError, sqlite3.Error) as exc:
+        except (ValueError, sqlite3.Error, httpx.HTTPError) as exc:
             error_message = str(exc)
             previous = _latest_snapshot(db, asset_id)
             with db:
