@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from portfolio_app.api import accounts, assets, backups, goals, summary, transactions
+from portfolio_app.api import accounts, assets, backups, goals, imports, summary, transactions
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
@@ -70,5 +70,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
+    app.include_router(imports.router)
 
     return app
