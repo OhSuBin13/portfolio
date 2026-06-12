@@ -22,14 +22,25 @@ def calculate_asset_mix(values: list[HoldingValue]) -> dict[str, float]:
         if item.asset_type != "debt":
             totals[item.asset_type] += item.value_krw
 
+    for value in totals.values():
+        if not math.isfinite(value):
+            raise ValueError("asset mix contains non-finite values")
+
     denominator = sum(totals.values())
     if denominator == 0:
         return {}
+    if not math.isfinite(denominator):
+        raise ValueError("asset mix contains non-finite values")
 
-    return {
-        asset_type: round((value / denominator) * 100, 2)
-        for asset_type, value in totals.items()
-    }
+    mix: dict[str, float] = {}
+    for asset_type, value in totals.items():
+        percent = (value / denominator) * 100
+        if not math.isfinite(percent):
+            raise ValueError("asset mix contains non-finite values")
+
+        mix[asset_type] = round(percent, 2)
+
+    return mix
 
 
 def calculate_goal_progress(goal: Goal, current_amount_krw: float) -> GoalProgress:

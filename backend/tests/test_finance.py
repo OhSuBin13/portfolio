@@ -88,6 +88,26 @@ def test_asset_mix_groups_duplicate_positive_asset_types():
     assert mix == {"cash": 75.0, "stock_etf": 25.0}
 
 
+def test_asset_mix_rejects_overflowed_duplicate_asset_totals():
+    values = [
+        HoldingValue(asset_type="cash", value_krw=1e308),
+        HoldingValue(asset_type="cash", value_krw=1e308),
+    ]
+
+    with pytest.raises(ValueError, match="asset mix contains non-finite values"):
+        calculate_asset_mix(values)
+
+
+def test_asset_mix_rejects_overflowed_denominator():
+    values = [
+        HoldingValue(asset_type="cash", value_krw=1e308),
+        HoldingValue(asset_type="stock_etf", value_krw=1e308),
+    ]
+
+    with pytest.raises(ValueError, match="asset mix contains non-finite values"):
+        calculate_asset_mix(values)
+
+
 def test_goal_progress_caps_percent_at_100():
     goal = Goal(id=1, name="순자산 1억", type="net_worth", target_amount_krw=100_000_000)
 
@@ -102,9 +122,19 @@ def test_holding_value_rejects_unknown_asset_type():
         HoldingValue(asset_type="debt ", value_krw=1, monthly_income_krw=0)
 
 
+def test_holding_value_rejects_numeric_string_value():
+    with pytest.raises(ValidationError):
+        HoldingValue(asset_type="cash", value_krw="1")
+
+
 def test_goal_rejects_unknown_type():
     with pytest.raises(ValidationError):
         Goal(id=1, name="부자 되기", type="wealth", target_amount_krw=100_000_000)
+
+
+def test_goal_rejects_numeric_string_id():
+    with pytest.raises(ValidationError):
+        Goal(id="1", name="bad", type="net_worth", target_amount_krw=100)
 
 
 def test_holding_value_rejects_negative_value():
