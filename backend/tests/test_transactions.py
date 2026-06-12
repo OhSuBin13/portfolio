@@ -169,6 +169,31 @@ def test_non_positive_cash_amount_is_rejected_without_changes(
         get_holding(db, account_id=account_id, asset_id=asset_id)
 
 
+@pytest.mark.parametrize("fx_rate_to_krw", [-1, 0])
+def test_invalid_fx_rate_is_rejected_without_changes(tmp_path, fx_rate_to_krw):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+
+    with pytest.raises(ValueError, match="환율"):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="deposit",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=1_000_000,
+            currency="KRW",
+            memo="잘못된 환율",
+            fx_rate_to_krw=fx_rate_to_krw,
+        )
+
+    assert count_transactions(db, "deposit") == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
 def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
     db = setup_db(tmp_path)
     account_id = create_account(db, name="대출", type="debt", currency="KRW")

@@ -50,6 +50,13 @@ def _validate_adjustment_amount(amount: float) -> None:
         raise ValueError("조정 수량은 0 이상이어야 합니다.")
 
 
+def _validate_fx_rate(fx_rate_to_krw: float | None) -> None:
+    if fx_rate_to_krw is not None and (
+        not _is_finite_number(fx_rate_to_krw) or fx_rate_to_krw <= 0
+    ):
+        raise ValueError("환율은 0보다 커야 합니다.")
+
+
 def apply_transaction(
     db: sqlite3.Connection,
     *,
@@ -65,6 +72,8 @@ def apply_transaction(
 ) -> int:
     if type not in SUPPORTED_TYPES:
         raise ValueError("지원하지 않는 거래 유형입니다.")
+
+    _validate_fx_rate(fx_rate_to_krw)
 
     if type == "adjustment":
         _validate_adjustment_amount(amount)

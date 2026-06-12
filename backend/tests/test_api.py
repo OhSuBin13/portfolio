@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
+from portfolio_app.db import connect
 from portfolio_app.main import create_app
 
 
@@ -142,6 +143,53 @@ def test_summary_converts_usd_stock_holding_to_krw_with_transaction_fx_rate(tmp_
     assert summary["asset_mix"] == {"stock_etf": 100.0}
 
 
+def test_summary_prefers_latest_fx_rate_over_transaction_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "거래 당시 환율",
+        },
+    )
+    db = connect(client.app.state.settings.database_path)
+    db.execute(
+        """
+        insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
+        values (?, ?, ?, ?, ?)
+        """,
+        ("USD", "KRW", 1300, "test", "2026-06-13T00:00:00"),
+    )
+    db.commit()
+    db.close()
+
+    summary = client.get("/api/summary").json()
+
+    assert summary["net_worth_krw"] == 650_000
+
+
 def test_summary_rejects_non_krw_holding_without_fx_rate(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -246,3 +294,34 @@ def test_transaction_create_validation_error_is_korean_for_invalid_date(tmp_path
     )
 
     assert_korean_validation_error(response, "입력값 형식")
+
+
+def test_transaction_create_rejects_invalid_fx_rate_without_persistence(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": None, "name": "KRW", "type": "cash", "currency": "KRW", "market": "KR"},
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "fx_rate_to_krw": -1,
+            "memo": "잘못된 환율",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "환율" in response.json()["detail"]
+    assert client.get("/api/transactions").json() == []

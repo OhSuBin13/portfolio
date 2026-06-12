@@ -12,7 +12,7 @@ Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
 def _best_fx_rate(row: sqlite3.Row) -> float | None:
-    rate = row["transaction_fx_rate_to_krw"] or row["latest_fx_rate_to_krw"]
+    rate = row["latest_fx_rate_to_krw"] or row["transaction_fx_rate_to_krw"]
     if rate is None or float(rate) <= 0:
         return None
     return float(rate)
