@@ -269,6 +269,13 @@ select:focus {
   width: fit-content;
 }
 
+.action-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .primary-button {
   background: #1d4ed8;
   border: 1px solid #1d4ed8;
@@ -294,6 +301,12 @@ select:focus {
   outline: none;
 }
 
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .form-message {
   border-radius: 6px;
   font-size: 13px;
@@ -309,6 +322,38 @@ select:focus {
 .success-text {
   background: #ecfdf5;
   color: #047857;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.data-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 640px;
+  width: 100%;
+}
+
+.data-table th,
+.data-table td {
+  border-top: 1px solid #eef2f7;
+  color: #334155;
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  color: #475569;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table .numeric-cell {
+  text-align: right;
+  white-space: nowrap;
 }
 
 @media (max-width: 720px) {
@@ -346,6 +391,11 @@ select:focus {
   .primary-button,
   .secondary-button {
     width: 100%;
+  }
+
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .hero-panel strong {

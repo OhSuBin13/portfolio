@@ -3,6 +3,8 @@ import { AppShell } from "./components/AppShell"
 import { Dashboard } from "./components/Dashboard"
 import { GoalsPage } from "./components/GoalsPage"
 import { HoldingsPage } from "./components/HoldingsPage"
+import { ImportPage } from "./components/ImportPage"
+import { SettingsPage } from "./components/SettingsPage"
 import { TransactionsPage } from "./components/TransactionsPage"
 
 export default function App() {
@@ -14,8 +16,8 @@ export default function App() {
       {active === "holdings" && <HoldingsPage />}
       {active === "transactions" && <TransactionsPage />}
       {active === "goals" && <GoalsPage />}
-      {active === "import" && <div>가져오기</div>}
-      {active === "settings" && <div>설정</div>}
+      {active === "import" && <ImportPage />}
+      {active === "settings" && <SettingsPage />}
     </AppShell>
   )
 }

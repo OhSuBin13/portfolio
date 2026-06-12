@@ -8,11 +8,26 @@ export async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method: "POST" }
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" }
+    init.body = JSON.stringify(body)
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, init)
+  if (!response.ok) {
+    throw new Error(await response.text())
+  }
+  return response.json() as Promise<T>
+}
+
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData()
+  formData.append("file", file)
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: formData,
   })
   if (!response.ok) {
     throw new Error(await response.text())
