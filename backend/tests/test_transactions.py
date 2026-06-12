@@ -1,3 +1,7 @@
+import sqlite3
+
+import pytest
+
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, create_asset, get_holding
@@ -8,6 +12,14 @@ def setup_db(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
     return db
+
+
+def count_transactions(db, transaction_type):
+    row = db.execute(
+        "select count(*) from transactions where type = ?",
+        (transaction_type,),
+    ).fetchone()
+    return row[0]
 
 
 def test_buy_transaction_increases_holding_quantity(tmp_path):
@@ -89,3 +101,130 @@ def test_direct_holding_edit_creates_adjustment_transaction(tmp_path):
     assert tx["type"] == "adjustment"
     assert tx["amount"] == 1_500_000
     assert tx["memo"] == "초기 현금 입력"
+
+
+def test_failed_transaction_insert_rolls_back_holding_update(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    asset_id = create_asset(
+        db,
+        symbol="TSLA",
+        name="Tesla",
+        type="stock_etf",
+        currency="USD",
+        market="US",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="buy",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=1,
+            amount=200,
+            currency="USD",
+            memo=None,
+        )
+
+    assert count_transactions(db, "buy") == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
+@pytest.mark.parametrize(
+    ("transaction_type", "amount"),
+    [
+        ("deposit", -100),
+        ("deposit", 0),
+        ("withdrawal", -100),
+        ("withdrawal", 0),
+    ],
+)
+def test_non_positive_cash_amount_is_rejected_without_changes(
+    tmp_path,
+    transaction_type,
+    amount,
+):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
+
+    with pytest.raises(ValueError):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type=transaction_type,
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=amount,
+            currency="KRW",
+            memo="잘못된 금액",
+        )
+
+    assert count_transactions(db, transaction_type) == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
+def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="대출", type="debt", currency="KRW")
+    asset_id = create_asset(
+        db,
+        symbol=None,
+        name="신용대출",
+        type="debt",
+        currency="KRW",
+        market="KR",
+    )
+    edit_holding_balance(
+        db,
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=1_000,
+        memo="초기 대출 입력",
+    )
+
+    with pytest.raises(ValueError):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="debt_payment",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=2_000,
+            currency="KRW",
+            memo="초과 상환",
+        )
+
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    assert holding["quantity"] == 1_000
+    assert count_transactions(db, "debt_payment") == 0
+
+
+def test_direct_holding_edit_defaults_to_asset_currency(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="해외 증권", type="brokerage", currency="USD")
+    asset_id = create_asset(
+        db,
+        symbol="VOO",
+        name="Vanguard S&P 500 ETF",
+        type="stock_etf",
+        currency="USD",
+        market="US",
+    )
+
+    tx_id = edit_holding_balance(
+        db,
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=3,
+        memo="해외 ETF 입력",
+    )
+
+    tx = db.execute("select currency from transactions where id = ?", (tx_id,)).fetchone()
+    assert tx["currency"] == "USD"

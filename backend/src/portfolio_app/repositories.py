@@ -44,6 +44,7 @@ def upsert_holding(
     asset_id: int,
     quantity: float,
     average_cost: float | None,
+    commit: bool = True,
 ) -> None:
     db.execute(
         """
@@ -56,4 +57,5 @@ def upsert_holding(
         """,
         (account_id, asset_id, quantity, average_cost),
     )
-    db.commit()
+    if commit:
+        db.commit()
