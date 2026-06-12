@@ -63,7 +63,7 @@ create table if not exists price_snapshots (
   currency text not null,
   price_krw real not null,
   fetched_at text not null,
-  status text not null default 'ok',
+  status text not null default 'ok' check (status in ('ok','stale','failed','manual')),
   error_message text not null default ''
 );
 
