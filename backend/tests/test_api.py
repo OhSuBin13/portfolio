@@ -4,6 +4,8 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 
+LOCAL_FRONTEND_ORIGIN = "http://127.0.0.1:5173"
+
 
 def create_test_client(tmp_path):
     settings = Settings(
@@ -46,6 +48,35 @@ def test_summary_endpoint_returns_empty_snapshot(tmp_path):
     assert response.status_code == 200
     assert response.json()["net_worth_krw"] == 0
     assert response.json()["asset_mix"] == {}
+
+
+def test_summary_allows_local_frontend_cors_origin(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/summary", headers={"Origin": LOCAL_FRONTEND_ORIGIN})
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == LOCAL_FRONTEND_ORIGIN
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_api_post_preflight_allows_local_frontend_origin(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.options(
+        "/api/transactions",
+        headers={
+            "Origin": LOCAL_FRONTEND_ORIGIN,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == LOCAL_FRONTEND_ORIGIN
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "content-type" in response.headers["access-control-allow-headers"].lower()
+    assert "access-control-allow-credentials" not in response.headers
 
 
 def test_can_create_account_asset_and_transaction(tmp_path):

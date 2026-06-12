@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from portfolio_app.api import (
@@ -16,6 +17,8 @@ from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.services.backups import create_recorded_backup
+
+LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
 
 def _validation_error_message(error: dict[str, object]) -> str:
@@ -56,6 +59,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.close()
 
     app = FastAPI(title="Personal Finance Portfolio", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=LOCAL_FRONTEND_ORIGINS,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
     app.state.settings = app_settings
     app.state.db_path = app_settings.database_path
 
