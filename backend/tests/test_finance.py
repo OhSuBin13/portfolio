@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from portfolio_app.finance import calculate_asset_mix, calculate_goal_progress, calculate_net_worth
-from portfolio_app.models import Goal, HoldingValue
+from portfolio_app.models import Goal, HoldingValue, PortfolioSummary
 
 
 def test_net_worth_subtracts_debt_from_krw_values():
@@ -18,6 +18,36 @@ def test_net_worth_subtracts_debt_from_krw_values():
     assert summary.gross_assets_krw == 3_500_000
     assert summary.debt_krw == 700_000
     assert summary.monthly_income_krw == 30_000
+
+
+def test_portfolio_summary_rejects_infinite_net_worth():
+    with pytest.raises(ValidationError):
+        PortfolioSummary(
+            net_worth_krw=float("inf"),
+            gross_assets_krw=1,
+            debt_krw=0,
+            monthly_income_krw=0,
+        )
+
+
+def test_portfolio_summary_rejects_negative_gross_assets():
+    with pytest.raises(ValidationError):
+        PortfolioSummary(
+            net_worth_krw=-1,
+            gross_assets_krw=-1,
+            debt_krw=0,
+            monthly_income_krw=0,
+        )
+
+
+def test_net_worth_rejects_overflowed_derived_summary_values():
+    values = [
+        HoldingValue(asset_type="cash", value_krw=1e308),
+        HoldingValue(asset_type="cash", value_krw=1e308),
+    ]
+
+    with pytest.raises(ValidationError):
+        calculate_net_worth(values)
 
 
 def test_asset_mix_excludes_debt_from_positive_allocation():
@@ -115,3 +145,11 @@ def test_goal_progress_clamps_negative_current_amount():
     assert progress.current_amount_krw == 0
     assert progress.percent == 0
     assert progress.remaining_krw == 100_000_000
+
+
+@pytest.mark.parametrize("current_amount_krw", [float("nan"), float("inf"), float("-inf")])
+def test_goal_progress_rejects_non_finite_current_amount(current_amount_krw):
+    goal = Goal(id=1, name="순자산 1억", type="net_worth", target_amount_krw=100_000_000)
+
+    with pytest.raises(ValueError, match="current_amount_krw must be finite"):
+        calculate_goal_progress(goal, current_amount_krw=current_amount_krw)

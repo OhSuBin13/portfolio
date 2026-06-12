@@ -13,10 +13,10 @@ class HoldingValue(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
-    net_worth_krw: float
-    gross_assets_krw: float
-    debt_krw: float
-    monthly_income_krw: float
+    net_worth_krw: float = Field(allow_inf_nan=False)
+    gross_assets_krw: float = Field(ge=0, allow_inf_nan=False)
+    debt_krw: float = Field(ge=0, allow_inf_nan=False)
+    monthly_income_krw: float = Field(ge=0, allow_inf_nan=False)
 
 
 class Goal(BaseModel):
