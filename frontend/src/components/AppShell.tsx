@@ -26,6 +26,7 @@ export function AppShell({ active, onNavigate, children }: Props) {
             return (
               <button
                 key={item.id}
+                aria-current={active === item.id ? "page" : undefined}
                 className={active === item.id ? "active" : ""}
                 onClick={() => onNavigate(item.id)}
                 title={item.label}
