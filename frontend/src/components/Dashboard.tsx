@@ -7,17 +7,35 @@ const emptySummary: PortfolioSummary = {
   gross_assets_krw: 0,
   debt_krw: 0,
   monthly_income_krw: 0,
+  usd_krw_rate: null,
   asset_mix: {},
 }
 
+type DisplayCurrency = "KRW" | "USD"
+
+const displayCurrencies: DisplayCurrency[] = ["KRW", "USD"]
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
-const formatKrw = (value: number) => `${value.toLocaleString("ko-KR", {maximumFractionDigits: 0})} 원`
+const formatCurrency = (valueKrw: number, currency: DisplayCurrency, usdKrwRate: number | null) => {
+  if (currency === "USD") {
+    if (usdKrwRate === null || !Number.isFinite(usdKrwRate) || usdKrwRate <= 0) {
+      return "환율 없음"
+    }
+    return (valueKrw / usdKrwRate).toLocaleString("en-US", {
+      currency: "USD",
+      maximumFractionDigits: 2,
+      style: "currency",
+    })
+  }
+
+  return `${valueKrw.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} 원`
+}
 const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
 
 export function Dashboard() {
   const [summary, setSummary] = useState<PortfolioSummary>(emptySummary)
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([])
   const [error, setError] = useState("")
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("KRW")
 
   useEffect(() => {
     Promise.all([apiGet<PortfolioSummary>("/api/summary"), apiGet<GoalProgress[]>("/api/goals/progress")])
@@ -33,29 +51,47 @@ export function Dashboard() {
 
   return (
     <section className="screen-stack">
-      <header className="page-header">
-        <h2>오늘의 자산</h2>
-        <p>순자산, 목표, 자산 비중, 최근 변화를 확인합니다.</p>
+      <header className="page-header dashboard-header">
+        <div>
+          <h2>오늘의 자산</h2>
+          <p>순자산, 목표, 자산 비중, 최근 변화를 확인합니다.</p>
+        </div>
+        <div className="currency-toggle" aria-label="표시 통화 선택">
+          {displayCurrencies.map((currency) => (
+            <button
+              aria-pressed={displayCurrency === currency}
+              className={displayCurrency === currency ? "active" : ""}
+              key={currency}
+              onClick={() => setDisplayCurrency(currency)}
+              type="button"
+            >
+              {currency}
+            </button>
+          ))}
+        </div>
       </header>
 
       {error && <div className="error">{error}</div>}
+      {displayCurrency === "USD" && summary.usd_krw_rate === null && (
+        <p className="form-message error-text">USD 환산 환율이 없습니다. 시세 동기화 후 다시 확인하세요.</p>
+      )}
 
       <div className="summary-grid">
         <article className="panel hero-panel">
           <span>순자산</span>
-          <strong>{formatKrw(summary.net_worth_krw)}</strong>
+          <strong>{formatCurrency(summary.net_worth_krw, displayCurrency, summary.usd_krw_rate)}</strong>
         </article>
         <article className="panel metric-panel">
           <span>월 배당/소득</span>
-          <strong>{formatKrw(summary.monthly_income_krw)}</strong>
+          <strong>{formatCurrency(summary.monthly_income_krw, displayCurrency, summary.usd_krw_rate)}</strong>
         </article>
         <article className="panel metric-panel">
           <span>총자산</span>
-          <strong>{formatKrw(summary.gross_assets_krw)}</strong>
+          <strong>{formatCurrency(summary.gross_assets_krw, displayCurrency, summary.usd_krw_rate)}</strong>
         </article>
         <article className="panel metric-panel">
           <span>부채</span>
-          <strong>{formatKrw(summary.debt_krw)}</strong>
+          <strong>{formatCurrency(summary.debt_krw, displayCurrency, summary.usd_krw_rate)}</strong>
         </article>
       </div>
 
@@ -79,8 +115,10 @@ export function Dashboard() {
                   <div className="progress-fill" style={{ width: `${row.percent}%` }} />
                 </div>
                 <div className="progress-row-meta">
-                  <span>{formatKrw(row.current_amount_krw)}</span>
-                  <span>남은 금액 {formatKrw(row.remaining_krw)}</span>
+                  <span>{formatCurrency(row.current_amount_krw, displayCurrency, summary.usd_krw_rate)}</span>
+                  <span>
+                    남은 금액 {formatCurrency(row.remaining_krw, displayCurrency, summary.usd_krw_rate)}
+                  </span>
                 </div>
               </div>
             ))}

@@ -92,6 +92,36 @@ def _monthly_income_krw(db: sqlite3.Connection, *, today: date | None = None) ->
     return sum(_income_amount_to_krw(row) for row in rows)
 
 
+def _latest_usd_krw_rate(db: sqlite3.Connection) -> float | None:
+    latest_fx = db.execute(
+        """
+        select rate
+        from fx_rates
+        where base_currency = 'USD'
+          and quote_currency = 'KRW'
+        order by fetched_at desc, id desc
+        limit 1
+        """
+    ).fetchone()
+    if latest_fx is not None and float(latest_fx["rate"]) > 0:
+        return float(latest_fx["rate"])
+
+    latest_transaction_fx = db.execute(
+        """
+        select fx_rate_to_krw
+        from transactions
+        where currency = 'USD'
+          and fx_rate_to_krw is not null
+          and fx_rate_to_krw > 0
+        order by occurred_on desc, id desc
+        limit 1
+        """
+    ).fetchone()
+    if latest_transaction_fx is None:
+        return None
+    return float(latest_transaction_fx["fx_rate_to_krw"])
+
+
 def build_summary(
     db: sqlite3.Connection,
     *,
@@ -138,7 +168,10 @@ def build_summary(
     ).fetchall()
     values = [_holding_value(row) for row in rows]
     summary = calculate_net_worth(values).model_copy(
-        update={"monthly_income_krw": _monthly_income_krw(db, today=today)}
+        update={
+            "monthly_income_krw": _monthly_income_krw(db, today=today),
+            "usd_krw_rate": _latest_usd_krw_rate(db),
+        }
     )
     return summary, calculate_asset_mix(values)
 

@@ -21,6 +21,7 @@ class PortfolioSummary(BaseModel):
     gross_assets_krw: float = Field(ge=0, allow_inf_nan=False)
     debt_krw: float = Field(ge=0, allow_inf_nan=False)
     monthly_income_krw: float = Field(ge=0, allow_inf_nan=False)
+    usd_krw_rate: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class Goal(BaseModel):

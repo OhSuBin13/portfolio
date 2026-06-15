@@ -57,6 +57,7 @@ def test_summary_endpoint_returns_empty_snapshot(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["net_worth_krw"] == 0
+    assert response.json()["usd_krw_rate"] is None
     assert response.json()["asset_mix"] == {}
 
 

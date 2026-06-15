@@ -112,6 +112,45 @@ button {
   margin: 0;
 }
 
+.dashboard-header {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.currency-toggle {
+  background: #eef2f7;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+}
+
+.currency-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  min-width: 54px;
+  padding: 6px 10px;
+}
+
+.currency-toggle button:hover,
+.currency-toggle button:focus-visible {
+  color: #111827;
+  outline: none;
+}
+
+.currency-toggle button.active {
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
 .summary-grid {
   display: grid;
   gap: 12px;
@@ -504,10 +543,19 @@ select:focus {
   }
 
   .summary-grid,
+  .dashboard-header,
   .form-grid,
   .field-row,
   .field-row.triple {
     grid-template-columns: 1fr;
+  }
+
+  .currency-toggle {
+    width: 100%;
+  }
+
+  .currency-toggle button {
+    flex: 1;
   }
 
   .primary-button,
