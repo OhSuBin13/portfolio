@@ -11,7 +11,7 @@ const emptySummary: PortfolioSummary = {
 }
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
-const formatKrw = (value: number) => `${value.toLocaleString("ko-KR")} 원`
+const formatKrw = (value: number) => `${value.toLocaleString("ko-KR", {maximumFractionDigits: 0})} 원`
 const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
 
 export function Dashboard() {
