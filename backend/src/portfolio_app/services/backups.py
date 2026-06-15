@@ -58,9 +58,7 @@ def _is_service_owned_backup(path: Path) -> bool:
 
 def _backup_files(backup_dir: Path) -> list[Path]:
     return [
-        path
-        for path in backup_dir.iterdir()
-        if path.is_file() and _is_service_owned_backup(path)
+        path for path in backup_dir.iterdir() if path.is_file() and _is_service_owned_backup(path)
     ]
 
 
@@ -156,10 +154,7 @@ def reconcile_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> Non
     if stale_ids:
         db.executemany("delete from backups where id = ?", stale_ids)
 
-    recorded_paths = {
-        row["path"]
-        for row in db.execute("select path from backups").fetchall()
-    }
+    recorded_paths = {row["path"] for row in db.execute("select path from backups").fetchall()}
     if backup_dir.exists():
         for path in _backup_files(backup_dir):
             if str(path) in recorded_paths:

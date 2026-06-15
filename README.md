@@ -1,7 +1,7 @@
 # Portfolio MVP
 
 Private local Korean personal finance portfolio app for tracking accounts, assets,
-transactions, goals, CSV imports, backups, and market data sync from a local machine.
+transactions, goals, backups, and market data sync from a local machine.
 
 ## Backend Setup
 
@@ -53,6 +53,5 @@ npm run lint
 2. Add a `1,000,000` KRW deposit transaction.
 3. Confirm the dashboard net worth shows `1,000,000 원`.
 4. Create a net worth goal for `100,000,000 원`.
-5. Upload a CSV and preview rows before confirming the import.
-6. Trigger a manual backup and confirm the backup record and path appear.
-7. Run market sync or status and confirm failures are shown without crashing.
+5. Trigger a manual backup and confirm the backup record and path appear.
+6. Run market sync or status and confirm failures are shown without crashing.

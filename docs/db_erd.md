@@ -10,7 +10,6 @@ erDiagram
     accounts |o--o{ transactions : records
     assets |o--o{ transactions : records
     assets ||--o{ price_snapshots : priced_by
-    import_runs ||--o{ import_rows : contains
 
     schema_migrations {
         integer version PK
@@ -92,21 +91,6 @@ erDiagram
         text updated_at
     }
 
-    import_runs {
-        integer id PK
-        text filename
-        text status
-        text created_at
-    }
-
-    import_rows {
-        integer id PK
-        integer import_run_id FK
-        integer row_number
-        text status
-        text raw_json
-        text message
-    }
 
     backups {
         integer id PK
@@ -134,8 +118,6 @@ erDiagram
 | `price_snapshots` | 자산별 수동 가격 또는 시장 데이터 동기화 결과를 시간순으로 저장합니다. |
 | `fx_rates` | 외화 자산 평가에 사용할 환율 스냅샷을 저장합니다. |
 | `goals` | 순자산 목표와 월 소득 목표를 저장합니다. |
-| `import_runs` | CSV 가져오기 실행 단위를 저장하기 위한 테이블입니다. |
-| `import_rows` | CSV 가져오기 실행에 포함된 개별 행과 매핑 상태를 저장합니다. |
 | `backups` | 앱이 생성하거나 감지한 SQLite 백업 파일의 메타데이터를 저장합니다. |
 | `settings` | 앱 설정을 key-value 형태로 저장합니다. |
 
@@ -148,7 +130,6 @@ erDiagram
 | `transactions.account_id` -> `accounts.id` | 선택 FK | 계좌 삭제 시 거래 이력의 계좌 참조만 `NULL`이 됩니다. |
 | `transactions.asset_id` -> `assets.id` | 선택 FK | 자산 삭제 시 거래 이력의 자산 참조만 `NULL`이 됩니다. |
 | `price_snapshots.asset_id` -> `assets.id` | 필수 FK | 자산 삭제 시 가격 스냅샷도 삭제됩니다. |
-| `import_rows.import_run_id` -> `import_runs.id` | 필수 FK | 가져오기 실행 삭제 시 행 기록도 삭제됩니다. |
 
 ## 주요 제약
 
@@ -162,8 +143,6 @@ erDiagram
 | `price_snapshots.status` | `ok`, `stale`, `failed`, `manual` 중 하나여야 합니다. |
 | `fx_rates(base_currency, quote_currency, fetched_at)` | 같은 시각의 동일 통화쌍 환율은 중복될 수 없습니다. |
 | `goals.type` | `net_worth`, `monthly_income` 중 하나여야 합니다. |
-| `import_runs.status` | `previewed`, `confirmed`, `failed` 중 하나여야 합니다. |
-| `import_rows.status` | `mapped`, `ignored`, `error` 중 하나여야 합니다. |
 
 ## 논리적 참조
 

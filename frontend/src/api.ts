@@ -58,16 +58,3 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   }
   return response.json() as Promise<T>
 }
-
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
-  const formData = new FormData()
-  formData.append("file", file)
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    body: formData,
-  })
-  if (!response.ok) {
-    throw new Error(await parseErrorMessage(response))
-  }
-  return response.json() as Promise<T>
-}

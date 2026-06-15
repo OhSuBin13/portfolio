@@ -1,4 +1,4 @@
-import { BarChart3, Database, Flag, History, Settings, Upload } from "lucide-react"
+import { BarChart3, Database, Flag, History, Settings } from "lucide-react"
 
 type Props = {
   active: string
@@ -11,7 +11,6 @@ const navItems = [
   { id: "holdings", label: "보유자산", icon: Database },
   { id: "transactions", label: "거래내역", icon: History },
   { id: "goals", label: "목표", icon: Flag },
-  { id: "import", label: "가져오기", icon: Upload },
   { id: "settings", label: "설정", icon: Settings },
 ]
 

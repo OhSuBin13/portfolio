@@ -34,8 +34,6 @@ def test_migrate_creates_core_tables(tmp_path):
         "price_snapshots",
         "fx_rates",
         "goals",
-        "import_runs",
-        "import_rows",
         "backups",
         "settings",
     }.issubset(table_names(db))

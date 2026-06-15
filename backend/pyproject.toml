@@ -7,7 +7,6 @@ dependencies = [
   "httpx>=0.28,<0.29",
   "pydantic>=2.12,<3",
   "pydantic-settings>=2.12,<3",
-  "python-multipart>=0.0.20,<1",
   "uvicorn[standard]>=0.38,<1",
 ]
 

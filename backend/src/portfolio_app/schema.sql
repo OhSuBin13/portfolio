@@ -86,22 +86,6 @@ create table if not exists goals (
   updated_at text not null default current_timestamp
 );
 
-create table if not exists import_runs (
-  id integer primary key,
-  filename text not null,
-  status text not null check (status in ('previewed','confirmed','failed')),
-  created_at text not null default current_timestamp
-);
-
-create table if not exists import_rows (
-  id integer primary key,
-  import_run_id integer not null references import_runs(id) on delete cascade,
-  row_number integer not null,
-  status text not null check (status in ('mapped','ignored','error')),
-  raw_json text not null,
-  message text not null default ''
-);
-
 create table if not exists backups (
   id integer primary key,
   path text not null,

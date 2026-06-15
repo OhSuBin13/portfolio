@@ -8,7 +8,6 @@ from portfolio_app.api import (
     assets,
     backups,
     goals,
-    imports,
     market_data,
     summary,
     transactions,
@@ -88,7 +87,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
-    app.include_router(imports.router)
     app.include_router(market_data.router)
 
     return app
