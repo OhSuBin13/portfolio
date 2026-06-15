@@ -18,7 +18,7 @@ create table if not exists assets (
   name text not null,
   type text not null check (type in ('cash','savings','stock_etf','debt')),
   currency text not null check (currency in ('USD','KRW')) default 'KRW',
-  market text not null default 'KR',
+  market text,
   manual_price_krw real,
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp

@@ -17,7 +17,7 @@ def create_asset(
     name: str,
     type: str,
     currency: str,
-    market: str,
+    market: str | None,
 ) -> int:
     cursor = db.execute(
         "insert into assets(symbol, name, type, currency, market) values (?, ?, ?, ?, ?)",

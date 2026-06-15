@@ -1,7 +1,7 @@
 # DB ERD
 
 이 문서는 `backend/src/portfolio_app/schema.sql`의 현재 SQLite 스키마를 기준으로 작성했습니다.
-현재 애플리케이션 스키마 버전은 `1`입니다.
+현재 애플리케이션 스키마 버전은 `3`입니다.
 
 ```mermaid
 erDiagram
@@ -110,9 +110,9 @@ erDiagram
 
 | 테이블 | 역할 |
 | --- | --- |
-| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 1`입니다. |
+| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 3`입니다. |
 | `accounts` | 현금, 적금, 증권, 가상자산 지갑, 부채 계좌를 저장합니다. |
-| `assets` | 현금성 자산, 적금, 주식/ETF, 가상자산, 부채 같은 평가 대상 자산을 저장합니다. |
+| `assets` | 기본 현금/예금/부채 자산과 주식/ETF 같은 평가 대상 자산을 저장합니다. |
 | `holdings` | 특정 계좌가 특정 자산을 얼마나 보유하는지 저장하는 현재 잔고 테이블입니다. |
 | `transactions` | 입금, 출금, 매수, 매도, 배당, 이자, 수수료, 부채 상환, 조정 이력을 저장합니다. |
 | `price_snapshots` | 자산별 수동 가격 또는 시장 데이터 동기화 결과를 시간순으로 저장합니다. |
@@ -135,8 +135,9 @@ erDiagram
 
 | 대상 | 제약 |
 | --- | --- |
-| `accounts.type` | `cash`, `savings`, `brokerage`, `crypto_wallet`, `debt` 중 하나여야 합니다. |
-| `assets.type` | `cash`, `savings`, `stock_etf`, `crypto`, `debt` 중 하나여야 합니다. |
+| `accounts.type` | `cash`, `savings`, `brokerage`, `debt` 중 하나여야 합니다. |
+| `assets.type` | `cash`, `savings`, `stock_etf`, `debt` 중 하나여야 합니다. |
+| `assets.market` | 현금, 예금, 부채처럼 시장이 없는 자산은 `NULL`일 수 있습니다. |
 | `assets(symbol, market)` | `symbol`이 `NULL`이 아닐 때 같은 시장에서 중복될 수 없습니다. |
 | `holdings(account_id, asset_id)` | 한 계좌와 한 자산 조합은 하나의 현재 잔고만 가질 수 있습니다. |
 | `transactions.type` | `deposit`, `withdrawal`, `buy`, `sell`, `dividend`, `interest`, `fee`, `debt_payment`, `adjustment` 중 하나여야 합니다. |

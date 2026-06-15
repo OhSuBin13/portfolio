@@ -10,10 +10,7 @@ const accountTypes = [
 ]
 
 const assetTypes = [
-  ["cash", "현금"],
-  ["savings", "예금"],
   ["stock_etf", "주식/ETF"],
-  ["debt", "부채"],
 ]
 
 const initialTransactionTypes = [
@@ -61,6 +58,25 @@ type BalanceForm = {
 
 type HoldingsView = "overview" | "account-detail"
 
+const isStockEtfAsset = (asset: Asset | undefined) => asset?.type === "stock_etf"
+
+const balanceFormForAsset = (form: BalanceForm, asset: Asset | undefined): BalanceForm => {
+  if (isStockEtfAsset(asset)) {
+    return form
+  }
+
+  if (form.type !== "buy" && !form.quantity) {
+    return form
+  }
+
+  return {
+    ...form,
+    type: "adjustment",
+    quantity: "",
+    memo: form.type === "buy" ? "초기 잔액" : form.memo,
+  }
+}
+
 export function HoldingsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -70,7 +86,7 @@ export function HoldingsPage() {
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: "",
     type: "cash",
-    currency: "USD",
+    currency: "KRW",
   })
   const [accountEditForm, setAccountEditForm] = useState<AccountForm>({
     name: "",
@@ -81,7 +97,7 @@ export function HoldingsPage() {
   const [assetForm, setAssetForm] = useState<AssetForm>({
     symbol: "",
     name: "",
-    type: "cash",
+    type: "stock_etf",
     currency: "USD",
     market: "US",
   })
@@ -92,7 +108,7 @@ export function HoldingsPage() {
     assetId: "",
     quantity: "",
     amount: "",
-    currency: "USD",
+    currency: "KRW",
     fxRateToKrw: "",
     memo: "초기 잔액",
   })
@@ -105,6 +121,11 @@ export function HoldingsPage() {
   const [assetError, setAssetError] = useState("")
   const [balanceMessage, setBalanceMessage] = useState("")
   const [balanceError, setBalanceError] = useState("")
+  const selectedBalanceAsset = assets.find((asset) => String(asset.id) === balanceForm.assetId)
+  const showBalanceQuantity = selectedBalanceAsset?.type === "stock_etf"
+  const availableInitialTransactionTypes = showBalanceQuantity
+    ? initialTransactionTypes
+    : initialTransactionTypes.filter(([value]) => value !== "buy")
 
   const refreshAccounts = async () => {
     const data = await apiGet<Account[]>("/api/accounts")
@@ -124,11 +145,17 @@ export function HoldingsPage() {
         setAccounts(accountData)
         setAssets(assetData)
         setLoadError("")
-        setBalanceForm((prev) => ({
-          ...prev,
-          accountId: prev.accountId || (accountData[0] ? String(accountData[0].id) : ""),
-          assetId: prev.assetId || (assetData[0] ? String(assetData[0].id) : ""),
-        }))
+        setBalanceForm((prev) => {
+          const assetId = prev.assetId || (assetData[0] ? String(assetData[0].id) : "")
+          return balanceFormForAsset(
+            {
+              ...prev,
+              accountId: prev.accountId || (accountData[0] ? String(accountData[0].id) : ""),
+              assetId,
+            },
+            assetData.find((asset) => String(asset.id) === assetId),
+          )
+        })
       })
       .catch((err) => setLoadError(getErrorMessage(err)))
   }, [])
@@ -276,8 +303,11 @@ export function HoldingsPage() {
         currency: assetForm.currency.trim().toUpperCase(),
         market: assetForm.market.trim().toUpperCase(),
       })
-      await refreshAssets()
-      setBalanceForm((prev) => ({ ...prev, assetId: String(created.id) }))
+      const nextAssets = await refreshAssets()
+      const createdAsset = nextAssets.find((asset) => asset.id === created.id)
+      setBalanceForm((prev) =>
+        balanceFormForAsset({ ...prev, assetId: String(created.id) }, createdAsset),
+      )
       setAssetForm((prev) => ({ ...prev, symbol: "", name: "" }))
       setAssetMessage("자산을 만들었습니다.")
     } catch (err) {
@@ -295,7 +325,7 @@ export function HoldingsPage() {
     const assetId = Number(balanceForm.assetId)
     const quantity = Number(balanceForm.quantity)
     const fxRateToKrw = balanceForm.fxRateToKrw.trim() ? Number(balanceForm.fxRateToKrw) : null
-    const isBuy = balanceForm.type === "buy"
+    const isBuy = showBalanceQuantity && balanceForm.type === "buy"
 
     if (!accountId || !assetId) {
       setBalanceError("계좌와 자산을 선택하세요.")
@@ -327,7 +357,7 @@ export function HoldingsPage() {
     try {
       await apiPost<Transaction>("/api/transactions", {
         occurred_on: balanceForm.occurredOn,
-        type: balanceForm.type,
+        type: isBuy ? "buy" : "adjustment",
         account_id: accountId,
         asset_id: assetId,
         quantity: isBuy ? quantity : null,
@@ -592,7 +622,7 @@ export function HoldingsPage() {
       <form className="panel form-panel compact-form" onSubmit={handleBalanceSubmit}>
         <div className="section-heading">
           <h3>초기 잔액/보유 반영</h3>
-          <span>{balanceForm.type === "buy" ? "매수 거래" : "조정 거래"}</span>
+          <span>{showBalanceQuantity && balanceForm.type === "buy" ? "매수 거래" : "조정 거래"}</span>
         </div>
         <div className="field-row triple">
           <label>
@@ -607,7 +637,7 @@ export function HoldingsPage() {
                 }))
               }
             >
-              {initialTransactionTypes.map(([value, label]) => (
+              {availableInitialTransactionTypes.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -654,7 +684,11 @@ export function HoldingsPage() {
             자산
             <select
               value={balanceForm.assetId}
-              onChange={(event) => setBalanceForm((prev) => ({ ...prev, assetId: event.target.value }))}
+              onChange={(event) => {
+                const assetId = event.target.value
+                const nextAsset = assets.find((asset) => String(asset.id) === assetId)
+                setBalanceForm((prev) => balanceFormForAsset({ ...prev, assetId }, nextAsset))
+              }}
             >
               <option value="">선택</option>
               {assets.map((asset) => (
@@ -664,19 +698,23 @@ export function HoldingsPage() {
               ))}
             </select>
           </label>
-          <label>
-            수량
-            <input
-              inputMode="decimal"
-              value={balanceForm.quantity}
-              onChange={(event) => setBalanceForm((prev) => ({ ...prev, quantity: event.target.value }))}
-              placeholder={balanceForm.type === "buy" ? "필수" : "비움"}
-            />
-          </label>
+          {showBalanceQuantity && (
+            <label>
+              수량
+              <input
+                inputMode="decimal"
+                value={balanceForm.quantity}
+                onChange={(event) =>
+                  setBalanceForm((prev) => ({ ...prev, quantity: event.target.value }))
+                }
+                placeholder={balanceForm.type === "buy" ? "필수" : "비움"}
+              />
+            </label>
+          )}
         </div>
         <div className="field-row triple">
           <label>
-            {balanceForm.type === "buy" ? "금액" : "목표 잔액/수량"}
+            {balanceForm.type === "buy" ? "금액" : showBalanceQuantity ? "목표 잔액/수량" : "목표 잔액"}
             <input
               inputMode="decimal"
               value={balanceForm.amount}

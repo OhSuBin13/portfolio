@@ -20,7 +20,7 @@ class AssetCreate(BaseModel):
     name: str
     type: str
     currency: str
-    market: str
+    market: str | None = None
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -29,7 +29,14 @@ def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
     name = require_non_empty(payload.name, "자산 이름을 입력해 주세요.")
     asset_type = require_allowed(payload.type, ASSET_TYPES, "지원하지 않는 자산 유형입니다.")
     currency = require_non_empty(payload.currency, "통화를 입력해 주세요.").upper()
-    market = require_non_empty(payload.market, "시장을 입력해 주세요.").upper()
+    market_value = payload.market.strip().upper() if payload.market else ""
+    market = market_value or None
+
+    if asset_type == "stock_etf":
+        market = require_non_empty(payload.market or "", "시장을 입력해 주세요.").upper()
+    elif asset_type in {"cash", "savings", "debt"}:
+        symbol = None
+        market = None
 
     try:
         asset_id = create_asset(

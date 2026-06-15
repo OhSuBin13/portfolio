@@ -45,7 +45,147 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [1]
+    assert migration_versions(db) == [3]
+
+
+def test_migrate_seeds_builtin_cash_assets_without_symbol_or_market(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+
+    migrate(db)
+    migrate(db)
+
+    rows = db.execute(
+        """
+        select name, type, currency, symbol, market
+        from assets
+        where type = 'cash'
+        order by currency
+        """
+    ).fetchall()
+    assert [dict(row) for row in rows] == [
+        {
+            "name": "원화 현금",
+            "type": "cash",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+        {
+            "name": "달러 현금",
+            "type": "cash",
+            "currency": "USD",
+            "symbol": None,
+            "market": None,
+        },
+    ]
+
+
+def test_migrate_seeds_builtin_initial_assets_without_symbol_or_market(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+
+    migrate(db)
+
+    rows = db.execute(
+        """
+        select name, type, currency, symbol, market
+        from assets
+        where type in ('cash', 'savings', 'debt')
+        order by type, currency
+        """
+    ).fetchall()
+    assert [dict(row) for row in rows] == [
+        {
+            "name": "원화 현금",
+            "type": "cash",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+        {
+            "name": "달러 현금",
+            "type": "cash",
+            "currency": "USD",
+            "symbol": None,
+            "market": None,
+        },
+        {
+            "name": "부채",
+            "type": "debt",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+        {
+            "name": "예금",
+            "type": "savings",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+    ]
+
+
+def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_assets(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        create unique index idx_assets_symbol_market
+        on assets(symbol, market)
+        where symbol is not null;
+        insert into assets(symbol, name, type, currency, market)
+        values (null, '원화 현금', 'cash', 'KRW', null);
+        insert into assets(symbol, name, type, currency, market)
+        values ('SAVINGS', '직접 만든 예금', 'savings', 'KRW', 'KR');
+        insert into schema_migrations(version) values (2);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    rows = db.execute(
+        """
+        select name, type, currency, symbol, market
+        from assets
+        where type in ('savings', 'debt')
+        order by type, name
+        """
+    ).fetchall()
+    assert migration_versions(db) == [2, 3]
+    assert [dict(row) for row in rows] == [
+        {
+            "name": "부채",
+            "type": "debt",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+        {
+            "name": "직접 만든 예금",
+            "type": "savings",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        },
+    ]
 
 
 def test_migrate_is_idempotent(tmp_path):
@@ -55,7 +195,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [1]
+    assert migration_versions(db) == [3]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -64,7 +204,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [1]
+    assert migration_versions(db) == [3]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -78,7 +218,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (2)")
+    db.execute("insert into schema_migrations(version) values (4)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -115,14 +255,110 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (1)")
+    db.execute("insert into schema_migrations(version) values (3)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 2)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 4)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [1]
+    assert migration_versions(db) == [3]
+
+
+def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text not null default 'KR',
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        create unique index idx_assets_symbol_market
+        on assets(symbol, market)
+        where symbol is not null;
+        insert into schema_migrations(version) values (1);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    rows = db.execute(
+        """
+        select name, currency, symbol, market
+        from assets
+        where type = 'cash'
+        order by currency
+        """
+    ).fetchall()
+    assert migration_versions(db) == [1, 2, 3]
+    assert [dict(row) for row in rows] == [
+        {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
+        {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},
+    ]
+
+
+def test_migrate_normalizes_existing_version_1_cash_asset_without_duplicating_it(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text not null default 'KR',
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        create unique index idx_assets_symbol_market
+        on assets(symbol, market)
+        where symbol is not null;
+        insert into assets(id, symbol, name, type, currency, market)
+        values (10, 'KRW', '직접 만든 현금', 'cash', 'KRW', 'KR');
+        insert into schema_migrations(version) values (1);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    rows = db.execute(
+        """
+        select id, name, currency, symbol, market
+        from assets
+        where type = 'cash' and currency = 'KRW'
+        order by id
+        """
+    ).fetchall()
+    assert [dict(row) for row in rows] == [
+        {
+            "id": 10,
+            "name": "직접 만든 현금",
+            "currency": "KRW",
+            "symbol": None,
+            "market": None,
+        }
+    ]
 
 
 def test_holdings_require_existing_account_and_asset(tmp_path):

@@ -19,7 +19,7 @@ export type Asset = {
   name: string
   type: string
   currency: string
-  market: string
+  market: string | null
 }
 
 export type Transaction = {

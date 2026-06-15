@@ -144,7 +144,7 @@ def test_can_create_account_asset_and_transaction(tmp_path):
     summary = client.get("/api/summary").json()
     assert summary["net_worth_krw"] == 1_000_000
     assert client.get("/api/accounts").json()[0]["id"] == account["id"]
-    assert client.get("/api/assets").json()[0]["id"] == asset["id"]
+    assert any(item["id"] == asset["id"] for item in client.get("/api/assets").json())
     assert client.get("/api/transactions").json()[0]["id"] == tx.json()["id"]
 
 
@@ -188,6 +188,72 @@ def test_account_create_normalizes_currency_case(tmp_path):
 
     assert response.status_code == 201
     assert response.json()["currency"] == "USD"
+
+
+def test_assets_include_builtin_cash_without_manual_asset_creation(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets")
+
+    assert response.status_code == 200
+    cash_assets = [
+        asset
+        for asset in response.json()
+        if asset["type"] == "cash" and asset["currency"] == "KRW"
+    ]
+    assert cash_assets
+    assert cash_assets[0]["name"] == "원화 현금"
+    assert cash_assets[0]["symbol"] is None
+    assert cash_assets[0]["market"] is None
+
+
+def test_assets_include_builtin_savings_and_debt_without_manual_asset_creation(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets")
+
+    assert response.status_code == 200
+    builtin_assets = {
+        (asset["type"], asset["currency"]): asset
+        for asset in response.json()
+        if asset["type"] in {"savings", "debt"}
+    }
+    assert builtin_assets[("savings", "KRW")]["name"] == "예금"
+    assert builtin_assets[("savings", "KRW")]["symbol"] is None
+    assert builtin_assets[("savings", "KRW")]["market"] is None
+    assert builtin_assets[("debt", "KRW")]["name"] == "부채"
+    assert builtin_assets[("debt", "KRW")]["symbol"] is None
+    assert builtin_assets[("debt", "KRW")]["market"] is None
+
+
+def test_can_record_cash_transaction_with_builtin_cash_asset(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "생활비", "type": "cash", "currency": "KRW"},
+    ).json()
+    cash_asset = next(
+        asset
+        for asset in client.get("/api/assets").json()
+        if asset["type"] == "cash" and asset["currency"] == "KRW"
+    )
+
+    tx = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": cash_asset["id"],
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "초기 현금",
+        },
+    )
+
+    assert tx.status_code == 201
+    assert client.get("/api/summary").json()["net_worth_krw"] == 1_000_000
 
 
 def test_can_create_and_list_goal(tmp_path):

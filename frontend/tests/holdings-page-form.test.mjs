@@ -55,6 +55,40 @@ assert.match(marketBlocks[0], /<select\b/, "market control should be a select")
 assert.doesNotMatch(marketBlocks[0], /<input\b/, "market control should not be a free text input")
 assert.deepEqual(optionValues(marketBlocks[0]), ["US"], "market select should only offer US")
 
+const assetTypesBlock = sourceBlock("const assetTypes = [", "]\n\nconst initialTransactionTypes")
+assert.ok(
+  !assetTypesBlock.includes('["cash", "현금"]'),
+  "cash should be a built-in asset instead of a manual asset creation option",
+)
+assert.deepEqual(
+  Array.from(assetTypesBlock.matchAll(/\["([^"]+)",/g), (match) => match[1]),
+  ["stock_etf"],
+  "asset creation should only expose manually tracked stock/ETF assets",
+)
+
+const accountFormBlock = sourceBlock("const [accountForm", "const [accountEditForm")
+assert.ok(accountFormBlock.includes('currency: "KRW"'), "new cash accounts should default to KRW")
+
+const balanceFormBlock = sourceBlock("const [balanceForm", "const [accountMessage")
+assert.ok(balanceFormBlock.includes('currency: "KRW"'), "initial cash balances should default to KRW")
+
+assert.ok(
+  source.includes('const selectedBalanceAsset = assets.find((asset) => String(asset.id) === balanceForm.assetId)'),
+  "initial balance form should derive the selected asset",
+)
+assert.ok(
+  source.includes('const showBalanceQuantity = selectedBalanceAsset?.type === "stock_etf"'),
+  "quantity should only be available for stock/ETF assets",
+)
+
+const quantityLabelMatch = source.match(/<label>\s+수량\s+<input/)
+assert.ok(quantityLabelMatch, "quantity label should exist for stock/ETF assets")
+const quantityLabelIndex = quantityLabelMatch.index ?? -1
+assert.ok(
+  source.lastIndexOf("showBalanceQuantity &&", quantityLabelIndex) !== -1,
+  "quantity label should be conditionally rendered by stock/ETF asset type",
+)
+
 assert.ok(!source.includes('market: "KR"'), "market default should no longer use KR")
 
 assert.match(source, /apiGet<Account>\(`\/api\/accounts\/\$\{accountId\}`\)/, "account detail should load through the account detail API")
