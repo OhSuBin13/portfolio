@@ -14,12 +14,11 @@ router = APIRouter(prefix="/api/imports", tags=["imports"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 ASSET_TYPES = set(ASSET_TYPE_MAP.values())
-MARKET_ASSET_TYPES = {"stock_etf", "crypto"}
+MARKET_ASSET_TYPES = {"stock_etf"}
 ACCOUNT_TYPE_BY_ASSET_TYPE = {
     "cash": "cash",
     "savings": "savings",
     "stock_etf": "brokerage",
-    "crypto": "crypto_wallet",
     "debt": "debt",
 }
 
@@ -98,8 +97,6 @@ def _manual_price_krw(row: ImportRowPayload) -> float | None:
 
 
 def _market_for(asset_type: str, currency: str) -> str:
-    if asset_type == "crypto":
-        return "CRYPTO"
     if currency == "KRW":
         return "KR"
     if currency == "USD":

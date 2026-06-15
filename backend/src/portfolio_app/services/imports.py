@@ -9,8 +9,6 @@ ASSET_TYPE_MAP = {
     "적금": "savings",
     "주식": "stock_etf",
     "ETF": "stock_etf",
-    "가상자산": "crypto",
-    "코인": "crypto",
     "부채": "debt",
 }
 

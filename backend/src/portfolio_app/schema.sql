@@ -6,7 +6,7 @@ create table if not exists schema_migrations (
 create table if not exists accounts (
   id integer primary key,
   name text not null,
-  type text not null check (type in ('cash','savings','brokerage','crypto_wallet','debt')),
+  type text not null check (type in ('cash','savings','brokerage','debt')),
   currency text not null default 'KRW',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
@@ -16,7 +16,7 @@ create table if not exists assets (
   id integer primary key,
   symbol text,
   name text not null,
-  type text not null check (type in ('cash','savings','stock_etf','crypto','debt')),
+  type text not null check (type in ('cash','savings','stock_etf','debt')),
   currency text not null default 'KRW',
   market text not null default 'KR',
   manual_price_krw real,

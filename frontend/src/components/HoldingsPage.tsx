@@ -6,7 +6,6 @@ const accountTypes = [
   ["cash", "현금"],
   ["savings", "예금"],
   ["brokerage", "증권"],
-  ["crypto_wallet", "가상자산 지갑"],
   ["debt", "부채"],
 ]
 
@@ -14,7 +13,6 @@ const assetTypes = [
   ["cash", "현금"],
   ["savings", "예금"],
   ["stock_etf", "주식/ETF"],
-  ["crypto", "가상자산"],
   ["debt", "부채"],
 ]
 
@@ -67,14 +65,14 @@ export function HoldingsPage() {
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: "",
     type: "cash",
-    currency: "KRW",
+    currency: "USD",
   })
   const [assetForm, setAssetForm] = useState<AssetForm>({
     symbol: "",
     name: "",
     type: "cash",
-    currency: "KRW",
-    market: "KR",
+    currency: "USD",
+    market: "US",
   })
   const [balanceForm, setBalanceForm] = useState<BalanceForm>({
     type: "adjustment",
@@ -83,7 +81,7 @@ export function HoldingsPage() {
     assetId: "",
     quantity: "",
     amount: "",
-    currency: "KRW",
+    currency: "USD",
     fxRateToKrw: "",
     memo: "초기 잔액",
   })
@@ -277,12 +275,14 @@ export function HoldingsPage() {
             </label>
             <label>
               통화
-              <input
+              <select
                 value={accountForm.currency}
                 onChange={(event) =>
                   setAccountForm((prev) => ({ ...prev, currency: event.target.value }))
                 }
-              />
+              >
+                <option value="USD">USD</option>
+              </select>
             </label>
           </div>
           <button className="primary-button" type="submit">
@@ -331,17 +331,21 @@ export function HoldingsPage() {
           <div className="field-row">
             <label>
               통화
-              <input
+              <select
                 value={assetForm.currency}
                 onChange={(event) => setAssetForm((prev) => ({ ...prev, currency: event.target.value }))}
-              />
+              >
+                <option value="USD">USD</option>
+              </select>
             </label>
             <label>
               시장
-              <input
+              <select
                 value={assetForm.market}
                 onChange={(event) => setAssetForm((prev) => ({ ...prev, market: event.target.value }))}
-              />
+              >
+                <option value="US">US</option>
+              </select>
             </label>
           </div>
           <button className="primary-button" type="submit">
@@ -389,10 +393,12 @@ export function HoldingsPage() {
           </label>
           <label>
             통화
-            <input
+            <select
               value={balanceForm.currency}
               onChange={(event) => setBalanceForm((prev) => ({ ...prev, currency: event.target.value }))}
-            />
+            >
+              <option value="USD">USD</option>
+            </select>
           </label>
         </div>
         <div className="field-row triple">

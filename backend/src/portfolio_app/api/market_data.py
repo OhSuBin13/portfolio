@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
-    CoinGeckoProvider,
     FrankfurterProvider,
     MarketQuote,
     keep_last_good_quote,
@@ -18,12 +17,6 @@ from portfolio_app.services.market_data import (
 
 router = APIRouter(prefix="/api/market-data", tags=["market-data"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
-COINGECKO_IDS_BY_SYMBOL = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SOL": "solana",
-    "XRP": "ripple",
-}
 
 
 class ManualPriceCreate(BaseModel):
@@ -146,13 +139,9 @@ async def _fetch_quote(
     asset: sqlite3.Row,
     *,
     alpha_provider: AlphaVantageProvider,
-    coingecko_provider: CoinGeckoProvider,
 ) -> MarketQuote:
     asset_type = str(asset["type"])
     symbol = str(asset["symbol"])
-    if asset_type == "crypto":
-        coin_id = COINGECKO_IDS_BY_SYMBOL.get(symbol.strip().upper(), symbol.strip().lower())
-        return await coingecko_provider.fetch_crypto_quote(coin_id, vs_currency="krw")
 
     market = str(asset["market"]).upper()
     currency = str(asset["currency"]).upper()
@@ -223,12 +212,11 @@ async def _sync_market_data(
         from assets
         where symbol is not null
           and trim(symbol) != ''
-          and type in ('stock_etf', 'crypto')
+          and type in ('stock_etf')
         order by id
         """
     ).fetchall()
     alpha_provider = AlphaVantageProvider(settings.alpha_vantage_api_key)
-    coingecko_provider = CoinGeckoProvider()
     fx_provider = FrankfurterProvider()
     results: list[dict[str, object]] = []
 
@@ -239,7 +227,6 @@ async def _sync_market_data(
             quote = await _fetch_quote(
                 asset,
                 alpha_provider=alpha_provider,
-                coingecko_provider=coingecko_provider,
             )
             price_krw = await _price_krw(quote, db=db, fx_provider=fx_provider)
             with db:

@@ -44,33 +44,6 @@ def keep_last_good_quote(*, previous: MarketQuote, error_message: str) -> Market
     )
 
 
-class CoinGeckoProvider:
-    source = "coingecko"
-
-    async def fetch_crypto_quote(self, coin_id: str, *, vs_currency: str = "krw") -> MarketQuote:
-        normalized_coin_id = coin_id.strip().lower()
-        normalized_currency = vs_currency.strip().lower()
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                "https://api.coingecko.com/api/v3/simple/price",
-                params={"ids": normalized_coin_id, "vs_currencies": normalized_currency},
-            )
-            response.raise_for_status()
-            payload = response.json()
-
-        try:
-            price = payload[normalized_coin_id][normalized_currency]
-        except (KeyError, TypeError) as exc:
-            raise ValueError("CoinGecko 응답에서 가격을 찾을 수 없습니다.") from exc
-
-        return MarketQuote(
-            symbol=normalized_coin_id,
-            price=_positive_number(price, "CoinGecko 가격은 0보다 큰 숫자여야 합니다."),
-            currency=normalized_currency.upper(),
-            source=self.source,
-        )
-
-
 class FrankfurterProvider:
     source = "frankfurter"
 

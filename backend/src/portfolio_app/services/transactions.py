@@ -10,7 +10,7 @@ NORMAL_TYPES = {"buy", "sell"} | INCREASE_TYPES | DECREASE_TYPES
 SUPPORTED_TYPES = NORMAL_TYPES | {"adjustment"}
 CASHFLOW_TYPES = {"deposit", "withdrawal", "dividend", "interest", "fee"}
 CASH_LIKE_ASSET_TYPES = {"cash", "savings"}
-MARKET_ASSET_TYPES = {"stock_etf", "crypto"}
+MARKET_ASSET_TYPES = {"stock_etf"}
 
 
 def _current_holding(

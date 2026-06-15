@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
 from portfolio_app.repositories import create_asset
 
-ASSET_TYPES = {"cash", "savings", "stock_etf", "crypto", "debt"}
+ASSET_TYPES = {"cash", "savings", "stock_etf", "debt"}
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]

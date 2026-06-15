@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AssetType = Literal["cash", "savings", "stock_etf", "crypto", "debt"]
+AssetType = Literal["cash", "savings", "stock_etf", "debt"]
 GoalType = Literal["net_worth", "monthly_income"]
 
 

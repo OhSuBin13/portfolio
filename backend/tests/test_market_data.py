@@ -5,7 +5,6 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.services.market_data import (
-    CoinGeckoProvider,
     FrankfurterProvider,
     MarketQuote,
     keep_last_good_quote,
@@ -36,18 +35,6 @@ def test_keep_last_good_quote_uses_previous_value_on_error():
     assert result.price == 500.0
     assert result.status == "stale"
     assert result.error_message == "rate limit"
-
-
-@pytest.mark.asyncio
-async def test_coingecko_provider_parses_simple_price(httpx_mock):
-    httpx_mock.add_response(json={"bitcoin": {"krw": 150_000_000}})
-    provider = CoinGeckoProvider()
-
-    quote = await provider.fetch_crypto_quote("bitcoin", vs_currency="krw")
-
-    assert quote.symbol == "bitcoin"
-    assert quote.price == 150_000_000
-    assert quote.currency == "KRW"
 
 
 @pytest.mark.asyncio
@@ -556,50 +543,3 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
     assert latest["source"] == "alpha_vantage"
     assert latest["price_krw"] == 780_000
     assert summary["net_worth_krw"] == 1_560_000
-
-
-def test_crypto_sync_maps_common_ticker_to_coingecko_id_and_updates_summary(
-    tmp_path,
-    httpx_mock,
-):
-    client = create_test_client(tmp_path)
-    account = client.post(
-        "/api/accounts",
-        json={"name": "코인 지갑", "type": "crypto_wallet", "currency": "KRW"},
-    ).json()
-    asset = client.post(
-        "/api/assets",
-        json={
-            "symbol": "BTC",
-            "name": "Bitcoin",
-            "type": "crypto",
-            "currency": "KRW",
-            "market": "CRYPTO",
-        },
-    ).json()
-    client.post(
-        "/api/transactions",
-        json={
-            "occurred_on": "2026-06-12",
-            "type": "buy",
-            "account_id": account["id"],
-            "asset_id": asset["id"],
-            "quantity": 0.5,
-            "amount": 50_000_000,
-            "currency": "KRW",
-            "memo": "BTC",
-        },
-    )
-    httpx_mock.add_response(json={"bitcoin": {"krw": 150_000_000}})
-
-    response = client.post("/api/market-data/sync")
-    latest = client.get("/api/market-data/status").json()[0]
-    summary = client.get("/api/summary").json()
-
-    assert response.status_code == 200
-    assert response.json()["results"][0]["status"] == "ok"
-    assert latest["asset_id"] == asset["id"]
-    assert latest["status"] == "ok"
-    assert latest["source"] == "coingecko"
-    assert latest["price_krw"] == 150_000_000
-    assert summary["net_worth_krw"] == 75_000_000

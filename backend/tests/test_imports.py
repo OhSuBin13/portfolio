@@ -58,8 +58,8 @@ def test_parse_portfolio_csv_maps_holding_rows():
     csv_text = "\n".join(
         [
             CSV_HEADER,
-            "현금,달러 예수금,-,1,\"6,375.00\",-,\"1,523.5\",\"₩ 9,712,568\",-,-,-,-,-,100.00%",
-            "적금,주택청약,-,1,\"12,800,000\",-,1,\"₩ 12,800,000\",-,-,-,-,-,-",
+            '현금,달러 예수금,-,1,"6,375.00",-,"1,523.5","₩ 9,712,568",-,-,-,-,-,100.00%',
+            '적금,주택청약,-,1,"12,800,000",-,1,"₩ 12,800,000",-,-,-,-,-,-',
         ]
     )
 
@@ -78,7 +78,7 @@ def test_parse_portfolio_csv_maps_symbol_columns():
     csv_text = "\n".join(
         [
             "종류,이름,티커,개수,개당 가격,평단가,환율,평가액",
-            "ETF,S&P 500,voo,2,500,450,1400,\"₩ 1,400,000\"",
+            'ETF,S&P 500,voo,2,500,450,1400,"₩ 1,400,000"',
         ]
     )
 
@@ -119,7 +119,7 @@ def test_import_preview_endpoint_maps_uploaded_csv(tmp_path):
     csv_text = "\n".join(
         [
             CSV_HEADER,
-            "적금,주택청약,-,1,\"12,800,000\",-,1,\"₩ 12,800,000\",-,-,-,-,-,-",
+            '적금,주택청약,-,1,"12,800,000",-,1,"₩ 12,800,000",-,-,-,-,-,-',
         ]
     )
 
@@ -136,7 +136,7 @@ def test_import_preview_endpoint_maps_uploaded_csv(tmp_path):
 
 def test_import_preview_endpoint_handles_utf8_bom_headers(tmp_path):
     client = create_test_client(tmp_path)
-    csv_text = "\ufeff종류,이름,평가액\n현금,원화 예수금,\"₩ 1,000\"\n"
+    csv_text = '\ufeff종류,이름,평가액\n현금,원화 예수금,"₩ 1,000"\n'
 
     response = client.post(
         "/api/imports/preview",
@@ -152,7 +152,7 @@ def test_import_preview_and_confirm_preserve_symbol(tmp_path):
     csv_text = "\n".join(
         [
             "종류,이름,티커,개수,개당 가격,평단가,환율,평가액",
-            "ETF,S&P 500,voo,2,500,450,1400,\"₩ 1,400,000\"",
+            'ETF,S&P 500,voo,2,500,450,1400,"₩ 1,400,000"',
         ]
     )
     preview = client.post(
