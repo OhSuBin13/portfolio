@@ -168,6 +168,63 @@ def test_account_type_check_constraint_rejects_invalid_values(tmp_path):
         db.execute("insert into accounts(name, type) values (?, ?)", ("Bad", "checking"))
 
 
+def test_currency_check_constraints_reject_invalid_values(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+    account_id = db.execute(
+        "insert into accounts(name, type, currency) values (?, ?, ?)",
+        ("원화 현금", "cash", "KRW"),
+    ).lastrowid
+    asset_id = db.execute(
+        "insert into assets(name, type, currency, market) values (?, ?, ?, ?)",
+        ("KRW", "cash", "KRW", "KR"),
+    ).lastrowid
+
+    invalid_statements = [
+        (
+            "insert into accounts(name, type, currency) values (?, ?, ?)",
+            ("Invalid Account", "cash", "EUR"),
+        ),
+        (
+            "insert into assets(name, type, currency, market) values (?, ?, ?, ?)",
+            ("Invalid Asset", "cash", "EUR", "EU"),
+        ),
+        (
+            """
+            insert into transactions(occurred_on, type, account_id, asset_id, amount, currency)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-06-12", "deposit", account_id, asset_id, 100, "EUR"),
+        ),
+        (
+            """
+            insert into price_snapshots(asset_id, source, price, currency, price_krw, fetched_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (asset_id, "manual", 100, "EUR", 100, "2026-06-12T00:00:00"),
+        ),
+        (
+            """
+            insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("EUR", "KRW", 1500, "manual", "2026-06-12T00:00:00"),
+        ),
+        (
+            """
+            insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("USD", "EUR", 0.0007, "manual", "2026-06-12T00:01:00"),
+        ),
+    ]
+
+    for sql, params in invalid_statements:
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(sql, params)
+
+
 def test_transaction_type_check_constraint_rejects_invalid_values(tmp_path):
     db_path = tmp_path / "portfolio.sqlite"
     db = connect(db_path)

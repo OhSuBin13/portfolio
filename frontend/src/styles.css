@@ -265,6 +265,53 @@ button {
   gap: 12px;
 }
 
+.panel-divider {
+  background: #e5e7eb;
+  height: 1px;
+}
+
+.account-management,
+.account-list,
+.management-form {
+  display: grid;
+  gap: 12px;
+}
+
+.account-row {
+  align-items: center;
+  border-top: 1px solid #eef2f7;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.account-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.account-row strong {
+  color: #111827;
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.account-row span {
+  display: block;
+  margin-top: 3px;
+}
+
+.row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .compact-form {
   max-width: 100%;
 }
@@ -319,6 +366,11 @@ select:focus {
   width: fit-content;
 }
 
+.compact-button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
 .action-row {
   align-items: center;
   display: flex;
@@ -351,8 +403,27 @@ select:focus {
   outline: none;
 }
 
+.danger-button {
+  align-items: center;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  color: #9a3412;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  width: fit-content;
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  background: #ffedd5;
+  outline: none;
+}
+
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.danger-button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -440,13 +511,23 @@ select:focus {
   }
 
   .primary-button,
-  .secondary-button {
+  .secondary-button,
+  .danger-button {
     width: 100%;
   }
 
   .action-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .account-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .row-actions {
+    justify-content: stretch;
   }
 
   .hero-panel strong {

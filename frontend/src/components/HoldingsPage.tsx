@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { apiGet, apiPost } from "../api"
+import { apiDelete, apiGet, apiPost, apiPut } from "../api"
 import type { Account, Asset, Transaction } from "../types"
 
 const accountTypes = [
@@ -31,6 +31,8 @@ const today = () => {
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
+const accountTypeLabel = (type: string) => accountTypes.find(([value]) => value === type)?.[1] ?? type
+
 type AccountForm = {
   name: string
   type: string
@@ -57,16 +59,25 @@ type BalanceForm = {
   memo: string
 }
 
+type HoldingsView = "overview" | "account-detail"
+
 export function HoldingsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [loadError, setLoadError] = useState("")
+  const [holdingsView, setHoldingsView] = useState<HoldingsView>("overview")
 
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: "",
     type: "cash",
     currency: "USD",
   })
+  const [accountEditForm, setAccountEditForm] = useState<AccountForm>({
+    name: "",
+    type: "cash",
+    currency: "KRW",
+  })
+  const [selectedAccountId, setSelectedAccountId] = useState("")
   const [assetForm, setAssetForm] = useState<AssetForm>({
     symbol: "",
     name: "",
@@ -88,6 +99,8 @@ export function HoldingsPage() {
 
   const [accountMessage, setAccountMessage] = useState("")
   const [accountError, setAccountError] = useState("")
+  const [accountManageMessage, setAccountManageMessage] = useState("")
+  const [accountManageError, setAccountManageError] = useState("")
   const [assetMessage, setAssetMessage] = useState("")
   const [assetError, setAssetError] = useState("")
   const [balanceMessage, setBalanceMessage] = useState("")
@@ -142,6 +155,106 @@ export function HoldingsPage() {
       setAccountMessage("계좌를 만들었습니다.")
     } catch (err) {
       setAccountError(getErrorMessage(err))
+    }
+  }
+
+  const clearSelectedAccount = () => {
+    setSelectedAccountId("")
+    setAccountEditForm({ name: "", type: "cash", currency: "KRW" })
+  }
+
+  const handleAccountSelect = async (accountId: number) => {
+    setAccountManageMessage("")
+    setAccountManageError("")
+
+    try {
+      const account = await apiGet<Account>(`/api/accounts/${accountId}`)
+      setSelectedAccountId(String(account.id))
+      setAccountEditForm({
+        name: account.name,
+        type: account.type,
+        currency: account.currency,
+      })
+      setHoldingsView("account-detail")
+    } catch (err) {
+      setAccountManageError(getErrorMessage(err))
+    }
+  }
+
+  const handleAccountDetailBack = () => {
+    setAccountManageMessage("")
+    setAccountManageError("")
+    clearSelectedAccount()
+    setHoldingsView("overview")
+  }
+
+  const handleAccountUpdate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setAccountManageMessage("")
+    setAccountManageError("")
+
+    if (!selectedAccountId) {
+      setAccountManageError("수정할 계좌를 선택하세요.")
+      return
+    }
+
+    if (!accountEditForm.name.trim()) {
+      setAccountManageError("계좌 이름을 입력하세요.")
+      return
+    }
+
+    try {
+      const updated = await apiPut<Account>(`/api/accounts/${selectedAccountId}`, {
+        name: accountEditForm.name.trim(),
+        type: accountEditForm.type,
+        currency: accountEditForm.currency.trim().toUpperCase(),
+      })
+      await refreshAccounts()
+      setSelectedAccountId(String(updated.id))
+      setAccountEditForm({
+        name: updated.name,
+        type: updated.type,
+        currency: updated.currency,
+      })
+      setAccountManageMessage("계좌를 수정했습니다.")
+    } catch (err) {
+      setAccountManageError(getErrorMessage(err))
+    }
+  }
+
+  const handleSelectedAccountDelete = async () => {
+    if (!selectedAccountId) {
+      setAccountManageError("삭제할 계좌를 선택하세요.")
+      return
+    }
+
+    if (!window.confirm("계좌를 삭제할까요? 연결된 보유자산도 함께 정리됩니다.")) {
+      return
+    }
+
+    setAccountManageMessage("")
+    setAccountManageError("")
+
+    try {
+      await apiDelete(`/api/accounts/${selectedAccountId}`)
+      const nextAccounts = await refreshAccounts()
+      const fallbackAccountId = nextAccounts[0] ? String(nextAccounts[0].id) : ""
+      const deletedAccountId = selectedAccountId
+
+      clearSelectedAccount()
+      setHoldingsView("overview")
+
+      setBalanceForm((prev) => {
+        const currentStillExists = nextAccounts.some((account) => String(account.id) === prev.accountId)
+        return {
+          ...prev,
+          accountId:
+            currentStillExists && prev.accountId !== deletedAccountId ? prev.accountId : fallbackAccountId,
+        }
+      })
+      setAccountManageMessage("계좌를 삭제했습니다.")
+    } catch (err) {
+      setAccountManageError(getErrorMessage(err))
     }
   }
 
@@ -236,35 +349,42 @@ export function HoldingsPage() {
     }
   }
 
-  return (
-    <section className="screen-stack">
-      <header className="page-header">
-        <h2>보유자산</h2>
-        <p>계좌와 자산을 등록하고 시작 잔액을 맞춥니다.</p>
-      </header>
+  if (holdingsView === "account-detail") {
+    return (
+      <section className="screen-stack" data-api="get_account" data-view="account-detail">
+        <header className="page-header">
+          <button className="secondary-button" type="button" onClick={handleAccountDetailBack}>
+            목록으로
+          </button>
+          <h2>계좌 상세</h2>
+          <p>{selectedAccountId ? `계좌 #${selectedAccountId}` : "계좌를 다시 선택해 주세요."}</p>
+        </header>
 
-      {loadError && <div className="error">{loadError}</div>}
-
-      <div className="form-grid">
-        <form className="panel form-panel" onSubmit={handleAccountSubmit}>
+        <form className="panel form-panel narrow-form" onSubmit={handleAccountUpdate}>
           <div className="section-heading">
-            <h3>계좌 만들기</h3>
-            <span>{accounts.length.toLocaleString("ko-KR")}개</span>
+            <h3>계좌 수정</h3>
+            <span>{selectedAccountId ? "수정/삭제 가능" : "선택 없음"}</span>
           </div>
           <label>
             계좌 이름
             <input
-              value={accountForm.name}
-              onChange={(event) => setAccountForm((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="예: 국민 생활비"
+              value={accountEditForm.name}
+              onChange={(event) =>
+                setAccountEditForm((prev) => ({ ...prev, name: event.target.value }))
+              }
+              disabled={!selectedAccountId}
+              placeholder="수정할 계좌를 선택하세요"
             />
           </label>
           <div className="field-row">
             <label>
               계좌 유형
               <select
-                value={accountForm.type}
-                onChange={(event) => setAccountForm((prev) => ({ ...prev, type: event.target.value }))}
+                value={accountEditForm.type}
+                onChange={(event) =>
+                  setAccountEditForm((prev) => ({ ...prev, type: event.target.value }))
+                }
+                disabled={!selectedAccountId}
               >
                 {accountTypes.map(([value, label]) => (
                   <option key={value} value={value}>
@@ -276,21 +396,133 @@ export function HoldingsPage() {
             <label>
               통화
               <select
-                value={accountForm.currency}
+                value={accountEditForm.currency}
                 onChange={(event) =>
-                  setAccountForm((prev) => ({ ...prev, currency: event.target.value }))
+                  setAccountEditForm((prev) => ({ ...prev, currency: event.target.value }))
                 }
+                disabled={!selectedAccountId}
               >
+                <option value="KRW">KRW</option>
                 <option value="USD">USD</option>
               </select>
             </label>
           </div>
-          <button className="primary-button" type="submit">
-            계좌 저장
-          </button>
-          {accountError && <p className="form-message error-text">{accountError}</p>}
-          {accountMessage && <p className="form-message success-text">{accountMessage}</p>}
+          <div className="action-row">
+            <button className="secondary-button" type="submit" disabled={!selectedAccountId}>
+              수정 저장
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={!selectedAccountId}
+              onClick={handleSelectedAccountDelete}
+            >
+              삭제
+            </button>
+          </div>
+          {accountManageError && <p className="form-message error-text">{accountManageError}</p>}
+          {accountManageMessage && <p className="form-message success-text">{accountManageMessage}</p>}
         </form>
+      </section>
+    )
+  }
+
+  return (
+    <section className="screen-stack" data-view="holdings-overview">
+      <header className="page-header">
+        <h2>보유자산</h2>
+        <p>계좌와 자산을 등록하고 시작 잔액을 맞춥니다.</p>
+      </header>
+
+      {loadError && <div className="error">{loadError}</div>}
+
+      <div className="form-grid">
+        <section className="panel form-panel">
+          <form className="form-panel" onSubmit={handleAccountSubmit}>
+            <div className="section-heading">
+              <h3>계좌 만들기</h3>
+              <span>{accounts.length.toLocaleString("ko-KR")}개</span>
+            </div>
+            <label>
+              계좌 이름
+              <input
+                value={accountForm.name}
+                onChange={(event) => setAccountForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="예: 국민 생활비"
+              />
+            </label>
+            <div className="field-row">
+              <label>
+                계좌 유형
+                <select
+                  value={accountForm.type}
+                  onChange={(event) => setAccountForm((prev) => ({ ...prev, type: event.target.value }))}
+                >
+                  {accountTypes.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                통화
+                <select
+                  value={accountForm.currency}
+                  onChange={(event) =>
+                    setAccountForm((prev) => ({ ...prev, currency: event.target.value }))
+                  }
+                >
+                  <option value="KRW">KRW</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+            </div>
+            <button className="primary-button" type="submit">
+              계좌 저장
+            </button>
+            {accountError && <p className="form-message error-text">{accountError}</p>}
+            {accountMessage && <p className="form-message success-text">{accountMessage}</p>}
+          </form>
+
+          <div className="panel-divider" />
+
+          <div className="account-management" data-api="list_accounts">
+            <div className="section-heading">
+              <h3>계좌 목록</h3>
+              <span>{accounts.length.toLocaleString("ko-KR")}개</span>
+            </div>
+
+            {accounts.length === 0 ? (
+              <p className="empty-state">등록된 계좌가 없습니다.</p>
+            ) : (
+              <div className="account-list">
+                {accounts.map((account) => (
+                  <div className="account-row" key={account.id}>
+                    <div>
+                      <strong>{account.name}</strong>
+                      <span>
+                        {accountTypeLabel(account.type)} · {account.currency}
+                      </span>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => handleAccountSelect(account.id)}
+                      >
+                        관리
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {accountManageError && <p className="form-message error-text">{accountManageError}</p>}
+            {accountManageMessage && <p className="form-message success-text">{accountManageMessage}</p>}
+          </div>
+        </section>
 
         <form className="panel form-panel" onSubmit={handleAssetSubmit}>
           <div className="section-heading">
@@ -335,6 +567,7 @@ export function HoldingsPage() {
                 value={assetForm.currency}
                 onChange={(event) => setAssetForm((prev) => ({ ...prev, currency: event.target.value }))}
               >
+                <option value="KRW">KRW</option>
                 <option value="USD">USD</option>
               </select>
             </label>
@@ -397,6 +630,7 @@ export function HoldingsPage() {
               value={balanceForm.currency}
               onChange={(event) => setBalanceForm((prev) => ({ ...prev, currency: event.target.value }))}
             >
+              <option value="KRW">KRW</option>
               <option value="USD">USD</option>
             </select>
           </label>

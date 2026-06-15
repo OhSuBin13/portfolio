@@ -7,7 +7,7 @@ create table if not exists accounts (
   id integer primary key,
   name text not null,
   type text not null check (type in ('cash','savings','brokerage','debt')),
-  currency text not null default 'KRW',
+  currency text not null check (currency in ('USD','KRW')) default 'KRW',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
 );
@@ -17,7 +17,7 @@ create table if not exists assets (
   symbol text,
   name text not null,
   type text not null check (type in ('cash','savings','stock_etf','debt')),
-  currency text not null default 'KRW',
+  currency text not null check (currency in ('USD','KRW')) default 'KRW',
   market text not null default 'KR',
   manual_price_krw real,
   created_at text not null default current_timestamp,
@@ -49,7 +49,7 @@ create table if not exists transactions (
   asset_id integer references assets(id) on delete set null,
   quantity real,
   amount real not null default 0,
-  currency text not null default 'KRW',
+  currency text not null check (currency in ('USD','KRW')) default 'KRW',
   fx_rate_to_krw real,
   memo text not null default '',
   created_at text not null default current_timestamp
@@ -60,7 +60,7 @@ create table if not exists price_snapshots (
   asset_id integer not null references assets(id) on delete cascade,
   source text not null,
   price real not null,
-  currency text not null,
+  currency text not null check (currency in ('USD','KRW')) default 'KRW',
   price_krw real not null,
   fetched_at text not null,
   status text not null default 'ok' check (status in ('ok','stale','failed','manual')),
@@ -69,8 +69,8 @@ create table if not exists price_snapshots (
 
 create table if not exists fx_rates (
   id integer primary key,
-  base_currency text not null,
-  quote_currency text not null default 'KRW',
+  base_currency text not null check (base_currency in ('USD','KRW')),
+  quote_currency text not null check (quote_currency in ('USD','KRW')) default 'KRW',
   rate real not null,
   source text not null,
   fetched_at text not null,

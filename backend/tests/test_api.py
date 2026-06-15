@@ -89,6 +89,26 @@ def test_api_post_preflight_allows_local_frontend_origin(tmp_path):
     assert "access-control-allow-credentials" not in response.headers
 
 
+def test_account_mutation_preflight_allows_local_frontend_origin(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for method in ("PUT", "DELETE"):
+        response = client.options(
+            "/api/accounts/1",
+            headers={
+                "Origin": LOCAL_FRONTEND_ORIGIN,
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == LOCAL_FRONTEND_ORIGIN
+        assert method in response.headers["access-control-allow-methods"]
+        assert "content-type" in response.headers["access-control-allow-headers"].lower()
+        assert "access-control-allow-credentials" not in response.headers
+
+
 def test_can_create_account_asset_and_transaction(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -126,6 +146,48 @@ def test_can_create_account_asset_and_transaction(tmp_path):
     assert client.get("/api/accounts").json()[0]["id"] == account["id"]
     assert client.get("/api/assets").json()[0]["id"] == asset["id"]
     assert client.get("/api/transactions").json()[0]["id"] == tx.json()["id"]
+
+
+def test_can_get_update_and_delete_account(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+    ).json()
+
+    detail = client.get(f"/api/accounts/{account['id']}")
+
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "원화 현금"
+
+    updated = client.put(
+        f"/api/accounts/{account['id']}",
+        json={"name": "해외 증권", "type": "brokerage", "currency": "usd"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "해외 증권"
+    assert updated.json()["type"] == "brokerage"
+    assert updated.json()["currency"] == "USD"
+
+    deleted = client.delete(f"/api/accounts/{account['id']}")
+
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    assert client.get(f"/api/accounts/{account['id']}").status_code == 404
+    assert client.delete(f"/api/accounts/{account['id']}").status_code == 404
+
+
+def test_account_create_normalizes_currency_case(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/accounts",
+        json={"name": "달러 현금", "type": "cash", "currency": "usd"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["currency"] == "USD"
 
 
 def test_can_create_and_list_goal(tmp_path):
