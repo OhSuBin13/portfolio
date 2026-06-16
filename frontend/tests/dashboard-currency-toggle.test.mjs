@@ -6,6 +6,11 @@ const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8
 const types = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
 
 assert.match(types, /usd_krw_rate:\s*number\s*\|\s*null/, "PortfolioSummary should expose the USD/KRW display rate")
+assert.match(
+  types,
+  /usd_krw_change_percent:\s*number\s*\|\s*null/,
+  "PortfolioSummary should expose the USD/KRW daily change percent",
+)
 
 assert.ok(source.includes('type DisplayCurrency = "KRW" | "USD"'), "Dashboard should model display currency explicitly")
 assert.ok(
@@ -15,6 +20,16 @@ assert.ok(
 assert.ok(source.includes('aria-label="표시 통화 선택"'), "Dashboard should expose an accessible currency toggle")
 assert.ok(source.includes('aria-pressed={displayCurrency === currency}'), "Currency buttons should expose pressed state")
 assert.ok(source.includes("summary.usd_krw_rate"), "Dashboard should use the summary USD/KRW rate")
+assert.ok(
+  source.includes("summary.usd_krw_change_percent"),
+  "Dashboard should show the USD/KRW daily change percent",
+)
+assert.ok(source.includes("전일대비"), "Dashboard should label the daily FX movement")
+assert.match(source, /import \{ ArrowDown, ArrowUp \} from "lucide-react"/, "Dashboard should use lucide arrows")
+assert.ok(source.includes("<ArrowDown"), "Dashboard should show a down arrow for negative FX movement")
+assert.ok(source.includes("<ArrowUp"), "Dashboard should show an up arrow for positive FX movement")
+assert.ok(source.includes("changePercent < 0"), "Negative FX movement should choose the down state")
+assert.ok(source.includes("changePercent > 0"), "Positive FX movement should choose the up state")
 
 for (const field of [
   "summary.net_worth_krw",

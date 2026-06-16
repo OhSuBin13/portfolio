@@ -80,6 +80,7 @@ erDiagram
         real rate
         text source
         text fetched_at
+        real change_percent
     }
 
     goals {
@@ -110,13 +111,13 @@ erDiagram
 
 | 테이블 | 역할 |
 | --- | --- |
-| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 3`입니다. |
+| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 4`입니다. |
 | `accounts` | 현금, 적금, 증권, 가상자산 지갑, 부채 계좌를 저장합니다. |
 | `assets` | 기본 현금/예금/부채 자산과 주식/ETF 같은 평가 대상 자산을 저장합니다. |
 | `holdings` | 특정 계좌가 특정 자산을 얼마나 보유하는지 저장하는 현재 잔고 테이블입니다. |
 | `transactions` | 입금, 출금, 매수, 매도, 배당, 이자, 수수료, 부채 상환, 조정 이력을 저장합니다. |
 | `price_snapshots` | 자산별 수동 가격 또는 시장 데이터 동기화 결과를 시간순으로 저장합니다. |
-| `fx_rates` | 외화 자산 평가에 사용할 환율 스냅샷을 저장합니다. |
+| `fx_rates` | 외화 자산 평가에 사용할 환율과 선택적 전일대비 변경율 스냅샷을 저장합니다. |
 | `goals` | 순자산 목표와 월 소득 목표를 저장합니다. |
 | `backups` | 앱이 생성하거나 감지한 SQLite 백업 파일의 메타데이터를 저장합니다. |
 | `settings` | 앱 설정을 key-value 형태로 저장합니다. |

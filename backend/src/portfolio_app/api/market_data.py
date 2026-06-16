@@ -10,8 +10,9 @@ from pydantic import BaseModel, ConfigDict
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
-    FrankfurterProvider,
+    FxRateProvider,
     MarketQuote,
+    default_fx_rate_provider,
     keep_last_good_quote,
 )
 
@@ -119,7 +120,7 @@ async def _price_krw(
     quote: MarketQuote,
     *,
     db: sqlite3.Connection,
-    fx_provider: FrankfurterProvider,
+    fx_provider: FxRateProvider,
 ) -> float:
     if quote.currency.upper() == "KRW":
         return quote.price
@@ -127,10 +128,19 @@ async def _price_krw(
     rate = await fx_provider.fetch_rate(quote.currency, "KRW")
     db.execute(
         """
-        insert or ignore into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
-        values (?, ?, ?, ?, ?)
+        insert or ignore into fx_rates(
+          base_currency, quote_currency, rate, source, fetched_at, change_percent
+        )
+        values (?, ?, ?, ?, ?, ?)
         """,
-        (rate.base_currency, rate.quote_currency, rate.rate, rate.source, _now_iso()),
+        (
+            rate.base_currency,
+            rate.quote_currency,
+            rate.rate,
+            rate.source,
+            _now_iso(),
+            rate.change_percent,
+        ),
     )
     return quote.price * rate.rate
 
@@ -217,7 +227,7 @@ async def _sync_market_data(
         """
     ).fetchall()
     alpha_provider = AlphaVantageProvider(settings.alpha_vantage_api_key)
-    fx_provider = FrankfurterProvider()
+    fx_provider = default_fx_rate_provider()
     results: list[dict[str, object]] = []
 
     for asset in assets:

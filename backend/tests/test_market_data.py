@@ -5,8 +5,10 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.services.market_data import (
+    FallbackFxRateProvider,
     FrankfurterProvider,
     MarketQuote,
+    NaverFinanceProvider,
     keep_last_good_quote,
 )
 
@@ -47,6 +49,58 @@ async def test_frankfurter_provider_parses_pair_rate(httpx_mock):
     assert rate.base_currency == "USD"
     assert rate.quote_currency == "KRW"
     assert rate.rate == 1375.5
+
+
+@pytest.mark.asyncio
+async def test_naver_finance_provider_parses_usd_krw_rate_and_change_percent(httpx_mock):
+    httpx_mock.add_response(
+        text="""
+        <div class="spot">
+          <div class="today">
+            <p class="no_today">
+              <em class="no_down"><em class="no_down">
+                <span class="no1">1</span><span class="shim">,</span><span class="no5">5</span>
+                <span class="no1">1</span><span class="no3">3</span><span class="jum">.</span>
+                <span class="no2">2</span><span class="no0">0</span>
+              </em></em>
+            </p>
+            <p class="no_exday">
+              <span class="txt_comparison">전일대비</span>
+              <em class="no_down"><span class="ico down"></span><span class="no2">2</span></em>
+              <em class="no_down">
+                <span class="parenthesis1">(</span>
+                <span class="ico minus">-</span><span class="no0">0</span><span class="jum">.</span>
+                <span class="no1">1</span><span class="no5">5</span><span class="per">%</span>
+                <span class="parenthesis2">)</span>
+              </em>
+            </p>
+          </div>
+        </div>
+        """,
+        headers={"content-type": "text/html;charset=EUC-KR"},
+    )
+    provider = NaverFinanceProvider()
+
+    rate = await provider.fetch_rate("USD", "KRW")
+
+    assert rate.base_currency == "USD"
+    assert rate.quote_currency == "KRW"
+    assert rate.rate == 1513.2
+    assert rate.change_percent == -0.15
+    assert rate.source == "naver_finance"
+
+
+@pytest.mark.asyncio
+async def test_fallback_fx_rate_provider_uses_frankfurter_when_naver_fails(httpx_mock):
+    httpx_mock.add_response(status_code=500)
+    httpx_mock.add_response(json={"base": "USD", "quote": "KRW", "rate": 1375.5})
+    provider = FallbackFxRateProvider(NaverFinanceProvider(), FrankfurterProvider())
+
+    rate = await provider.fetch_rate("USD", "KRW")
+
+    assert rate.rate == 1375.5
+    assert rate.change_percent is None
+    assert rate.source == "frankfurter"
 
 
 def test_manual_price_endpoint_validates_stores_snapshot_and_updates_summary(tmp_path):
@@ -531,7 +585,15 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
         },
     )
     httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
-    httpx_mock.add_response(json={"base": "USD", "quote": "KRW", "rate": 1300})
+    httpx_mock.add_response(
+        text="""
+        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+        <p class="no_exday">
+          <em class="no_down">1.00</em>
+          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+        </p>
+        """,
+    )
 
     response = client.post("/api/market-data/sync")
     latest = client.get("/api/market-data/status").json()[0]

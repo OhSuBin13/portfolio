@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from "lucide-react"
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
 import type { GoalProgress, PortfolioSummary } from "../types"
@@ -8,6 +9,7 @@ const emptySummary: PortfolioSummary = {
   debt_krw: 0,
   monthly_income_krw: 0,
   usd_krw_rate: null,
+  usd_krw_change_percent: null,
   asset_mix: {},
 }
 
@@ -30,6 +32,21 @@ const formatCurrency = (valueKrw: number, currency: DisplayCurrency, usdKrwRate:
   return `${valueKrw.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} 원`
 }
 const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
+const formatFxChange = (changePercent: number | null) => {
+  if (changePercent === null || !Number.isFinite(changePercent)) {
+    return null
+  }
+
+  const sign = changePercent > 0 ? "+" : ""
+  return `${sign}${changePercent.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`
+}
+const getFxChangeDirection = (changePercent: number | null) => {
+  if (changePercent === null || !Number.isFinite(changePercent) || changePercent === 0) {
+    return null
+  }
+
+  return changePercent < 0 ? "down" : changePercent > 0 ? "up" : null
+}
 
 export function Dashboard() {
   const [summary, setSummary] = useState<PortfolioSummary>(emptySummary)
@@ -48,6 +65,8 @@ export function Dashboard() {
   }, [])
 
   const assetMixEntries = Object.entries(summary.asset_mix)
+  const fxChange = formatFxChange(summary.usd_krw_change_percent)
+  const fxDirection = getFxChangeDirection(summary.usd_krw_change_percent)
 
   return (
     <section className="screen-stack">
@@ -55,6 +74,18 @@ export function Dashboard() {
         <div>
           <h2>오늘의 자산</h2>
           <p>순자산, 목표, 자산 비중, 최근 변화를 확인합니다.</p>
+          {summary.usd_krw_rate !== null && (
+            <p className="fx-rate-line">
+              <span>USD/KRW {summary.usd_krw_rate.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} 원</span>
+              {fxChange !== null && (
+                <span className={fxDirection ?? "flat"}>
+                  {fxDirection === "down" && <ArrowDown aria-hidden="true" className="fx-change-icon" size={14} />}
+                  {fxDirection === "up" && <ArrowUp aria-hidden="true" className="fx-change-icon" size={14} />}
+                  전일대비 {fxChange}
+                </span>
+              )}
+            </p>
+          )}
         </div>
         <div className="currency-toggle" aria-label="표시 통화 선택">
           {displayCurrencies.map((currency) => (

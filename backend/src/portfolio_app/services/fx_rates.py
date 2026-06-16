@@ -2,7 +2,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from portfolio_app.services.market_data import FrankfurterProvider
+from portfolio_app.services.market_data import FxRateProvider, default_fx_rate_provider
 
 FX_REFRESH_TTL_SECONDS = 300
 
@@ -12,6 +12,7 @@ class FxRefreshResult:
     status: str
     rate: float | None
     fetched_at: str | None
+    change_percent: float | None = None
     error_message: str = ""
 
 
@@ -34,7 +35,7 @@ def latest_fx_rate(
 ) -> sqlite3.Row | None:
     return db.execute(
         """
-        select rate, fetched_at
+        select rate, fetched_at, change_percent
         from fx_rates
         where base_currency = ?
           and quote_currency = ?
@@ -60,12 +61,15 @@ def insert_fx_rate(
     quote_currency: str,
     rate: float,
     source: str,
+    change_percent: float | None = None,
     fetched_at: str | None = None,
 ) -> None:
     db.execute(
         """
-        insert or ignore into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
-        values (?, ?, ?, ?, ?)
+        insert or ignore into fx_rates(
+          base_currency, quote_currency, rate, source, fetched_at, change_percent
+        )
+        values (?, ?, ?, ?, ?, ?)
         """,
         (
             base_currency.upper(),
@@ -73,6 +77,7 @@ def insert_fx_rate(
             rate,
             source,
             fetched_at or _now_iso(),
+            change_percent,
         ),
     )
 
@@ -83,7 +88,7 @@ async def refresh_fx_rate_if_stale(
     base_currency: str = "USD",
     quote_currency: str = "KRW",
     ttl_seconds: int = FX_REFRESH_TTL_SECONDS,
-    provider: FrankfurterProvider | None = None,
+    provider: FxRateProvider | None = None,
 ) -> FxRefreshResult:
     base = base_currency.upper()
     quote = quote_currency.upper()
@@ -94,10 +99,11 @@ async def refresh_fx_rate_if_stale(
             status="fresh",
             rate=float(latest["rate"]),
             fetched_at=str(latest["fetched_at"]),
+            change_percent=latest["change_percent"],
         )
 
     try:
-        fetched = await (provider or FrankfurterProvider()).fetch_rate(base, quote)
+        fetched = await (provider or default_fx_rate_provider()).fetch_rate(base, quote)
     except Exception as exc:
         if latest is None:
             return FxRefreshResult(
@@ -110,6 +116,7 @@ async def refresh_fx_rate_if_stale(
             status="stale",
             rate=float(latest["rate"]),
             fetched_at=str(latest["fetched_at"]),
+            change_percent=latest["change_percent"],
             error_message=str(exc),
         )
 
@@ -121,6 +128,12 @@ async def refresh_fx_rate_if_stale(
             quote_currency=fetched.quote_currency,
             rate=fetched.rate,
             source=fetched.source,
+            change_percent=fetched.change_percent,
             fetched_at=fetched_at,
         )
-    return FxRefreshResult(status="refreshed", rate=fetched.rate, fetched_at=fetched_at)
+    return FxRefreshResult(
+        status="refreshed",
+        rate=fetched.rate,
+        fetched_at=fetched_at,
+        change_percent=fetched.change_percent,
+    )

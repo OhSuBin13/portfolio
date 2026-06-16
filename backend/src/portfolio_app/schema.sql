@@ -74,6 +74,7 @@ create table if not exists fx_rates (
   rate real not null,
   source text not null,
   fetched_at text not null,
+  change_percent real,
   unique(base_currency, quote_currency, fetched_at)
 );
 

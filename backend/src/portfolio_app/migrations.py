@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -13,6 +13,10 @@ BUILTIN_INITIAL_ASSETS = (
 
 def _schema_statements(schema_sql: str) -> list[str]:
     return [statement.strip() for statement in schema_sql.split(";") if statement.strip()]
+
+
+def _pragma_column_names(rows: list[sqlite3.Row] | list[tuple]) -> set[str]:
+    return {row["name"] if isinstance(row, sqlite3.Row) else row[1] for row in rows}
 
 
 def current_version(db: sqlite3.Connection) -> int:
@@ -119,6 +123,18 @@ def _migrate_from_2_to_3(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (3)")
 
 
+def _migrate_from_3_to_4(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "select name from sqlite_master where type = 'table' and name = 'fx_rates'"
+    ).fetchone()
+    columns = db.execute("pragma table_info(fx_rates)").fetchall()
+    column_names = _pragma_column_names(columns)
+    with db:
+        if table is not None and "change_percent" not in column_names:
+            db.execute("alter table fx_rates add column change_percent real")
+        db.execute("insert or ignore into schema_migrations(version) values (4)")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -145,6 +161,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 2:
         _migrate_from_2_to_3(db)
         version = 3
+
+    if version == 3:
+        _migrate_from_3_to_4(db)
+        version = 4
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

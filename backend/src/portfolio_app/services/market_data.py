@@ -1,8 +1,15 @@
 import math
+import re
 from dataclasses import dataclass
-from typing import Any
+from html.parser import HTMLParser
+from typing import Any, Protocol
 
 import httpx
+
+NAVER_USD_KRW_URL = (
+    "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
+)
+NUMBER_PATTERN = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?")
 
 
 @dataclass
@@ -21,6 +28,12 @@ class FxRate:
     quote_currency: str
     rate: float
     source: str
+    change_percent: float | None = None
+
+
+class FxRateProvider(Protocol):
+    async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
+        pass
 
 
 def _positive_number(value: Any, message: str) -> float:
@@ -31,6 +44,109 @@ def _positive_number(value: Any, message: str) -> float:
     if not math.isfinite(number) or number <= 0:
         raise ValueError(message)
     return number
+
+
+def _finite_number(value: Any, message: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(message) from exc
+    if not math.isfinite(number):
+        raise ValueError(message)
+    return number
+
+
+def _number_from_text(text: str, message: str) -> float:
+    compact_text = "".join(text.replace("\xa0", " ").split())
+    match = NUMBER_PATTERN.search(compact_text)
+    if match is None:
+        raise ValueError(message)
+    return _finite_number(match.group(0).replace(",", ""), message)
+
+
+class _NaverExchangeParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.today_text_parts: list[str] = []
+        self.exday_text_parts: list[str] = []
+        self.exday_em_groups: list[tuple[set[str], str]] = []
+        self._section: str | None = None
+        self._em_depth = 0
+        self._active_em_classes: set[str] = set()
+        self._active_em_text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_map = dict(attrs)
+        classes = set((attr_map.get("class") or "").split())
+
+        if tag == "p":
+            if "no_today" in classes:
+                self._section = "today"
+            elif "no_exday" in classes:
+                self._section = "exday"
+
+        if (
+            self._section == "exday"
+            and tag == "em"
+            and classes.intersection({"no_up", "no_down", "no_change"})
+        ):
+            if self._em_depth == 0:
+                self._active_em_classes = classes
+                self._active_em_text_parts = []
+            self._em_depth += 1
+
+    def handle_data(self, data: str) -> None:
+        if self._section == "today":
+            self.today_text_parts.append(data)
+            return
+
+        if self._section == "exday":
+            self.exday_text_parts.append(data)
+            if self._em_depth > 0:
+                self._active_em_text_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._section == "exday" and tag == "em" and self._em_depth > 0:
+            self._em_depth -= 1
+            if self._em_depth == 0:
+                self.exday_em_groups.append(
+                    (set(self._active_em_classes), "".join(self._active_em_text_parts))
+                )
+                self._active_em_classes = set()
+                self._active_em_text_parts = []
+
+        if tag == "p" and self._section in {"today", "exday"}:
+            self._section = None
+            self._em_depth = 0
+            self._active_em_classes = set()
+            self._active_em_text_parts = []
+
+
+def _parse_naver_change_percent(parser: _NaverExchangeParser) -> float | None:
+    for classes, text in parser.exday_em_groups:
+        if "%" not in text:
+            continue
+
+        value = _number_from_text(
+            text,
+            "Naver Finance 응답에서 전일대비 변경율을 찾을 수 없습니다.",
+        )
+        compact_text = "".join(text.split())
+        if "-" in compact_text:
+            return -abs(value)
+        if "+" in compact_text:
+            return abs(value)
+        if "no_down" in classes:
+            return -abs(value)
+        return abs(value)
+
+    if "%" not in "".join(parser.exday_text_parts):
+        return None
+
+    return _number_from_text(
+        "".join(parser.exday_text_parts),
+        "Naver Finance 응답에서 전일대비 변경율을 찾을 수 없습니다.",
+    )
 
 
 def keep_last_good_quote(*, previous: MarketQuote, error_message: str) -> MarketQuote:
@@ -66,6 +182,60 @@ class FrankfurterProvider:
             rate=_positive_number(rate, "Frankfurter 환율은 0보다 큰 숫자여야 합니다."),
             source=self.source,
         )
+
+
+class NaverFinanceProvider:
+    source = "naver_finance"
+
+    def __init__(self, url: str = NAVER_USD_KRW_URL) -> None:
+        self.url = url
+
+    async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
+        base = base_currency.strip().upper()
+        quote = quote_currency.strip().upper()
+        if (base, quote) != ("USD", "KRW"):
+            raise ValueError("Naver Finance는 USD/KRW 환율만 지원합니다.")
+
+        async with httpx.AsyncClient(
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ) as client:
+            response = await client.get(self.url)
+            response.raise_for_status()
+
+        parser = _NaverExchangeParser()
+        parser.feed(response.text)
+
+        rate = _number_from_text(
+            "".join(parser.today_text_parts),
+            "Naver Finance 응답에서 USD/KRW 환율을 찾을 수 없습니다.",
+        )
+        return FxRate(
+            base_currency=base,
+            quote_currency=quote,
+            rate=_positive_number(rate, "Naver Finance 환율은 0보다 큰 숫자여야 합니다."),
+            source=self.source,
+            change_percent=_parse_naver_change_percent(parser),
+        )
+
+
+class FallbackFxRateProvider:
+    def __init__(self, *providers: FxRateProvider) -> None:
+        self.providers = providers
+
+    async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
+        errors: list[str] = []
+        for provider in self.providers:
+            try:
+                return await provider.fetch_rate(base_currency, quote_currency)
+            except Exception as exc:
+                errors.append(str(exc))
+
+        raise ValueError(f"환율 제공자 요청이 모두 실패했습니다: {'; '.join(errors)}")
+
+
+def default_fx_rate_provider() -> FxRateProvider:
+    return FallbackFxRateProvider(NaverFinanceProvider(), FrankfurterProvider())
 
 
 class AlphaVantageProvider:

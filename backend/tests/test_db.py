@@ -45,7 +45,26 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [3]
+    assert migration_versions(db) == [4]
+
+
+def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+
+    migrate(db)
+
+    columns = db.execute("pragma table_info(fx_rates)").fetchall()
+    assert "change_percent" in {row["name"] for row in columns}
+    db.execute(
+        """
+        insert into fx_rates(
+          base_currency, quote_currency, rate, source, fetched_at, change_percent
+        )
+        values (?, ?, ?, ?, ?, ?)
+        """,
+        ("USD", "KRW", 1513.2, "naver_finance", "2026-06-16T06:30:00+00:00", -0.15),
+    )
 
 
 def test_migrate_seeds_builtin_cash_assets_without_symbol_or_market(tmp_path):
@@ -169,7 +188,7 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
         order by type, name
         """
     ).fetchall()
-    assert migration_versions(db) == [2, 3]
+    assert migration_versions(db) == [2, 3, 4]
     assert [dict(row) for row in rows] == [
         {
             "name": "부채",
@@ -195,7 +214,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [3]
+    assert migration_versions(db) == [4]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -204,7 +223,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [3]
+    assert migration_versions(db) == [4]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -218,7 +237,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (4)")
+    db.execute("insert into schema_migrations(version) values (5)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -255,14 +274,14 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (3)")
+    db.execute("insert into schema_migrations(version) values (4)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 4)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 5)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [3]
+    assert migration_versions(db) == [4]
 
 
 def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
@@ -303,7 +322,7 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
         order by currency
         """
     ).fetchall()
-    assert migration_versions(db) == [1, 2, 3]
+    assert migration_versions(db) == [1, 2, 3, 4]
     assert [dict(row) for row in rows] == [
         {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
         {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},

@@ -4,6 +4,7 @@ export type PortfolioSummary = {
   debt_krw: number
   monthly_income_krw: number
   usd_krw_rate: number | null
+  usd_krw_change_percent: number | null
   asset_mix: Record<string, number>
 }
 
