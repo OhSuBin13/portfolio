@@ -96,7 +96,7 @@ def test_manual_price_endpoint_validates_stores_snapshot_and_updates_summary(tmp
     assert snapshot["source"] == "user"
     assert snapshot["price_krw"] == 75_000
     assert snapshot["status"] == "manual"
-    assert client.get("/api/summary").json()["net_worth_krw"] == 150_000
+    assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 150_000
 
 
 def test_status_endpoint_returns_latest_snapshot_and_failure_info(tmp_path):
@@ -221,7 +221,7 @@ def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
     assert latest["status"] == "stale"
     assert latest["price_krw"] == 700_000
     assert "Alpha Vantage API 키" in latest["error_message"]
-    assert client.get("/api/summary").json()["net_worth_krw"] == 700_000
+    assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 700_000
 
 
 def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
@@ -361,7 +361,7 @@ def test_sync_records_failed_status_without_previous_price_and_preserves_fallbac
 
     response = client.post("/api/market-data/sync")
     latest = client.get("/api/market-data/status").json()[0]
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
 
     assert response.status_code == 200
     assert response.json()["results"][0]["status"] == "failed"
@@ -435,7 +435,7 @@ def test_summary_uses_manual_price_when_later_failed_snapshot_exists(tmp_path):
         db.close()
 
     latest = client.get("/api/market-data/status").json()[0]
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
 
     assert latest["status"] == "failed"
     assert latest["price_krw"] == 0
@@ -489,7 +489,7 @@ def test_kr_stock_sync_records_unsupported_provider_and_preserves_summary(
 
     response = client.post("/api/market-data/sync")
     latest = client.get("/api/market-data/status").json()[0]
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
 
     assert response.status_code == 200
     assert response.json()["results"][0]["status"] == "failed"
@@ -535,7 +535,7 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
 
     response = client.post("/api/market-data/sync")
     latest = client.get("/api/market-data/status").json()[0]
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
 
     assert response.status_code == 200
     assert response.json()["results"][0]["status"] == "ok"

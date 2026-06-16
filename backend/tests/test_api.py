@@ -53,7 +53,7 @@ def test_health_returns_ok():
 def test_summary_endpoint_returns_empty_snapshot(tmp_path):
     client = create_test_client(tmp_path)
 
-    response = client.get("/api/summary")
+    response = client.get("/api/summary?refresh=false")
 
     assert response.status_code == 200
     assert response.json()["net_worth_krw"] == 0
@@ -64,7 +64,7 @@ def test_summary_endpoint_returns_empty_snapshot(tmp_path):
 def test_summary_allows_local_frontend_cors_origin(tmp_path):
     client = create_test_client(tmp_path)
 
-    response = client.get("/api/summary", headers={"Origin": LOCAL_FRONTEND_ORIGIN})
+    response = client.get("/api/summary?refresh=false", headers={"Origin": LOCAL_FRONTEND_ORIGIN})
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == LOCAL_FRONTEND_ORIGIN
@@ -142,7 +142,7 @@ def test_can_create_account_asset_and_transaction(tmp_path):
     )
 
     assert tx.status_code == 201
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
     assert summary["net_worth_krw"] == 1_000_000
     assert client.get("/api/accounts").json()[0]["id"] == account["id"]
     assert any(item["id"] == asset["id"] for item in client.get("/api/assets").json())
@@ -254,7 +254,7 @@ def test_can_record_cash_transaction_with_builtin_cash_asset(tmp_path):
     )
 
     assert tx.status_code == 201
-    assert client.get("/api/summary").json()["net_worth_krw"] == 1_000_000
+    assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 1_000_000
 
 
 def test_can_create_and_list_goal(tmp_path):
@@ -370,7 +370,7 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
         },
     ).json()
 
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
     progress = client.get("/api/goals/progress").json()
 
     assert summary["monthly_income_krw"] == 100_000
@@ -460,7 +460,7 @@ def test_summary_counts_only_current_month_income_for_monthly_income_progress(tm
         },
     )
 
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
     progress = client.get("/api/goals/progress").json()[0]
 
     assert summary["monthly_income_krw"] == 100_000
@@ -494,7 +494,7 @@ def test_summary_converts_non_krw_monthly_income_with_transaction_fx_rate(tmp_pa
     )
 
     assert response.status_code == 201
-    assert client.get("/api/summary").json()["monthly_income_krw"] == 140_000
+    assert client.get("/api/summary?refresh=false").json()["monthly_income_krw"] == 140_000
 
 
 def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_path):
@@ -531,7 +531,7 @@ def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_
     db.commit()
     db.close()
 
-    response = client.get("/api/summary")
+    response = client.get("/api/summary?refresh=false")
 
     assert response.status_code == 400
     assert "환율" in response.json()["detail"]
@@ -570,7 +570,7 @@ def test_summary_converts_usd_stock_holding_to_krw_with_transaction_fx_rate(tmp_
     )
 
     assert response.status_code == 201
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
     assert summary["net_worth_krw"] == 700_000
     assert summary["asset_mix"] == {"stock_etf": 100.0}
 
@@ -617,7 +617,7 @@ def test_summary_prefers_latest_fx_rate_over_transaction_fx_rate(tmp_path):
     db.commit()
     db.close()
 
-    summary = client.get("/api/summary").json()
+    summary = client.get("/api/summary?refresh=false").json()
 
     assert summary["net_worth_krw"] == 650_000
 
@@ -653,7 +653,7 @@ def test_summary_rejects_non_krw_holding_without_fx_rate(tmp_path):
         },
     )
 
-    response = client.get("/api/summary")
+    response = client.get("/api/summary?refresh=false")
 
     assert response.status_code == 400
     assert "환율" in response.json()["detail"]

@@ -2,11 +2,16 @@ import sqlite3
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from portfolio_app.api import get_db
 from portfolio_app.finance import calculate_asset_mix, calculate_net_worth
 from portfolio_app.models import HoldingValue, PortfolioSummary
+from portfolio_app.services.fx_rates import (
+    FX_REFRESH_TTL_SECONDS,
+    latest_fx_rate,
+    refresh_fx_rate_if_stale,
+)
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
@@ -93,16 +98,7 @@ def _monthly_income_krw(db: sqlite3.Connection, *, today: date | None = None) ->
 
 
 def _latest_usd_krw_rate(db: sqlite3.Connection) -> float | None:
-    latest_fx = db.execute(
-        """
-        select rate
-        from fx_rates
-        where base_currency = 'USD'
-          and quote_currency = 'KRW'
-        order by fetched_at desc, id desc
-        limit 1
-        """
-    ).fetchone()
+    latest_fx = latest_fx_rate(db, base_currency="USD", quote_currency="KRW")
     if latest_fx is not None and float(latest_fx["rate"]) > 0:
         return float(latest_fx["rate"])
 
@@ -177,7 +173,14 @@ def build_summary(
 
 
 @router.get("")
-def get_summary(db: Db) -> dict[str, object]:
+async def get_summary(
+    db: Db,
+    refresh: bool = True,
+    fx_ttl_seconds: int = Query(default=FX_REFRESH_TTL_SECONDS, ge=0, le=86_400),
+) -> dict[str, object]:
+    if refresh:
+        await refresh_fx_rate_if_stale(db, ttl_seconds=fx_ttl_seconds)
+
     summary, asset_mix = build_summary(db)
     return {
         **summary.model_dump(),
