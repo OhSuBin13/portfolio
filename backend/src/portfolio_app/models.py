@@ -25,6 +25,18 @@ class PortfolioSummary(BaseModel):
     usd_krw_change_percent: float | None = Field(default=None, allow_inf_nan=False)
 
 
+class AssetAllocation(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    asset_id: int
+    asset_type: AssetType
+    symbol: str | None
+    name: str
+    label: str
+    value_krw: float = Field(ge=0, allow_inf_nan=False)
+    percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+
+
 class Goal(BaseModel):
     model_config = ConfigDict(strict=True)
 

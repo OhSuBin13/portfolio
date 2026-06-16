@@ -11,6 +11,12 @@ assert.match(
   /usd_krw_change_percent:\s*number\s*\|\s*null/,
   "PortfolioSummary should expose the USD/KRW daily change percent",
 )
+assert.match(types, /export type AssetAllocation/, "PortfolioSummary should type asset allocation rows")
+assert.match(
+  types,
+  /asset_allocations:\s*AssetAllocation\[\]/,
+  "PortfolioSummary should expose asset allocation rows",
+)
 
 assert.ok(source.includes('type DisplayCurrency = "KRW" | "USD"'), "Dashboard should model display currency explicitly")
 assert.ok(
@@ -32,6 +38,27 @@ assert.ok(source.includes("changePercent < 0"), "Negative FX movement should cho
 assert.ok(source.includes("changePercent > 0"), "Positive FX movement should choose the up state")
 assert.ok(source.includes("자동 시세 갱신 후"), "Missing FX message should refer to automatic sync")
 assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should not refer to manual sync")
+assert.ok(source.includes("getAllocationSegments"), "Dashboard should derive allocation segments from asset mix")
+assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
+assert.ok(source.includes("주식/ETF"), "Dashboard should label the stock/ETF allocation")
+assert.ok(source.includes("현금"), "Dashboard should label the cash allocation")
+assert.ok(source.includes("기타"), "Dashboard should preserve remaining allocation as other")
+assert.ok(source.includes("allocationSegments"), "Dashboard should render allocation segments")
+assert.ok(source.includes("summary.asset_allocations"), "Dashboard should use per-asset allocation rows")
+assert.ok(
+  source.includes('allocation.asset_type === "stock_etf"'),
+  "Dashboard should split stock/ETF allocations by holding ticker",
+)
+assert.ok(
+  source.includes("allocation.symbol ?? allocation.name"),
+  "Dashboard should prefer ticker labels for stock/ETF allocation segments",
+)
+assert.ok(source.includes("getPieSlicePath"), "Dashboard should render pie slices as SVG paths")
+assert.ok(source.includes("getAllocationCallouts"), "Dashboard should calculate outside label callouts")
+assert.ok(source.includes("allocation-slice"), "Dashboard should render visible allocation slices")
+assert.ok(source.includes("allocation-label-line"), "Dashboard should draw leader lines to allocation labels")
+assert.ok(source.includes("allocation-label-name"), "Dashboard should show allocation ticker labels around the pie")
+assert.ok(source.includes("<svg"), "Dashboard allocation chart should use SVG for callout labels")
 
 for (const field of [
   "summary.net_worth_krw",
@@ -48,3 +75,8 @@ for (const field of [
 }
 
 assert.ok(styles.includes(".currency-toggle"), "Dashboard currency toggle should have dedicated layout styles")
+assert.ok(styles.includes(".allocation-meter"), "Dashboard allocation metric should have dedicated meter styles")
+assert.ok(styles.includes(".allocation-segment"), "Dashboard allocation metric should render fixed segments")
+assert.ok(styles.includes(".allocation-pie-svg"), "Dashboard allocation chart should style the SVG pie")
+assert.ok(styles.includes(".allocation-label-line"), "Dashboard allocation chart should style leader lines")
+assert.ok(styles.includes(".allocation-label-name"), "Dashboard allocation chart should style outside ticker labels")

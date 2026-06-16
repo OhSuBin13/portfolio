@@ -5,6 +5,7 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.migrations import migrate
+from portfolio_app.repositories import create_account, create_asset, upsert_holding
 
 
 def create_summary_db(tmp_path):
@@ -26,13 +27,14 @@ def create_test_client(tmp_path):
 def test_build_summary_returns_no_usd_rate_when_rate_is_missing(tmp_path):
     db = create_summary_db(tmp_path)
     try:
-        summary, asset_mix = build_summary(db)
+        summary, asset_mix, asset_allocations = build_summary(db)
     finally:
         db.close()
 
     assert summary.usd_krw_rate is None
     assert summary.usd_krw_change_percent is None
     assert asset_mix == {}
+    assert asset_allocations == []
 
 
 def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
@@ -52,12 +54,106 @@ def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
         )
         db.commit()
 
-        summary, _asset_mix = build_summary(db)
+        summary, _asset_mix, _asset_allocations = build_summary(db)
     finally:
         db.close()
 
     assert summary.usd_krw_rate == 1390.5
     assert summary.usd_krw_change_percent == -0.15
+
+
+def test_build_summary_exposes_stock_etf_allocations_by_ticker(tmp_path):
+    db = create_summary_db(tmp_path)
+    try:
+        cash_account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+        brokerage_account_id = create_account(db, name="증권", type="brokerage", currency="KRW")
+        cash_asset_id = create_asset(
+            db,
+            symbol=None,
+            name="KRW",
+            type="cash",
+            currency="KRW",
+            market=None,
+        )
+        aapl_asset_id = create_asset(
+            db,
+            symbol="AAPL",
+            name="Apple",
+            type="stock_etf",
+            currency="USD",
+            market="US",
+        )
+        voo_asset_id = create_asset(
+            db,
+            symbol="VOO",
+            name="Vanguard S&P 500 ETF",
+            type="stock_etf",
+            currency="USD",
+            market="US",
+        )
+        db.executemany(
+            "update assets set manual_price_krw = ? where id = ?",
+            [
+                (100_000, aapl_asset_id),
+                (200_000, voo_asset_id),
+            ],
+        )
+        upsert_holding(
+            db,
+            account_id=cash_account_id,
+            asset_id=cash_asset_id,
+            quantity=1_000_000,
+            average_cost=None,
+        )
+        upsert_holding(
+            db,
+            account_id=brokerage_account_id,
+            asset_id=aapl_asset_id,
+            quantity=10,
+            average_cost=100,
+        )
+        upsert_holding(
+            db,
+            account_id=brokerage_account_id,
+            asset_id=voo_asset_id,
+            quantity=10,
+            average_cost=100,
+        )
+
+        _summary, asset_mix, asset_allocations = build_summary(db)
+    finally:
+        db.close()
+
+    assert asset_mix == {"cash": 25.0, "stock_etf": 75.0}
+    assert asset_allocations == [
+        {
+            "asset_id": cash_asset_id,
+            "asset_type": "cash",
+            "label": "KRW",
+            "name": "KRW",
+            "percent": 25.0,
+            "symbol": None,
+            "value_krw": 1_000_000.0,
+        },
+        {
+            "asset_id": aapl_asset_id,
+            "asset_type": "stock_etf",
+            "label": "AAPL",
+            "name": "Apple",
+            "percent": 25.0,
+            "symbol": "AAPL",
+            "value_krw": 1_000_000.0,
+        },
+        {
+            "asset_id": voo_asset_id,
+            "asset_type": "stock_etf",
+            "label": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "percent": 50.0,
+            "symbol": "VOO",
+            "value_krw": 2_000_000.0,
+        },
+    ]
 
 
 def test_summary_refreshes_missing_usd_krw_rate_by_default(tmp_path, httpx_mock):

@@ -71,7 +71,7 @@ def list_goals(db: Db) -> list[dict[str, object]]:
 
 @router.get("/progress")
 def list_goal_progress(db: Db) -> list[dict[str, object]]:
-    summary, _asset_mix = build_summary(db)
+    summary, _asset_mix, _asset_allocations = build_summary(db)
     rows = db.execute("select * from goals order by id").fetchall()
     progress_rows = []
     for row in rows:

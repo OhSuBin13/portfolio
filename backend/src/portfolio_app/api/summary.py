@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from portfolio_app.api import get_db
 from portfolio_app.finance import calculate_asset_mix, calculate_net_worth
-from portfolio_app.models import HoldingValue, PortfolioSummary
+from portfolio_app.models import AssetAllocation, HoldingValue, PortfolioSummary
 from portfolio_app.services.fx_rates import (
     FX_REFRESH_TTL_SECONDS,
     latest_fx_rate,
@@ -38,7 +38,7 @@ def _native_value_to_krw(value: float, row: sqlite3.Row) -> float:
     return value * rate
 
 
-def _holding_value(row: sqlite3.Row) -> HoldingValue:
+def _holding_value_krw(row: sqlite3.Row) -> float:
     asset_type = row["asset_type"]
     quantity = float(row["quantity"] or 0)
 
@@ -53,7 +53,60 @@ def _holding_value(row: sqlite3.Row) -> HoldingValue:
     else:
         value_krw = 0
 
-    return HoldingValue(asset_type=asset_type, value_krw=max(0.0, value_krw))
+    return max(0.0, value_krw)
+
+
+def _holding_value(row: sqlite3.Row) -> HoldingValue:
+    return HoldingValue(asset_type=row["asset_type"], value_krw=_holding_value_krw(row))
+
+
+def _asset_allocation_label(row: sqlite3.Row) -> str:
+    symbol = row["asset_symbol"]
+    if symbol:
+        return str(symbol)
+    return str(row["asset_name"])
+
+
+def _asset_allocations(
+    rows_with_values: list[tuple[sqlite3.Row, HoldingValue]],
+) -> list[dict[str, object]]:
+    grouped: dict[int, dict[str, object]] = {}
+
+    for row, value in rows_with_values:
+        if value.asset_type == "debt" or value.value_krw <= 0:
+            continue
+
+        asset_id = int(row["asset_id"])
+        if asset_id not in grouped:
+            grouped[asset_id] = {
+                "asset_id": asset_id,
+                "asset_type": value.asset_type,
+                "label": _asset_allocation_label(row),
+                "name": str(row["asset_name"]),
+                "symbol": str(row["asset_symbol"]) if row["asset_symbol"] else None,
+                "value_krw": 0.0,
+            }
+        grouped[asset_id]["value_krw"] = float(grouped[asset_id]["value_krw"]) + value.value_krw
+
+    denominator = sum(float(row["value_krw"]) for row in grouped.values())
+    if denominator <= 0:
+        return []
+
+    allocations = []
+    for row in grouped.values():
+        value_krw = float(row["value_krw"])
+        allocation = AssetAllocation(
+            asset_id=int(row["asset_id"]),
+            asset_type=row["asset_type"],
+            symbol=row["symbol"],
+            name=str(row["name"]),
+            label=str(row["label"]),
+            value_krw=value_krw,
+            percent=round((value_krw / denominator) * 100, 2),
+        )
+        allocations.append(allocation.model_dump())
+
+    return allocations
 
 
 def _income_amount_to_krw(row: sqlite3.Row) -> float:
@@ -126,13 +179,15 @@ def build_summary(
     db: sqlite3.Connection,
     *,
     today: date | None = None,
-) -> tuple[PortfolioSummary, dict[str, float]]:
+) -> tuple[PortfolioSummary, dict[str, float], list[dict[str, object]]]:
     rows = db.execute(
         """
         select h.quantity,
                h.average_cost,
                h.account_id,
-               h.asset_id,
+               a.id as asset_id,
+               a.symbol as asset_symbol,
+               a.name as asset_name,
                a.type as asset_type,
                a.currency as asset_currency,
                a.manual_price_krw,
@@ -166,7 +221,8 @@ def build_summary(
         order by h.id
         """
     ).fetchall()
-    values = [_holding_value(row) for row in rows]
+    rows_with_values = [(row, _holding_value(row)) for row in rows]
+    values = [value for _row, value in rows_with_values]
     usd_krw_rate, usd_krw_change_percent = _latest_usd_krw_snapshot(db)
     summary = calculate_net_worth(values).model_copy(
         update={
@@ -175,7 +231,7 @@ def build_summary(
             "usd_krw_change_percent": usd_krw_change_percent,
         }
     )
-    return summary, calculate_asset_mix(values)
+    return summary, calculate_asset_mix(values), _asset_allocations(rows_with_values)
 
 
 @router.get("")
@@ -187,8 +243,9 @@ async def get_summary(
     if refresh:
         await refresh_fx_rate_if_stale(db, ttl_seconds=fx_ttl_seconds)
 
-    summary, asset_mix = build_summary(db)
+    summary, asset_mix, asset_allocations = build_summary(db)
     return {
         **summary.model_dump(),
         "asset_mix": asset_mix,
+        "asset_allocations": asset_allocations,
     }

@@ -1,3 +1,13 @@
+export type AssetAllocation = {
+  asset_id: number
+  asset_type: string
+  symbol: string | null
+  name: string
+  label: string
+  value_krw: number
+  percent: number
+}
+
 export type PortfolioSummary = {
   net_worth_krw: number
   gross_assets_krw: number
@@ -6,6 +16,7 @@ export type PortfolioSummary = {
   usd_krw_rate: number | null
   usd_krw_change_percent: number | null
   asset_mix: Record<string, number>
+  asset_allocations: AssetAllocation[]
 }
 
 export type Account = {

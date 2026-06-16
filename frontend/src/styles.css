@@ -244,6 +244,104 @@ button {
   gap: 8px;
 }
 
+.asset-mix-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.allocation-chart {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(240px, 0.9fr);
+}
+
+.allocation-pie-svg {
+  aspect-ratio: 360 / 264;
+  display: block;
+  max-width: 520px;
+  overflow: visible;
+  width: 100%;
+}
+
+.allocation-slice {
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
+.allocation-label-line {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-linecap: round;
+  stroke-width: 1;
+}
+
+.allocation-callout text {
+  pointer-events: none;
+}
+
+.allocation-label-name {
+  fill: #111827;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.allocation-label-percent {
+  fill: #64748b;
+  font-size: 11px;
+}
+
+.allocation-details {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.allocation-meter {
+  background: #e2e8f0;
+  border-radius: 999px;
+  display: flex;
+  height: 18px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.allocation-segment {
+  display: block;
+  flex: 0 0 auto;
+  min-width: 2px;
+}
+
+.allocation-legend {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.allocation-legend-row {
+  align-items: center;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.allocation-swatch {
+  border-radius: 999px;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
+.allocation-legend-row strong {
+  color: #111827;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .mix-row {
   align-items: center;
   border-top: 1px solid #eef2f7;
@@ -588,6 +686,16 @@ select:focus {
 
   .currency-toggle button {
     flex: 1;
+  }
+
+  .allocation-chart,
+  .allocation-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .allocation-pie-svg {
+    justify-self: center;
+    width: min(360px, 100%);
   }
 
   .primary-button,
