@@ -17,6 +17,9 @@ Market data sync runs automatically while the backend is running. The default
 interval is 5 minutes and can be changed with
 `PORTFOLIO_MARKET_SYNC_INTERVAL_SECONDS`.
 
+Backups also run automatically while the backend is running. The default
+interval is 1 hour and can be changed with `PORTFOLIO_BACKUP_INTERVAL_SECONDS`.
+
 ## Frontend Setup
 
 ```bash
@@ -57,5 +60,5 @@ npm run lint
 2. Add a `1,000,000` KRW deposit transaction.
 3. Confirm the dashboard net worth shows `1,000,000 원`.
 4. Create a net worth goal for `100,000,000 원`.
-5. Trigger a manual backup and confirm the backup record and path appear.
+5. Confirm an automatic backup record and path appear after the backend has been running.
 6. Check market status and confirm failures are shown without crashing.

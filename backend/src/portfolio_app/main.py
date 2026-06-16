@@ -17,6 +17,7 @@ from portfolio_app.api import (
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
+from portfolio_app.services.backup_scheduler import start_backup_task, stop_backup_task
 from portfolio_app.services.backups import create_recorded_backup
 from portfolio_app.services.market_sync_scheduler import (
     start_market_sync_task,
@@ -43,9 +44,11 @@ def _validation_error_message(error: dict[str, object]) -> str:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     market_sync_task = start_market_sync_task(app)
+    backup_task = start_backup_task(app)
     try:
         yield
     finally:
+        await stop_backup_task(backup_task)
         await stop_market_sync_task(market_sync_task)
 
 

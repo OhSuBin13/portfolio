@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { apiGet, apiPost } from "../api"
+import { apiGet } from "../api"
 import type { BackupRecord, MarketDataStatus } from "../types"
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -13,15 +13,13 @@ const latestBackupFrom = (records: BackupRecord[]) =>
     null,
   )
 
+const MARKET_STATUS_POLL_INTERVAL_MS = 60_000
+
 export function SettingsPage() {
   const [alphaVantageKey, setAlphaVantageKey] = useState("")
   const [backups, setBackups] = useState<BackupRecord[]>([])
   const [marketStatuses, setMarketStatuses] = useState<MarketDataStatus[]>([])
   const [loadError, setLoadError] = useState("")
-  const [backupMessage, setBackupMessage] = useState("")
-  const [backupError, setBackupError] = useState("")
-  const [isBackingUp, setIsBackingUp] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const refreshBackups = useCallback(async () => {
     const data = await apiGet<BackupRecord[]>("/api/backups")
@@ -35,7 +33,7 @@ export function SettingsPage() {
     return data
   }, [])
 
-  const refreshAll = useCallback(async () => {
+  const refreshStatusPanels = useCallback(async () => {
     await Promise.all([refreshBackups(), refreshMarketStatuses()])
   }, [refreshBackups, refreshMarketStatuses])
 
@@ -52,34 +50,15 @@ export function SettingsPage() {
       .catch((err) => setLoadError(getErrorMessage(err)))
   }, [])
 
-  const handleBackup = async () => {
-    setBackupMessage("")
-    setBackupError("")
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      refreshStatusPanels()
+        .then(() => setLoadError(""))
+        .catch((err) => setLoadError(getErrorMessage(err)))
+    }, MARKET_STATUS_POLL_INTERVAL_MS)
 
-    try {
-      setIsBackingUp(true)
-      const created = await apiPost<BackupRecord>("/api/backups")
-      await refreshBackups()
-      setBackupMessage(`백업을 만들었습니다. 경로: ${created.path}`)
-    } catch (err) {
-      setBackupError(getErrorMessage(err))
-    } finally {
-      setIsBackingUp(false)
-    }
-  }
-
-  const handleRefresh = async () => {
-    setLoadError("")
-
-    try {
-      setIsRefreshing(true)
-      await refreshAll()
-    } catch (err) {
-      setLoadError(getErrorMessage(err))
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
+    return () => window.clearInterval(intervalId)
+  }, [refreshStatusPanels])
 
   const latestBackup = latestBackupFrom(backups)
 
@@ -121,30 +100,20 @@ export function SettingsPage() {
             <span>{marketStatuses.length.toLocaleString("ko-KR")}개 상태</span>
           </div>
           <p className="form-message">
-            백엔드가 앱 실행 중 5분마다 시세를 자동으로 갱신합니다. 이 화면에서는 최신 상태를 확인합니다.
+            백엔드가 앱 실행 중 5분마다 시세를 자동으로 갱신합니다. 이 화면은 60초마다 최신 상태를
+            다시 확인합니다.
           </p>
-          <div className="action-row">
-            <button
-              className="secondary-button"
-              disabled={isRefreshing}
-              onClick={handleRefresh}
-              type="button"
-            >
-              {isRefreshing ? "새로고침 중" : "상태 새로고침"}
-            </button>
-          </div>
         </section>
 
         <section className="panel form-panel">
           <div className="section-heading">
-            <h3>백업</h3>
+            <h3>자동 백업</h3>
             <span>{backups.length.toLocaleString("ko-KR")}개</span>
           </div>
-          <button className="secondary-button" disabled={isBackingUp} onClick={handleBackup} type="button">
-            {isBackingUp ? "백업 중" : "수동 백업 만들기"}
-          </button>
-          {backupError && <p className="form-message error-text">{backupError}</p>}
-          {backupMessage && <p className="form-message success-text">{backupMessage}</p>}
+          <p className="form-message">
+            백엔드가 앱 실행 중 1시간마다 백업을 자동으로 만듭니다. 이 화면은 60초마다 최신 백업
+            기록을 다시 확인합니다.
+          </p>
           {latestBackup ? (
             <div className="mix-list">
               <div className="mix-row">
