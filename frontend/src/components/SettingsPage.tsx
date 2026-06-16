@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
-import type { BackupRecord, MarketDataStatus, MarketSyncResult } from "../types"
+import type { BackupRecord, MarketDataStatus } from "../types"
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -17,14 +17,10 @@ export function SettingsPage() {
   const [alphaVantageKey, setAlphaVantageKey] = useState("")
   const [backups, setBackups] = useState<BackupRecord[]>([])
   const [marketStatuses, setMarketStatuses] = useState<MarketDataStatus[]>([])
-  const [syncResult, setSyncResult] = useState<MarketSyncResult | null>(null)
   const [loadError, setLoadError] = useState("")
   const [backupMessage, setBackupMessage] = useState("")
   const [backupError, setBackupError] = useState("")
-  const [syncMessage, setSyncMessage] = useState("")
-  const [syncError, setSyncError] = useState("")
   const [isBackingUp, setIsBackingUp] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const refreshBackups = useCallback(async () => {
@@ -72,24 +68,6 @@ export function SettingsPage() {
     }
   }
 
-  const handleSync = async () => {
-    setSyncMessage("")
-    setSyncError("")
-    setSyncResult(null)
-
-    try {
-      setIsSyncing(true)
-      const result = await apiPost<MarketSyncResult>("/api/market-data/sync")
-      setSyncResult(result)
-      await refreshMarketStatuses()
-      setSyncMessage(`시세 동기화를 완료했습니다. 결과 ${result.results.length.toLocaleString("ko-KR")}건`)
-    } catch (err) {
-      setSyncError(getErrorMessage(err))
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
   const handleRefresh = async () => {
     setLoadError("")
 
@@ -109,7 +87,7 @@ export function SettingsPage() {
     <section className="screen-stack">
       <header className="page-header">
         <h2>설정</h2>
-        <p>시세 동기화, 백업, 서버 설정 상태를 관리합니다.</p>
+        <p>시세 상태, 백업, 서버 설정 상태를 관리합니다.</p>
       </header>
 
       {loadError && <div className="error">{loadError}</div>}
@@ -139,13 +117,13 @@ export function SettingsPage() {
       <div className="form-grid">
         <section className="panel form-panel">
           <div className="section-heading">
-            <h3>시세 동기화</h3>
+            <h3>자동 시세 갱신</h3>
             <span>{marketStatuses.length.toLocaleString("ko-KR")}개 상태</span>
           </div>
+          <p className="form-message">
+            백엔드가 앱 실행 중 5분마다 시세를 자동으로 갱신합니다. 이 화면에서는 최신 상태를 확인합니다.
+          </p>
           <div className="action-row">
-            <button className="primary-button" disabled={isSyncing} onClick={handleSync} type="button">
-              {isSyncing ? "동기화 중" : "시세 동기화"}
-            </button>
             <button
               className="secondary-button"
               disabled={isRefreshing}
@@ -155,32 +133,6 @@ export function SettingsPage() {
               {isRefreshing ? "새로고침 중" : "상태 새로고침"}
             </button>
           </div>
-          {syncError && <p className="form-message error-text">{syncError}</p>}
-          {syncMessage && <p className="form-message success-text">{syncMessage}</p>}
-          {syncResult && syncResult.results.length > 0 && (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>자산 ID</th>
-                    <th>심볼</th>
-                    <th>상태</th>
-                    <th>오류</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {syncResult.results.map((result) => (
-                    <tr key={`${result.asset_id}-${result.symbol}`}>
-                      <td>{result.asset_id.toLocaleString("ko-KR")}</td>
-                      <td>{result.symbol}</td>
-                      <td>{result.status}</td>
-                      <td>{result.error_message || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </section>
 
         <section className="panel form-panel">

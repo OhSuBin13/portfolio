@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
+from portfolio_app.config import Settings
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
     FxRateProvider,
@@ -211,11 +212,10 @@ def list_market_data_status(db: Db) -> list[dict[str, object]]:
     return [_snapshot_response(row) for row in rows]
 
 
-async def _sync_market_data(
-    request: Request,
+async def sync_market_data_for_settings(
+    settings: Settings,
     db: sqlite3.Connection,
 ) -> dict[str, list[dict[str, object]]]:
-    settings = request.app.state.settings
     assets = db.execute(
         """
         select *
@@ -304,4 +304,4 @@ async def _sync_market_data(
 
 @router.post("/sync")
 def sync_market_data(request: Request, db: Db) -> dict[str, list[dict[str, object]]]:
-    return asyncio.run(_sync_market_data(request, db))
+    return asyncio.run(sync_market_data_for_settings(request.app.state.settings, db))

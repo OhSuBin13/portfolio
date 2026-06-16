@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,10 @@ from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.services.backups import create_recorded_backup
+from portfolio_app.services.market_sync_scheduler import (
+    start_market_sync_task,
+    stop_market_sync_task,
+)
 
 LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
@@ -32,6 +38,15 @@ def _validation_error_message(error: dict[str, object]) -> str:
     if "parsing" in error_type or "type" in error_type:
         return f"{field}: 입력값 형식이 올바르지 않습니다."
     return f"{field}: 입력값이 올바르지 않습니다."
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    market_sync_task = start_market_sync_task(app)
+    try:
+        yield
+    finally:
+        await stop_market_sync_task(market_sync_task)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -57,7 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             db.close()
 
-    app = FastAPI(title="Personal Finance Portfolio", version="0.1.0")
+    app = FastAPI(title="Personal Finance Portfolio", version="0.1.0", lifespan=_lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=LOCAL_FRONTEND_ORIGINS,

@@ -30,6 +30,8 @@ assert.ok(source.includes("<ArrowDown"), "Dashboard should show a down arrow for
 assert.ok(source.includes("<ArrowUp"), "Dashboard should show an up arrow for positive FX movement")
 assert.ok(source.includes("changePercent < 0"), "Negative FX movement should choose the down state")
 assert.ok(source.includes("changePercent > 0"), "Positive FX movement should choose the up state")
+assert.ok(source.includes("자동 시세 갱신 후"), "Missing FX message should refer to automatic sync")
+assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should not refer to manual sync")
 
 for (const field of [
   "summary.net_worth_krw",

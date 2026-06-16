@@ -104,7 +104,7 @@ export function Dashboard() {
 
       {error && <div className="error">{error}</div>}
       {displayCurrency === "USD" && summary.usd_krw_rate === null && (
-        <p className="form-message error-text">USD 환산 환율이 없습니다. 시세 동기화 후 다시 확인하세요.</p>
+        <p className="form-message error-text">USD 환산 환율이 없습니다. 자동 시세 갱신 후 다시 확인하세요.</p>
       )}
 
       <div className="summary-grid">

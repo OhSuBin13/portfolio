@@ -13,6 +13,10 @@ python -m venv .venv
 
 The API is served at `http://127.0.0.1:8000`.
 
+Market data sync runs automatically while the backend is running. The default
+interval is 5 minutes and can be changed with
+`PORTFOLIO_MARKET_SYNC_INTERVAL_SECONDS`.
+
 ## Frontend Setup
 
 ```bash
@@ -54,4 +58,4 @@ npm run lint
 3. Confirm the dashboard net worth shows `1,000,000 원`.
 4. Create a net worth goal for `100,000,000 원`.
 5. Trigger a manual backup and confirm the backup record and path appear.
-6. Run market sync or status and confirm failures are shown without crashing.
+6. Check market status and confirm failures are shown without crashing.
