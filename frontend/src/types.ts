@@ -19,6 +19,33 @@ export type PortfolioSummary = {
   asset_allocations: AssetAllocation[]
 }
 
+export type PortfolioSnapshot = {
+  id: number
+  snapshot_date: string
+  net_worth_krw: number
+  gross_assets_krw: number
+  debt_krw: number
+  monthly_income_krw: number
+  asset_mix: Record<string, number>
+  source: "scheduled" | "manual" | "market_sync" | "import"
+  created_at: string
+  updated_at: string
+}
+
+export type GrowthHistoryRow = {
+  period: string
+  start_date: string
+  end_date: string
+  starting_net_worth_krw: number
+  ending_net_worth_krw: number
+  external_cash_flow_krw: number
+  dividend_interest_krw: number
+  profit_krw: number
+  growth_rate: number | null
+  cumulative_profit_krw: number
+  cumulative_growth_rate: number | null
+}
+
 export type Account = {
   id: number
   name: string

@@ -149,6 +149,20 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.growth-header {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.refresh-button {
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.refresh-button svg {
+  flex: 0 0 auto;
+}
+
 .currency-toggle {
   background: #eef2f7;
   border: 1px solid #cbd5e1;
@@ -356,6 +370,37 @@ button {
   font-size: 14px;
   overflow-wrap: anywhere;
   text-align: right;
+}
+
+.growth-status {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.growth-status strong {
+  color: #111827;
+  font-size: 14px;
+  text-align: right;
+}
+
+.growth-table {
+  min-width: 920px;
+}
+
+.signed-positive {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.signed-negative {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.signed-flat {
+  color: #475569;
 }
 
 .progress-list {
@@ -674,6 +719,7 @@ select:focus {
 
   .summary-grid,
   .dashboard-header,
+  .growth-header,
   .form-grid,
   .field-row,
   .field-row.triple {
@@ -702,6 +748,15 @@ select:focus {
   .secondary-button,
   .danger-button {
     width: 100%;
+  }
+
+  .growth-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .growth-status strong {
+    text-align: left;
   }
 
   .action-row {
