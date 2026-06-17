@@ -21,7 +21,7 @@ async def get_summary(
         await refresh_fx_rate_if_stale(db, ttl_seconds=fx_ttl_seconds)
 
     try:
-        summary, asset_mix, asset_allocations = build_summary(db)
+        result = build_summary(db)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -29,7 +29,7 @@ async def get_summary(
         ) from exc
 
     return {
-        **summary.model_dump(),
-        "asset_mix": asset_mix,
-        "asset_allocations": asset_allocations,
+        **result.summary.model_dump(),
+        "asset_mix": result.asset_mix,
+        "asset_allocations": result.asset_allocations,
     }

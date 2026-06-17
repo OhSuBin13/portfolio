@@ -61,8 +61,8 @@ def create_or_refresh_today_snapshot(
     if existing is not None and not refresh:
         return existing
 
-    summary, asset_mix, _asset_allocations = build_summary(db, today=snapshot_date)
-    asset_mix_json = json.dumps(asset_mix, ensure_ascii=False, sort_keys=True)
+    summary_result = build_summary(db, today=snapshot_date)
+    asset_mix_json = json.dumps(summary_result.asset_mix, ensure_ascii=False, sort_keys=True)
 
     with db:
         db.execute(
@@ -83,10 +83,10 @@ def create_or_refresh_today_snapshot(
             """,
             (
                 snapshot_date.isoformat(),
-                summary.net_worth_krw,
-                summary.gross_assets_krw,
-                summary.debt_krw,
-                summary.monthly_income_krw,
+                summary_result.summary.net_worth_krw,
+                summary_result.summary.gross_assets_krw,
+                summary_result.summary.debt_krw,
+                summary_result.summary.monthly_income_krw,
                 asset_mix_json,
                 source,
             ),

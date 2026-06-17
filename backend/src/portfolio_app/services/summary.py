@@ -1,9 +1,17 @@
 import sqlite3
+from dataclasses import dataclass
 from datetime import date
 
 from portfolio_app.finance import calculate_asset_mix, calculate_net_worth
 from portfolio_app.models import AssetAllocation, HoldingValue, PortfolioSummary
 from portfolio_app.services.fx_rates import latest_fx_rate
+
+
+@dataclass(frozen=True)
+class SummaryResult:
+    summary: PortfolioSummary
+    asset_mix: dict[str, float]
+    asset_allocations: list[dict[str, object]]
 
 
 def _best_fx_rate(row: sqlite3.Row) -> float | None:
@@ -162,7 +170,7 @@ def build_summary(
     db: sqlite3.Connection,
     *,
     today: date | None = None,
-) -> tuple[PortfolioSummary, dict[str, float], list[dict[str, object]]]:
+) -> SummaryResult:
     rows = db.execute(
         """
         select h.quantity,
@@ -214,4 +222,8 @@ def build_summary(
             "usd_krw_change_percent": usd_krw_change_percent,
         }
     )
-    return summary, calculate_asset_mix(values), _asset_allocations(rows_with_values)
+    return SummaryResult(
+        summary=summary,
+        asset_mix=calculate_asset_mix(values),
+        asset_allocations=_asset_allocations(rows_with_values),
+    )

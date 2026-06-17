@@ -27,14 +27,14 @@ def create_test_client(tmp_path):
 def test_build_summary_returns_no_usd_rate_when_rate_is_missing(tmp_path):
     db = create_summary_db(tmp_path)
     try:
-        summary, asset_mix, asset_allocations = build_summary(db)
+        result = build_summary(db)
     finally:
         db.close()
 
-    assert summary.usd_krw_rate is None
-    assert summary.usd_krw_change_percent is None
-    assert asset_mix == {}
-    assert asset_allocations == []
+    assert result.summary.usd_krw_rate is None
+    assert result.summary.usd_krw_change_percent is None
+    assert result.asset_mix == {}
+    assert result.asset_allocations == []
 
 
 def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
@@ -54,12 +54,12 @@ def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
         )
         db.commit()
 
-        summary, _asset_mix, _asset_allocations = build_summary(db)
+        result = build_summary(db)
     finally:
         db.close()
 
-    assert summary.usd_krw_rate == 1390.5
-    assert summary.usd_krw_change_percent == -0.15
+    assert result.summary.usd_krw_rate == 1390.5
+    assert result.summary.usd_krw_change_percent == -0.15
 
 
 def test_build_summary_exposes_stock_etf_allocations_by_ticker(tmp_path):
@@ -120,12 +120,12 @@ def test_build_summary_exposes_stock_etf_allocations_by_ticker(tmp_path):
             average_cost=100,
         )
 
-        _summary, asset_mix, asset_allocations = build_summary(db)
+        result = build_summary(db)
     finally:
         db.close()
 
-    assert asset_mix == {"cash": 25.0, "stock_etf": 75.0}
-    assert asset_allocations == [
+    assert result.asset_mix == {"cash": 25.0, "stock_etf": 75.0}
+    assert result.asset_allocations == [
         {
             "asset_id": cash_asset_id,
             "asset_type": "cash",

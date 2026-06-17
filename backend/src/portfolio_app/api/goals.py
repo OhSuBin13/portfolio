@@ -72,7 +72,7 @@ def list_goals(db: Db) -> list[dict[str, object]]:
 @router.get("/progress")
 def list_goal_progress(db: Db) -> list[dict[str, object]]:
     try:
-        summary, _asset_mix, _asset_allocations = build_summary(db)
+        result = build_summary(db)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -84,7 +84,9 @@ def list_goal_progress(db: Db) -> list[dict[str, object]]:
     for row in rows:
         goal = _goal_from_row(row)
         current_amount = (
-            summary.net_worth_krw if goal.type == "net_worth" else summary.monthly_income_krw
+            result.summary.net_worth_krw
+            if goal.type == "net_worth"
+            else result.summary.monthly_income_krw
         )
         progress_rows.append(calculate_goal_progress(goal, current_amount).model_dump())
     return progress_rows
