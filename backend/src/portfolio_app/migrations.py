@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -87,6 +87,60 @@ def _create_asset_indexes(db: sqlite3.Connection) -> None:
         where symbol is not null
         """
     )
+
+
+def _table_exists(db: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        db.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _create_summary_indexes(db: sqlite3.Connection) -> None:
+    if _table_exists(db, "transactions"):
+        db.execute(
+            """
+            create index if not exists idx_transactions_summary_holding_fx
+            on transactions(account_id, asset_id, occurred_on desc, id desc)
+            where fx_rate_to_krw is not null
+            """
+        )
+        db.execute(
+            """
+            create index if not exists idx_transactions_summary_income_month
+            on transactions(occurred_on, id)
+            where type in ('dividend', 'interest')
+            """
+        )
+        db.execute(
+            """
+            create index if not exists idx_transactions_summary_usd_fx
+            on transactions(occurred_on desc, id desc)
+            where currency = 'USD'
+              and fx_rate_to_krw is not null
+              and fx_rate_to_krw > 0
+            """
+        )
+
+    if _table_exists(db, "price_snapshots"):
+        db.execute(
+            """
+            create index if not exists idx_price_snapshots_summary_asset_latest
+            on price_snapshots(asset_id, fetched_at desc, id desc)
+            where status in ('ok', 'manual', 'stale')
+            """
+        )
+
+    if _table_exists(db, "fx_rates"):
+        db.execute(
+            """
+            create index if not exists idx_fx_rates_summary_pair_latest
+            on fx_rates(base_currency, quote_currency, fetched_at desc, id desc)
+            """
+        )
 
 
 def _migrate_from_1_to_2(db: sqlite3.Connection) -> None:
@@ -193,6 +247,12 @@ def _migrate_from_5_to_6(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (6)")
 
 
+def _migrate_from_6_to_7(db: sqlite3.Connection) -> None:
+    with db:
+        _create_summary_indexes(db)
+        db.execute("insert or ignore into schema_migrations(version) values (7)")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -231,6 +291,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 5:
         _migrate_from_5_to_6(db)
         version = 6
+
+    if version == 6:
+        _migrate_from_6_to_7(db)
+        version = 7
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

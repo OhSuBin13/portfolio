@@ -54,6 +54,20 @@ create table if not exists transactions (
   created_at text not null default current_timestamp
 );
 
+create index if not exists idx_transactions_summary_holding_fx
+on transactions(account_id, asset_id, occurred_on desc, id desc)
+where fx_rate_to_krw is not null;
+
+create index if not exists idx_transactions_summary_income_month
+on transactions(occurred_on, id)
+where type in ('dividend', 'interest');
+
+create index if not exists idx_transactions_summary_usd_fx
+on transactions(occurred_on desc, id desc)
+where currency = 'USD'
+  and fx_rate_to_krw is not null
+  and fx_rate_to_krw > 0;
+
 create table if not exists price_snapshots (
   id integer primary key,
   asset_id integer not null references assets(id) on delete cascade,
@@ -66,6 +80,10 @@ create table if not exists price_snapshots (
   error_message text not null default ''
 );
 
+create index if not exists idx_price_snapshots_summary_asset_latest
+on price_snapshots(asset_id, fetched_at desc, id desc)
+where status in ('ok', 'manual', 'stale');
+
 create table if not exists fx_rates (
   id integer primary key,
   base_currency text not null check (base_currency in ('USD','KRW')),
@@ -76,6 +94,9 @@ create table if not exists fx_rates (
   change_percent real,
   unique(base_currency, quote_currency, fetched_at)
 );
+
+create index if not exists idx_fx_rates_summary_pair_latest
+on fx_rates(base_currency, quote_currency, fetched_at desc, id desc);
 
 create table if not exists goals (
   id integer primary key,
