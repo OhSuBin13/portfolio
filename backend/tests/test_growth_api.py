@@ -29,10 +29,10 @@ def insert_snapshot(db, snapshot_date: str, net_worth_krw: float) -> None:
     db.commit()
 
 
-def test_create_today_snapshot_endpoint_returns_snapshot(tmp_path):
+def test_create_today_snapshot_endpoint_defaults_to_manual_source(tmp_path):
     client = create_test_client(tmp_path)
 
-    response = client.post("/api/growth/snapshots/today", json={"source": "manual"})
+    response = client.post("/api/growth/snapshots/today")
 
     assert response.status_code == 201
     payload = response.json()
@@ -42,6 +42,15 @@ def test_create_today_snapshot_endpoint_returns_snapshot(tmp_path):
     assert payload["debt_krw"] == 0
     assert payload["asset_mix"] == {}
     assert payload["source"] == "manual"
+
+
+def test_create_today_snapshot_endpoint_accepts_explicit_source(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post("/api/growth/snapshots/today", json={"source": "import"})
+
+    assert response.status_code == 201
+    assert response.json()["source"] == "import"
 
 
 def test_list_snapshots_endpoint_returns_date_order(tmp_path):

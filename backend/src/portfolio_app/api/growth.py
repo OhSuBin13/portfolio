@@ -32,9 +32,10 @@ class TodaySnapshotRequest(BaseModel):
     response_model=PortfolioSnapshot,
     status_code=status.HTTP_201_CREATED,
 )
-def create_today_snapshot(payload: TodaySnapshotRequest, db: Db) -> PortfolioSnapshot:
+def create_today_snapshot(db: Db, payload: TodaySnapshotRequest | None = None) -> PortfolioSnapshot:
+    snapshot_request = payload or TodaySnapshotRequest()
     try:
-        return create_or_refresh_today_snapshot(db, source=payload.source)
+        return create_or_refresh_today_snapshot(db, source=snapshot_request.source)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
