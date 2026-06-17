@@ -66,12 +66,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if app_settings.database_path.exists():
         db = connect(app_settings.database_path)
         try:
-            create_recorded_backup(
-                db,
-                db_path=app_settings.database_path,
-                backup_dir=app_settings.backup_dir,
-                reason="startup",
-            )
+            # create_recorded_backup(
+            #     db,
+            #     db_path=app_settings.database_path,
+            #     backup_dir=app_settings.backup_dir,
+            #     reason="startup",
+            # )
+            pass
         finally:
             db.close()
 

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -5,6 +7,7 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.services.market_data import (
+    AlphaVantageProvider,
     FallbackFxRateProvider,
     FrankfurterProvider,
     MarketQuote,
@@ -37,6 +40,36 @@ def test_keep_last_good_quote_uses_previous_value_on_error():
     assert result.price == 500.0
     assert result.status == "stale"
     assert result.error_message == "rate limit"
+
+
+@pytest.mark.asyncio
+async def test_alpha_vantage_logs_unexpected_payload_without_api_key(httpx_mock, caplog):
+    secret_key = "secret-alpha-key-123"
+    httpx_mock.add_response(json={"Information": "rate limit reached"})
+    provider = AlphaVantageProvider(secret_key)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="portfolio_app.services.market_data"),
+        pytest.raises(ValueError, match="시세 정보를 찾을 수 없습니다"),
+    ):
+        await provider.fetch_equity_quote("mu")
+
+    records = [
+        record
+        for record in caplog.records
+        if record.message.startswith("Alpha Vantage quote response missing Global Quote")
+    ]
+    assert len(records) == 1
+    assert records[0].symbol == "MU"
+    assert records[0].payload_summary == {
+        "keys": ["Information"],
+        "messages": {"Information": "rate limit reached"},
+    }
+    assert "symbol=MU" in records[0].message
+    assert "rate limit reached" in records[0].message
+    logged = "\n".join(str(record.__dict__) for record in caplog.records)
+    assert secret_key not in logged
+    assert "apikey" not in logged.lower()
 
 
 @pytest.mark.asyncio

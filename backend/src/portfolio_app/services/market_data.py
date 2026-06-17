@@ -1,3 +1,4 @@
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ NAVER_USD_KRW_URL = (
     "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
 )
 NUMBER_PATTERN = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?")
+ALPHA_VANTAGE_MESSAGE_KEYS = ("Note", "Information", "Error Message")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,6 +65,21 @@ def _number_from_text(text: str, message: str) -> float:
     if match is None:
         raise ValueError(message)
     return _finite_number(match.group(0).replace(",", ""), message)
+
+
+def _alpha_vantage_payload_summary(payload: Any) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {"payload_type": type(payload).__name__}
+
+    summary: dict[str, object] = {"keys": sorted(str(key) for key in payload)}
+    messages = {
+        key: str(payload[key])
+        for key in ALPHA_VANTAGE_MESSAGE_KEYS
+        if isinstance(payload.get(key), str | int | float | bool)
+    }
+    if messages:
+        summary["messages"] = messages
+    return summary
 
 
 class _NaverExchangeParser(HTMLParser):
@@ -261,12 +279,33 @@ class AlphaVantageProvider:
             response.raise_for_status()
             payload = response.json()
 
-        quote = payload.get("Global Quote")
+        payload_summary = _alpha_vantage_payload_summary(payload)
+        quote = payload.get("Global Quote") if isinstance(payload, dict) else None
         if not isinstance(quote, dict):
+            logger.warning(
+                "Alpha Vantage quote response missing Global Quote: symbol=%s "
+                "payload_summary=%s",
+                normalized_symbol,
+                payload_summary,
+                extra={
+                    "symbol": normalized_symbol,
+                    "payload_summary": payload_summary,
+                },
+            )
             raise ValueError("Alpha Vantage 응답에서 시세 정보를 찾을 수 없습니다.")
 
         price = quote.get("05. price")
         if price is None:
+            quote_summary = _alpha_vantage_payload_summary(quote)
+            logger.warning(
+                "Alpha Vantage quote response missing price: symbol=%s payload_summary=%s",
+                normalized_symbol,
+                quote_summary,
+                extra={
+                    "symbol": normalized_symbol,
+                    "payload_summary": quote_summary,
+                },
+            )
             raise ValueError("Alpha Vantage 응답에서 가격을 찾을 수 없습니다.")
 
         return MarketQuote(
