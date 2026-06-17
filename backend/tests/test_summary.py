@@ -5,6 +5,7 @@ from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, create_asset, upsert_holding
+from portfolio_app.services import summary as summary_service
 from portfolio_app.services.summary import build_summary
 
 
@@ -22,6 +23,25 @@ def create_test_client(tmp_path):
     )
     app = create_app(settings=settings)
     return TestClient(app)
+
+
+def test_build_summary_from_rows_calculates_empty_summary_without_db():
+    build_summary_from_rows = getattr(summary_service, "build_summary_from_rows", None)
+    assert build_summary_from_rows is not None
+
+    result = build_summary_from_rows(
+        holding_rows=[],
+        income_rows=[],
+        usd_krw_rate=1390.5,
+        usd_krw_change_percent=-0.15,
+    )
+
+    assert result.summary.net_worth_krw == 0
+    assert result.summary.monthly_income_krw == 0
+    assert result.summary.usd_krw_rate == 1390.5
+    assert result.summary.usd_krw_change_percent == -0.15
+    assert result.asset_mix == {}
+    assert result.asset_allocations == []
 
 
 def test_build_summary_returns_no_usd_rate_when_rate_is_missing(tmp_path):
