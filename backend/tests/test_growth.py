@@ -209,6 +209,31 @@ def test_growth_rate_is_missing_when_starting_net_worth_is_zero(tmp_path):
     assert rows[0].cumulative_growth_rate is None
 
 
+def test_cumulative_profit_accumulates_returned_rows_when_periods_are_missing(tmp_path):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 50_000_000)
+        insert_snapshot(db, "2026-06-30", 51_000_000)
+        insert_snapshot(db, "2026-08-01", 56_000_000)
+        insert_snapshot(db, "2026-08-31", 57_000_000)
+
+        rows = build_growth_history(
+            db,
+            period="monthly",
+            from_value="2026-06",
+            to_value="2026-08",
+        )
+    finally:
+        db.close()
+
+    assert [row.period for row in rows] == ["2026-06", "2026-08"]
+    assert rows[0].profit_krw == 1_000_000
+    assert rows[0].cumulative_profit_krw == 1_000_000
+    assert rows[1].profit_krw == 1_000_000
+    assert rows[1].cumulative_profit_krw == 2_000_000
+    assert rows[1].cumulative_growth_rate == pytest.approx(0.04)
+
+
 def test_annual_history_uses_annual_snapshots_and_cashflow(tmp_path):
     db = create_growth_db(tmp_path)
     try:

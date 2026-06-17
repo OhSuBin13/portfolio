@@ -221,9 +221,8 @@ def build_growth_history(
         grouped[_period_key(snapshot.snapshot_date, period)].append(snapshot)
 
     rows: list[GrowthHistoryRow] = []
-    cumulative_external_cash_flow = 0.0
+    cumulative_profit = 0.0
     first_baseline: float | None = None
-    latest_ending: float | None = None
 
     for key in sorted(grouped):
         period_snapshots = grouped[key]
@@ -240,13 +239,7 @@ def build_growth_history(
 
         if first_baseline is None:
             first_baseline = starting.net_worth_krw if starting.net_worth_krw > 0 else None
-        cumulative_external_cash_flow += external_cash_flow
-        latest_ending = ending.net_worth_krw
-        cumulative_profit = (
-            latest_ending - first_baseline - cumulative_external_cash_flow
-            if first_baseline is not None
-            else profit
-        )
+        cumulative_profit += profit
         cumulative_growth_rate = (
             cumulative_profit / first_baseline
             if first_baseline is not None and first_baseline > 0
