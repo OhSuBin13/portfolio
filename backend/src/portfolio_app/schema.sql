@@ -98,3 +98,16 @@ create table if not exists settings (
   value text not null,
   updated_at text not null default current_timestamp
 );
+
+create table if not exists portfolio_snapshots (
+  id integer primary key,
+  snapshot_date text not null unique,
+  net_worth_krw real not null,
+  gross_assets_krw real not null check (gross_assets_krw >= 0),
+  debt_krw real not null check (debt_krw >= 0),
+  monthly_income_krw real not null default 0 check (monthly_income_krw >= 0),
+  asset_mix_json text not null default '{}',
+  source text not null check (source in ('scheduled','manual','market_sync','import')),
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp
+);

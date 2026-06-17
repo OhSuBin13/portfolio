@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -172,6 +172,27 @@ def _migrate_from_4_to_5(db: sqlite3.Connection) -> None:
         db.execute("pragma foreign_keys = on")
 
 
+def _migrate_from_5_to_6(db: sqlite3.Connection) -> None:
+    with db:
+        db.execute(
+            """
+            create table if not exists portfolio_snapshots (
+              id integer primary key,
+              snapshot_date text not null unique,
+              net_worth_krw real not null,
+              gross_assets_krw real not null check (gross_assets_krw >= 0),
+              debt_krw real not null check (debt_krw >= 0),
+              monthly_income_krw real not null default 0 check (monthly_income_krw >= 0),
+              asset_mix_json text not null default '{}',
+              source text not null check (source in ('scheduled','manual','market_sync','import')),
+              created_at text not null default current_timestamp,
+              updated_at text not null default current_timestamp
+            )
+            """
+        )
+        db.execute("insert or ignore into schema_migrations(version) values (6)")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -206,6 +227,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 4:
         _migrate_from_4_to_5(db)
         version = 5
+
+    if version == 5:
+        _migrate_from_5_to_6(db)
+        version = 6
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

@@ -36,6 +36,7 @@ def test_migrate_creates_core_tables(tmp_path):
         "goals",
         "backups",
         "settings",
+        "portfolio_snapshots",
     }.issubset(table_names(db))
 
 
@@ -45,7 +46,7 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [5]
+    assert migration_versions(db) == [6]
 
 
 def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
@@ -95,7 +96,7 @@ def test_migrate_removes_account_currency_from_version_4_database(tmp_path):
 
     account_columns = {row["name"] for row in db.execute("pragma table_info(accounts)").fetchall()}
     row = db.execute("select id, name, type, created_at, updated_at from accounts").fetchone()
-    assert migration_versions(db) == [4, 5]
+    assert migration_versions(db) == [4, 5, 6]
     assert "currency" not in account_columns
     assert dict(row) == {
         "id": 42,
@@ -235,7 +236,7 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
         order by type, name
         """
     ).fetchall()
-    assert migration_versions(db) == [2, 3, 4, 5]
+    assert migration_versions(db) == [2, 3, 4, 5, 6]
     assert [dict(row) for row in rows] == [
         {
             "name": "부채",
@@ -254,6 +255,48 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
     ]
 
 
+def test_migrate_upgrades_version_5_database_with_portfolio_snapshots(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table accounts (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        insert into schema_migrations(version) values (5);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    columns = {
+        row["name"]
+        for row in db.execute("pragma table_info(portfolio_snapshots)").fetchall()
+    }
+    assert migration_versions(db) == [5, 6]
+    assert {
+        "id",
+        "snapshot_date",
+        "net_worth_krw",
+        "gross_assets_krw",
+        "debt_krw",
+        "monthly_income_krw",
+        "asset_mix_json",
+        "source",
+        "created_at",
+        "updated_at",
+    }.issubset(columns)
+
+
 def test_migrate_is_idempotent(tmp_path):
     db_path = tmp_path / "portfolio.sqlite"
     db = connect(db_path)
@@ -261,7 +304,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [5]
+    assert migration_versions(db) == [6]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -270,7 +313,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [5]
+    assert migration_versions(db) == [6]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -284,7 +327,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (6)")
+    db.execute("insert into schema_migrations(version) values (7)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -321,14 +364,14 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (5)")
+    db.execute("insert into schema_migrations(version) values (6)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 6)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 7)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [5]
+    assert migration_versions(db) == [6]
 
 
 def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
@@ -377,7 +420,7 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
         order by currency
         """
     ).fetchall()
-    assert migration_versions(db) == [1, 2, 3, 4, 5]
+    assert migration_versions(db) == [1, 2, 3, 4, 5, 6]
     assert [dict(row) for row in rows] == [
         {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
         {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},
@@ -450,6 +493,36 @@ def test_holdings_require_existing_account_and_asset(tmp_path):
 
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("insert into holdings(account_id, asset_id) values (1, 1)")
+
+
+def test_portfolio_snapshots_enforce_unique_kst_date(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+
+    db.execute(
+        """
+        insert into portfolio_snapshots(
+          snapshot_date, net_worth_krw, gross_assets_krw, debt_krw,
+          monthly_income_krw, asset_mix_json, source
+        )
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("2026-06-17", 1_000_000, 1_000_000, 0, 0, "{}", "manual"),
+    )
+    db.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into portfolio_snapshots(
+              snapshot_date, net_worth_krw, gross_assets_krw, debt_krw,
+              monthly_income_krw, asset_mix_json, source
+            )
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-06-17", 2_000_000, 2_000_000, 0, 0, "{}", "manual"),
+        )
 
 
 def test_assets_allow_multiple_null_symbols_but_reject_duplicate_symbol_market(tmp_path):
