@@ -10,11 +10,10 @@ GrowthPeriod = Literal["monthly", "annual"]
 
 
 class HoldingValue(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     asset_type: AssetType
     value_krw: float = Field(ge=0, allow_inf_nan=False)
-    monthly_income_krw: float = Field(default=0, ge=0, allow_inf_nan=False)
 
 
 class PortfolioSummary(BaseModel):

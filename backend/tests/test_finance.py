@@ -7,9 +7,9 @@ from portfolio_app.models import Goal, HoldingValue, PortfolioSummary
 
 def test_net_worth_subtracts_debt_from_krw_values():
     values = [
-        HoldingValue(asset_type="cash", value_krw=1_000_000, monthly_income_krw=0),
-        HoldingValue(asset_type="stock_etf", value_krw=2_500_000, monthly_income_krw=30_000),
-        HoldingValue(asset_type="debt", value_krw=700_000, monthly_income_krw=0),
+        HoldingValue(asset_type="cash", value_krw=1_000_000),
+        HoldingValue(asset_type="stock_etf", value_krw=2_500_000),
+        HoldingValue(asset_type="debt", value_krw=700_000),
     ]
 
     summary = calculate_net_worth(values)
@@ -17,7 +17,7 @@ def test_net_worth_subtracts_debt_from_krw_values():
     assert summary.net_worth_krw == 2_800_000
     assert summary.gross_assets_krw == 3_500_000
     assert summary.debt_krw == 700_000
-    assert summary.monthly_income_krw == 30_000
+    assert summary.monthly_income_krw == 0
 
 
 def test_portfolio_summary_rejects_infinite_net_worth():
@@ -52,9 +52,9 @@ def test_net_worth_rejects_overflowed_derived_summary_values():
 
 def test_asset_mix_excludes_debt_from_positive_allocation():
     values = [
-        HoldingValue(asset_type="cash", value_krw=1_000_000, monthly_income_krw=0),
-        HoldingValue(asset_type="stock_etf", value_krw=3_000_000, monthly_income_krw=0),
-        HoldingValue(asset_type="debt", value_krw=500_000, monthly_income_krw=0),
+        HoldingValue(asset_type="cash", value_krw=1_000_000),
+        HoldingValue(asset_type="stock_etf", value_krw=3_000_000),
+        HoldingValue(asset_type="debt", value_krw=500_000),
     ]
 
     mix = calculate_asset_mix(values)
@@ -70,7 +70,7 @@ def test_asset_mix_returns_empty_for_no_values():
 
 def test_asset_mix_returns_empty_for_debt_only_values():
     values = [
-        HoldingValue(asset_type="debt", value_krw=500_000, monthly_income_krw=0),
+        HoldingValue(asset_type="debt", value_krw=500_000),
     ]
 
     assert calculate_asset_mix(values) == {}
@@ -78,9 +78,9 @@ def test_asset_mix_returns_empty_for_debt_only_values():
 
 def test_asset_mix_groups_duplicate_positive_asset_types():
     values = [
-        HoldingValue(asset_type="cash", value_krw=1_000_000, monthly_income_krw=0),
-        HoldingValue(asset_type="cash", value_krw=2_000_000, monthly_income_krw=0),
-        HoldingValue(asset_type="stock_etf", value_krw=1_000_000, monthly_income_krw=0),
+        HoldingValue(asset_type="cash", value_krw=1_000_000),
+        HoldingValue(asset_type="cash", value_krw=2_000_000),
+        HoldingValue(asset_type="stock_etf", value_krw=1_000_000),
     ]
 
     mix = calculate_asset_mix(values)
@@ -119,7 +119,7 @@ def test_goal_progress_caps_percent_at_100():
 
 def test_holding_value_rejects_unknown_asset_type():
     with pytest.raises(ValidationError):
-        HoldingValue(asset_type="debt ", value_krw=1, monthly_income_krw=0)
+        HoldingValue(asset_type="debt ", value_krw=1)
 
 
 def test_holding_value_rejects_numeric_string_value():
@@ -139,7 +139,7 @@ def test_goal_rejects_numeric_string_id():
 
 def test_holding_value_rejects_negative_value():
     with pytest.raises(ValidationError):
-        HoldingValue(asset_type="cash", value_krw=-1, monthly_income_krw=0)
+        HoldingValue(asset_type="cash", value_krw=-1)
 
 
 def test_holding_value_rejects_infinite_value():
@@ -152,9 +152,9 @@ def test_holding_value_rejects_nan_value():
         HoldingValue(asset_type="cash", value_krw=float("nan"))
 
 
-def test_holding_value_rejects_negative_monthly_income():
+def test_holding_value_rejects_monthly_income_field():
     with pytest.raises(ValidationError):
-        HoldingValue(asset_type="cash", value_krw=1, monthly_income_krw=-1)
+        HoldingValue(asset_type="cash", value_krw=1, monthly_income_krw=1)
 
 
 def test_goal_rejects_zero_target_amount():
