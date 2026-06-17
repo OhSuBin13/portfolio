@@ -33,7 +33,6 @@ const accountTypeLabel = (type: string) => accountTypes.find(([value]) => value 
 type AccountForm = {
   name: string
   type: string
-  currency: string
 }
 
 type AssetForm = {
@@ -86,12 +85,10 @@ export function HoldingsPage() {
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: "",
     type: "cash",
-    currency: "KRW",
   })
   const [accountEditForm, setAccountEditForm] = useState<AccountForm>({
     name: "",
     type: "cash",
-    currency: "KRW",
   })
   const [selectedAccountId, setSelectedAccountId] = useState("")
   const [assetForm, setAssetForm] = useState<AssetForm>({
@@ -174,7 +171,6 @@ export function HoldingsPage() {
       const created = await apiPost<Account>("/api/accounts", {
         name: accountForm.name.trim(),
         type: accountForm.type,
-        currency: accountForm.currency.trim().toUpperCase(),
       })
       await refreshAccounts()
       setBalanceForm((prev) => ({ ...prev, accountId: String(created.id) }))
@@ -187,7 +183,7 @@ export function HoldingsPage() {
 
   const clearSelectedAccount = () => {
     setSelectedAccountId("")
-    setAccountEditForm({ name: "", type: "cash", currency: "KRW" })
+    setAccountEditForm({ name: "", type: "cash" })
   }
 
   const handleAccountSelect = async (accountId: number) => {
@@ -200,7 +196,6 @@ export function HoldingsPage() {
       setAccountEditForm({
         name: account.name,
         type: account.type,
-        currency: account.currency,
       })
       setHoldingsView("account-detail")
     } catch (err) {
@@ -234,14 +229,12 @@ export function HoldingsPage() {
       const updated = await apiPut<Account>(`/api/accounts/${selectedAccountId}`, {
         name: accountEditForm.name.trim(),
         type: accountEditForm.type,
-        currency: accountEditForm.currency.trim().toUpperCase(),
       })
       await refreshAccounts()
       setSelectedAccountId(String(updated.id))
       setAccountEditForm({
         name: updated.name,
         type: updated.type,
-        currency: updated.currency,
       })
       setAccountManageMessage("계좌를 수정했습니다.")
     } catch (err) {
@@ -406,37 +399,22 @@ export function HoldingsPage() {
               placeholder="수정할 계좌를 선택하세요"
             />
           </label>
-          <div className="field-row">
-            <label>
-              계좌 유형
-              <select
-                value={accountEditForm.type}
-                onChange={(event) =>
-                  setAccountEditForm((prev) => ({ ...prev, type: event.target.value }))
-                }
-                disabled={!selectedAccountId}
-              >
-                {accountTypes.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              통화
-              <select
-                value={accountEditForm.currency}
-                onChange={(event) =>
-                  setAccountEditForm((prev) => ({ ...prev, currency: event.target.value }))
-                }
-                disabled={!selectedAccountId}
-              >
-                <option value="KRW">KRW</option>
-                <option value="USD">USD</option>
-              </select>
-            </label>
-          </div>
+          <label>
+            계좌 유형
+            <select
+              value={accountEditForm.type}
+              onChange={(event) =>
+                setAccountEditForm((prev) => ({ ...prev, type: event.target.value }))
+              }
+              disabled={!selectedAccountId}
+            >
+              {accountTypes.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="action-row">
             <button className="secondary-button" type="submit" disabled={!selectedAccountId}>
               수정 저장
@@ -481,33 +459,19 @@ export function HoldingsPage() {
                 placeholder="예: 국민 생활비"
               />
             </label>
-            <div className="field-row">
-              <label>
-                계좌 유형
-                <select
-                  value={accountForm.type}
-                  onChange={(event) => setAccountForm((prev) => ({ ...prev, type: event.target.value }))}
-                >
-                  {accountTypes.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                통화
-                <select
-                  value={accountForm.currency}
-                  onChange={(event) =>
-                    setAccountForm((prev) => ({ ...prev, currency: event.target.value }))
-                  }
-                >
-                  <option value="KRW">KRW</option>
-                  <option value="USD">USD</option>
-                </select>
-              </label>
-            </div>
+            <label>
+              계좌 유형
+              <select
+                value={accountForm.type}
+                onChange={(event) => setAccountForm((prev) => ({ ...prev, type: event.target.value }))}
+              >
+                {accountTypes.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button className="primary-button" type="submit">
               계좌 저장
             </button>
@@ -531,9 +495,7 @@ export function HoldingsPage() {
                   <div className="account-row" key={account.id}>
                     <div>
                       <strong>{account.name}</strong>
-                      <span>
-                        {accountTypeLabel(account.type)} · {account.currency}
-                      </span>
+                      <span>{accountTypeLabel(account.type)}</span>
                     </div>
                     <div className="row-actions">
                       <button

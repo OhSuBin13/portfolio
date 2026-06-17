@@ -24,7 +24,7 @@ def count_transactions(db, transaction_type):
 
 def test_buy_transaction_increases_holding_quantity(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    account_id = create_account(db, name="증권계좌", type="brokerage")
     asset_id = create_asset(
         db,
         symbol="005930.KS",
@@ -54,7 +54,7 @@ def test_buy_transaction_increases_holding_quantity(tmp_path):
 
 def test_sell_more_than_holding_is_rejected(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    account_id = create_account(db, name="증권계좌", type="brokerage")
     asset_id = create_asset(
         db,
         symbol="VOO",
@@ -91,7 +91,7 @@ def test_cashflow_transaction_on_stock_asset_is_rejected_without_changes(
     transaction_type,
 ):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    account_id = create_account(db, name="증권계좌", type="brokerage")
     asset_id = create_asset(
         db,
         symbol="005930.KS",
@@ -134,7 +134,7 @@ def test_cashflow_transaction_on_stock_asset_is_rejected_without_changes(
 @pytest.mark.parametrize("transaction_type", ["dividend", "interest"])
 def test_cash_income_transactions_increase_cash_asset(tmp_path, transaction_type):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
 
     tx_id = apply_transaction(
@@ -157,7 +157,7 @@ def test_cash_income_transactions_increase_cash_asset(tmp_path, transaction_type
 
 def test_fee_transaction_decreases_cash_asset(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
     apply_transaction(
         db,
@@ -191,7 +191,7 @@ def test_fee_transaction_decreases_cash_asset(tmp_path):
 
 def test_debt_payment_on_cash_asset_is_rejected_without_changes(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
     apply_transaction(
         db,
@@ -225,7 +225,7 @@ def test_debt_payment_on_cash_asset_is_rejected_without_changes(tmp_path):
 
 def test_buy_transaction_on_cash_asset_is_rejected_without_changes(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
 
     with pytest.raises(ValueError, match="시장성 자산"):
@@ -248,7 +248,7 @@ def test_buy_transaction_on_cash_asset_is_rejected_without_changes(tmp_path):
 
 def test_direct_holding_edit_creates_adjustment_transaction(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
 
     tx_id = edit_holding_balance(
@@ -269,7 +269,7 @@ def test_direct_holding_edit_creates_adjustment_transaction(tmp_path):
 
 def test_failed_transaction_insert_rolls_back_holding_update(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="증권계좌", type="brokerage", currency="KRW")
+    account_id = create_account(db, name="증권계좌", type="brokerage")
     asset_id = create_asset(
         db,
         symbol="TSLA",
@@ -312,7 +312,7 @@ def test_non_positive_cash_amount_is_rejected_without_changes(
     amount,
 ):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
 
     with pytest.raises(ValueError):
@@ -336,7 +336,7 @@ def test_non_positive_cash_amount_is_rejected_without_changes(
 @pytest.mark.parametrize("fx_rate_to_krw", [-1, 0])
 def test_invalid_fx_rate_is_rejected_without_changes(tmp_path, fx_rate_to_krw):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
+    account_id = create_account(db, name="원화 현금", type="cash")
     asset_id = create_asset(db, symbol=None, name="KRW", type="cash", currency="KRW", market="KR")
 
     with pytest.raises(ValueError, match="환율"):
@@ -360,7 +360,7 @@ def test_invalid_fx_rate_is_rejected_without_changes(tmp_path, fx_rate_to_krw):
 
 def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="대출", type="debt", currency="KRW")
+    account_id = create_account(db, name="대출", type="debt")
     asset_id = create_asset(
         db,
         symbol=None,
@@ -397,7 +397,7 @@ def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
 
 def test_direct_holding_edit_defaults_to_asset_currency(tmp_path):
     db = setup_db(tmp_path)
-    account_id = create_account(db, name="해외 증권", type="brokerage", currency="USD")
+    account_id = create_account(db, name="해외 증권", type="brokerage")
     asset_id = create_asset(
         db,
         symbol="VOO",

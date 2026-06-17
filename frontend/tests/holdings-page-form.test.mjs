@@ -41,7 +41,7 @@ function sourceBlock(startText, endText) {
 }
 
 const currencyBlocks = labelBlocks("통화")
-assert.equal(currencyBlocks.length, 4, "Holdings page should expose four currency controls")
+assert.equal(currencyBlocks.length, 2, "Holdings page should expose only asset and balance currency controls")
 
 for (const block of currencyBlocks) {
   assert.match(block, /<select\b/, "currency control should be a select")
@@ -67,7 +67,7 @@ assert.deepEqual(
 )
 
 const accountFormBlock = sourceBlock("const [accountForm", "const [accountEditForm")
-assert.ok(accountFormBlock.includes('currency: "KRW"'), "new cash accounts should default to KRW")
+assert.ok(!accountFormBlock.includes("currency"), "account forms should not store account currency")
 
 const balanceFormBlock = sourceBlock("const [balanceForm", "const [accountMessage")
 assert.ok(balanceFormBlock.includes('currency: "KRW"'), "initial cash balances should default to KRW")

@@ -7,7 +7,6 @@ create table if not exists accounts (
   id integer primary key,
   name text not null,
   type text not null check (type in ('cash','savings','brokerage','debt')),
-  currency text not null check (currency in ('USD','KRW')) default 'KRW',
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
 );

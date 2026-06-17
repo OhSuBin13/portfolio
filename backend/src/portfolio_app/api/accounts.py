@@ -8,7 +8,6 @@ from portfolio_app.api import created_row, get_db, require_allowed, require_non_
 from portfolio_app.repositories import create_account
 
 ACCOUNT_TYPES = {"cash", "savings", "brokerage", "debt"}
-CURRENCY_TYPES = {"USD", "KRW"}
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
@@ -19,19 +18,15 @@ class AccountCreate(BaseModel):
 
     name: str
     type: str
-    currency: str
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_account_endpoint(payload: AccountCreate, db: Db) -> dict[str, object]:
     name = require_non_empty(payload.name, "계좌 이름을 입력해 주세요.")
     account_type = require_allowed(payload.type, ACCOUNT_TYPES, "지원하지 않는 계좌 유형입니다.")
-    currency = require_allowed(
-        payload.currency.upper(), CURRENCY_TYPES, "지원하지 않는 통화입니다."
-    )
 
     try:
-        account_id = create_account(db, name=name, type=account_type, currency=currency)
+        account_id = create_account(db, name=name, type=account_type)
     except sqlite3.IntegrityError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -71,14 +66,11 @@ def delete_account(account_id: int, db: Db) -> None:
 def update_account(account_id: int, payload: AccountCreate, db: Db) -> dict[str, object]:
     name = require_non_empty(payload.name, "계좌 이름을 입력해 주세요.")
     account_type = require_allowed(payload.type, ACCOUNT_TYPES, "지원하지 않는 계좌 유형입니다.")
-    currency = require_allowed(
-        payload.currency.upper(), CURRENCY_TYPES, "지원하지 않는 통화입니다."
-    )
 
     cursor = db.execute(
-        """update accounts set name = ?, type = ?, currency = ?,
+        """update accounts set name = ?, type = ?,
         updated_at = current_timestamp where id = ?""",
-        (name, account_type, currency, account_id),
+        (name, account_type, account_id),
     )
     if cursor.rowcount == 0:
         raise HTTPException(

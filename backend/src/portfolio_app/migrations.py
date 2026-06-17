@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -61,6 +61,18 @@ def _create_assets_table_sql(table_name: str) -> str:
           currency text not null check (currency in ('USD','KRW')) default 'KRW',
           market text,
           manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        )
+        """
+
+
+def _create_accounts_table_sql(table_name: str) -> str:
+    return f"""
+        create table {table_name} (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         )
@@ -135,6 +147,31 @@ def _migrate_from_3_to_4(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (4)")
 
 
+def _migrate_from_4_to_5(db: sqlite3.Connection) -> None:
+    db.execute("pragma foreign_keys = off")
+    try:
+        with db:
+            db.execute("begin")
+            db.execute(_create_accounts_table_sql("accounts_v5"))
+            db.execute(
+                """
+                insert into accounts_v5(id, name, type, created_at, updated_at)
+                select id, name, type, created_at, updated_at
+                from accounts
+                """
+            )
+            db.execute("drop table accounts")
+            db.execute("alter table accounts_v5 rename to accounts")
+
+            violations = db.execute("pragma foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError("Database foreign key check failed during schema migration.")
+
+            db.execute("insert or ignore into schema_migrations(version) values (5)")
+    finally:
+        db.execute("pragma foreign_keys = on")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -165,6 +202,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 3:
         _migrate_from_3_to_4(db)
         version = 4
+
+    if version == 4:
+        _migrate_from_4_to_5(db)
+        version = 5
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

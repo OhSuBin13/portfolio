@@ -1,10 +1,10 @@
 import sqlite3
 
 
-def create_account(db: sqlite3.Connection, *, name: str, type: str, currency: str) -> int:
+def create_account(db: sqlite3.Connection, *, name: str, type: str) -> int:
     cursor = db.execute(
-        "insert into accounts(name, type, currency) values (?, ?, ?)",
-        (name, type, currency),
+        "insert into accounts(name, type) values (?, ?)",
+        (name, type),
     )
     db.commit()
     return int(cursor.lastrowid)

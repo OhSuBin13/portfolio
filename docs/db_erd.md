@@ -1,7 +1,7 @@
 # DB ERD
 
 이 문서는 `backend/src/portfolio_app/schema.sql`의 현재 SQLite 스키마를 기준으로 작성했습니다.
-현재 애플리케이션 스키마 버전은 `3`입니다.
+현재 애플리케이션 스키마 버전은 `5`입니다.
 
 ```mermaid
 erDiagram
@@ -20,7 +20,6 @@ erDiagram
         integer id PK
         text name
         text type
-        text currency
         text created_at
         text updated_at
     }
@@ -111,7 +110,7 @@ erDiagram
 
 | 테이블 | 역할 |
 | --- | --- |
-| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 4`입니다. |
+| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 5`입니다. |
 | `accounts` | 현금, 적금, 증권, 가상자산 지갑, 부채 계좌를 저장합니다. |
 | `assets` | 기본 현금/예금/부채 자산과 주식/ETF 같은 평가 대상 자산을 저장합니다. |
 | `holdings` | 특정 계좌가 특정 자산을 얼마나 보유하는지 저장하는 현재 잔고 테이블입니다. |

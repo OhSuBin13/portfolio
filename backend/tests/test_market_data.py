@@ -107,7 +107,7 @@ def test_manual_price_endpoint_validates_stores_snapshot_and_updates_summary(tmp
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "국내 증권", "type": "brokerage", "currency": "KRW"},
+        json={"name": "국내 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -217,7 +217,7 @@ def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -385,7 +385,7 @@ def test_sync_records_failed_status_without_previous_price_and_preserves_fallbac
     )
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -431,7 +431,7 @@ def test_summary_uses_manual_price_when_later_failed_snapshot_exists(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "국내 증권", "type": "brokerage", "currency": "KRW"},
+        json={"name": "국내 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -507,7 +507,7 @@ def test_kr_stock_sync_records_unsupported_provider_and_preserves_summary(
     )
     account = client.post(
         "/api/accounts",
-        json={"name": "국내 증권", "type": "brokerage", "currency": "KRW"},
+        json={"name": "국내 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -558,7 +558,7 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
     client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",

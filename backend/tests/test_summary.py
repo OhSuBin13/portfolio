@@ -65,8 +65,8 @@ def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
 def test_build_summary_exposes_stock_etf_allocations_by_ticker(tmp_path):
     db = create_summary_db(tmp_path)
     try:
-        cash_account_id = create_account(db, name="원화 현금", type="cash", currency="KRW")
-        brokerage_account_id = create_account(db, name="증권", type="brokerage", currency="KRW")
+        cash_account_id = create_account(db, name="원화 현금", type="cash")
+        brokerage_account_id = create_account(db, name="증권", type="brokerage")
         cash_asset_id = create_asset(
             db,
             symbol=None,

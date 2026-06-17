@@ -45,7 +45,7 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [4]
+    assert migration_versions(db) == [5]
 
 
 def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
@@ -65,6 +65,45 @@ def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
         """,
         ("USD", "KRW", 1513.2, "naver_finance", "2026-06-16T06:30:00+00:00", -0.15),
     )
+
+
+def test_migrate_removes_account_currency_from_version_4_database(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table accounts (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        insert into accounts(id, name, type, currency, created_at, updated_at)
+        values (42, '해외 증권', 'brokerage', 'USD', '2026-06-12T00:00:00', '2026-06-12T00:00:00');
+        insert into schema_migrations(version) values (4);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    account_columns = {row["name"] for row in db.execute("pragma table_info(accounts)").fetchall()}
+    row = db.execute("select id, name, type, created_at, updated_at from accounts").fetchone()
+    assert migration_versions(db) == [4, 5]
+    assert "currency" not in account_columns
+    assert dict(row) == {
+        "id": 42,
+        "name": "해외 증권",
+        "type": "brokerage",
+        "created_at": "2026-06-12T00:00:00",
+        "updated_at": "2026-06-12T00:00:00",
+    }
 
 
 def test_migrate_seeds_builtin_cash_assets_without_symbol_or_market(tmp_path):
@@ -166,6 +205,14 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         );
+        create table accounts (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         create unique index idx_assets_symbol_market
         on assets(symbol, market)
         where symbol is not null;
@@ -188,7 +235,7 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
         order by type, name
         """
     ).fetchall()
-    assert migration_versions(db) == [2, 3, 4]
+    assert migration_versions(db) == [2, 3, 4, 5]
     assert [dict(row) for row in rows] == [
         {
             "name": "부채",
@@ -214,7 +261,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [4]
+    assert migration_versions(db) == [5]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -223,7 +270,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [4]
+    assert migration_versions(db) == [5]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -237,7 +284,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (5)")
+    db.execute("insert into schema_migrations(version) values (6)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -274,14 +321,14 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (4)")
+    db.execute("insert into schema_migrations(version) values (5)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 5)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 6)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [4]
+    assert migration_versions(db) == [5]
 
 
 def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
@@ -304,6 +351,14 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         );
+        create table accounts (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         create unique index idx_assets_symbol_market
         on assets(symbol, market)
         where symbol is not null;
@@ -322,7 +377,7 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
         order by currency
         """
     ).fetchall()
-    assert migration_versions(db) == [1, 2, 3, 4]
+    assert migration_versions(db) == [1, 2, 3, 4, 5]
     assert [dict(row) for row in rows] == [
         {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
         {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},
@@ -346,6 +401,14 @@ def test_migrate_normalizes_existing_version_1_cash_asset_without_duplicating_it
           currency text not null check (currency in ('USD','KRW')) default 'KRW',
           market text not null default 'KR',
           manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        create table accounts (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('cash','savings','brokerage','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         );
@@ -419,6 +482,9 @@ def test_account_type_check_constraint_rejects_invalid_values(tmp_path):
     db = connect(db_path)
     migrate(db)
 
+    account_columns = {row["name"] for row in db.execute("pragma table_info(accounts)").fetchall()}
+    assert "currency" not in account_columns
+
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("insert into accounts(name, type) values (?, ?)", ("Bad", "checking"))
 
@@ -428,8 +494,8 @@ def test_currency_check_constraints_reject_invalid_values(tmp_path):
     db = connect(db_path)
     migrate(db)
     account_id = db.execute(
-        "insert into accounts(name, type, currency) values (?, ?, ?)",
-        ("원화 현금", "cash", "KRW"),
+        "insert into accounts(name, type) values (?, ?)",
+        ("원화 현금", "cash"),
     ).lastrowid
     asset_id = db.execute(
         "insert into assets(name, type, currency, market) values (?, ?, ?, ?)",
@@ -437,10 +503,6 @@ def test_currency_check_constraints_reject_invalid_values(tmp_path):
     ).lastrowid
 
     invalid_statements = [
-        (
-            "insert into accounts(name, type, currency) values (?, ?, ?)",
-            ("Invalid Account", "cash", "EUR"),
-        ),
         (
             "insert into assets(name, type, currency, market) values (?, ?, ?, ?)",
             ("Invalid Asset", "cash", "EUR", "EU"),

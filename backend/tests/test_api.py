@@ -115,7 +115,7 @@ def test_can_create_account_asset_and_transaction(tmp_path):
 
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -153,23 +153,24 @@ def test_can_get_update_and_delete_account(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
 
     detail = client.get(f"/api/accounts/{account['id']}")
 
     assert detail.status_code == 200
     assert detail.json()["name"] == "원화 현금"
+    assert "currency" not in detail.json()
 
     updated = client.put(
         f"/api/accounts/{account['id']}",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "usd"},
+        json={"name": "해외 증권", "type": "brokerage"},
     )
 
     assert updated.status_code == 200
     assert updated.json()["name"] == "해외 증권"
     assert updated.json()["type"] == "brokerage"
-    assert updated.json()["currency"] == "USD"
+    assert "currency" not in updated.json()
 
     deleted = client.delete(f"/api/accounts/{account['id']}")
 
@@ -179,7 +180,7 @@ def test_can_get_update_and_delete_account(tmp_path):
     assert client.delete(f"/api/accounts/{account['id']}").status_code == 404
 
 
-def test_account_create_normalizes_currency_case(tmp_path):
+def test_account_create_rejects_currency_field(tmp_path):
     client = create_test_client(tmp_path)
 
     response = client.post(
@@ -187,8 +188,7 @@ def test_account_create_normalizes_currency_case(tmp_path):
         json={"name": "달러 현금", "type": "cash", "currency": "usd"},
     )
 
-    assert response.status_code == 201
-    assert response.json()["currency"] == "USD"
+    assert_korean_validation_error(response, "허용되지 않는 입력값")
 
 
 def test_assets_include_builtin_cash_without_manual_asset_creation(tmp_path):
@@ -231,7 +231,7 @@ def test_can_record_cash_transaction_with_builtin_cash_asset(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "생활비", "type": "cash", "currency": "KRW"},
+        json={"name": "생활비", "type": "cash"},
     ).json()
     cash_asset = next(
         asset
@@ -279,7 +279,7 @@ def test_goal_progress_reports_one_percent_for_net_worth_goal(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -329,7 +329,7 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -393,7 +393,7 @@ def test_summary_counts_only_current_month_income_for_monthly_income_progress(tm
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -472,7 +472,7 @@ def test_summary_converts_non_krw_monthly_income_with_transaction_fx_rate(tmp_pa
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "달러 현금", "type": "cash", "currency": "USD"},
+        json={"name": "달러 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -501,7 +501,7 @@ def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
-        json={"name": "달러 현금", "type": "cash", "currency": "USD"},
+        json={"name": "달러 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -542,7 +542,7 @@ def test_summary_converts_usd_stock_holding_to_krw_with_transaction_fx_rate(tmp_
 
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -580,7 +580,7 @@ def test_summary_prefers_latest_fx_rate_over_transaction_fx_rate(tmp_path):
 
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -627,7 +627,7 @@ def test_summary_rejects_non_krw_holding_without_fx_rate(tmp_path):
 
     account = client.post(
         "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage", "currency": "USD"},
+        json={"name": "해외 증권", "type": "brokerage"},
     ).json()
     asset = client.post(
         "/api/assets",
@@ -664,7 +664,7 @@ def test_account_create_validation_error_is_korean_for_missing_required_field(tm
 
     response = client.post(
         "/api/accounts",
-        json={"type": "cash", "currency": "KRW"},
+        json={"type": "cash"},
     )
 
     assert_korean_validation_error(response, "필수 입력값")
@@ -733,7 +733,7 @@ def test_transaction_create_rejects_invalid_fx_rate_without_persistence(tmp_path
 
     account = client.post(
         "/api/accounts",
-        json={"name": "원화 현금", "type": "cash", "currency": "KRW"},
+        json={"name": "원화 현금", "type": "cash"},
     ).json()
     asset = client.post(
         "/api/assets",
