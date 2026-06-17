@@ -31,6 +31,15 @@ assert.ok(
 )
 assert.ok(pageSource.includes("formatPercent"), "Growth history page should format percentage rates")
 assert.ok(pageSource.includes('rate === null ? "-"'), "Missing growth rates should render as a dash")
+assert.ok(pageSource.includes("useRef"), "Growth history page should keep a request sequence token")
+assert.ok(
+  pageSource.includes("growthHistoryRequestSeq"),
+  "Growth history page should identify the latest growth history request",
+)
+assert.ok(
+  pageSource.includes("requestSeq === growthHistoryRequestSeq.current"),
+  "Growth history rows should only update from the latest request",
+)
 
 for (const label of ["배당/이자", "순입금", "월별 성장률", "연간 성장률"]) {
   assert.ok(pageSource.includes(label), `Growth history page should include ${label}`)

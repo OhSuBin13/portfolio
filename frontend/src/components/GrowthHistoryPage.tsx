@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { apiGet, apiPost } from "../api"
 import type { GrowthHistoryRow, PortfolioSnapshot } from "../types"
 
@@ -84,41 +84,43 @@ export function GrowthHistoryPage() {
   const [error, setError] = useState("")
   const [refreshMessage, setRefreshMessage] = useState("")
   const [isRefreshing, setIsRefreshing] = useState(false)
-
-  const fetchGrowthHistory = useCallback(async () => {
-    return Promise.all([
-      apiGet<GrowthHistoryRow[]>("/api/growth/history?period=monthly"),
-      apiGet<GrowthHistoryRow[]>("/api/growth/history?period=annual"),
-    ])
-  }, [])
+  const growthHistoryRequestSeq = useRef(0)
 
   const loadGrowthHistory = useCallback(async () => {
-    const [monthly, annual] = await fetchGrowthHistory()
-    setMonthlyRows(monthly)
-    setAnnualRows(annual)
-  }, [fetchGrowthHistory])
+    const requestSeq = growthHistoryRequestSeq.current + 1
+    growthHistoryRequestSeq.current = requestSeq
+
+    try {
+      const [monthly, annual] = await Promise.all([
+        apiGet<GrowthHistoryRow[]>("/api/growth/history?period=monthly"),
+        apiGet<GrowthHistoryRow[]>("/api/growth/history?period=annual"),
+      ])
+
+      if (requestSeq === growthHistoryRequestSeq.current) {
+        setMonthlyRows(monthly)
+        setAnnualRows(annual)
+        setError("")
+        return true
+      }
+    } catch (err) {
+      if (requestSeq === growthHistoryRequestSeq.current) {
+        setError(getErrorMessage(err))
+      }
+    }
+
+    return false
+  }, [])
 
   useEffect(() => {
-    let ignore = false
-
-    fetchGrowthHistory()
-      .then(([monthly, annual]) => {
-        if (!ignore) {
-          setMonthlyRows(monthly)
-          setAnnualRows(annual)
-          setError("")
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          setError(getErrorMessage(err))
-        }
-      })
+    const loadTimer = window.setTimeout(() => {
+      void loadGrowthHistory()
+    }, 0)
 
     return () => {
-      ignore = true
+      window.clearTimeout(loadTimer)
+      growthHistoryRequestSeq.current += 1
     }
-  }, [fetchGrowthHistory])
+  }, [loadGrowthHistory])
 
   const handleRefreshToday = async () => {
     setIsRefreshing(true)
@@ -129,9 +131,10 @@ export function GrowthHistoryPage() {
         source: "manual",
       })
       setLatestSnapshot(snapshot)
-      await loadGrowthHistory()
-      setError("")
-      setRefreshMessage(`${snapshot.snapshot_date} 스냅샷을 갱신했습니다.`)
+      const didApplyRows = await loadGrowthHistory()
+      if (didApplyRows) {
+        setRefreshMessage(`${snapshot.snapshot_date} 스냅샷을 갱신했습니다.`)
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
