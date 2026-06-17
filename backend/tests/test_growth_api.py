@@ -99,3 +99,28 @@ def test_growth_history_endpoint_returns_monthly_rows(tmp_path):
     assert response.json()[0]["external_cash_flow_krw"] == 5_000_000
     assert response.json()[0]["dividend_interest_krw"] == 200_000
     assert response.json()[0]["profit_krw"] == 1_200_000
+
+
+def test_growth_history_endpoint_returns_400_when_usd_cashflow_has_no_fx_rate(tmp_path):
+    client = create_test_client(tmp_path)
+    db = connect(client.app.state.settings.database_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 50_000_000)
+        insert_snapshot(db, "2026-06-30", 56_200_000)
+        db.execute(
+            """
+            insert into transactions(
+              occurred_on, type, amount, currency, fx_rate_to_krw, memo
+            )
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-06-05", "deposit", 1_000, "USD", None, "USD 입금"),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/growth/history?period=monthly&from=2026-06&to=2026-06")
+
+    assert response.status_code == 400
+    assert "환율" in response.json()["detail"]
