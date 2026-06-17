@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
 from portfolio_app.config import Settings
+from portfolio_app.services.growth import create_or_refresh_today_snapshot
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
     FxRateProvider,
@@ -215,7 +216,7 @@ def list_market_data_status(db: Db) -> list[dict[str, object]]:
 async def sync_market_data_for_settings(
     settings: Settings,
     db: sqlite3.Connection,
-) -> dict[str, list[dict[str, object]]]:
+) -> dict[str, object]:
     assets = db.execute(
         """
         select *
@@ -299,9 +300,16 @@ async def sync_market_data_for_settings(
                 }
             )
 
-    return {"results": results}
+    response: dict[str, object] = {"results": results}
+    try:
+        snapshot = create_or_refresh_today_snapshot(db, source="market_sync", refresh=False)
+        response["snapshot"] = snapshot.model_dump(mode="json")
+    except (HTTPException, ValueError, sqlite3.Error) as exc:
+        response["snapshot_error"] = str(exc.detail if isinstance(exc, HTTPException) else exc)
+
+    return response
 
 
 @router.post("/sync")
-def sync_market_data(request: Request, db: Db) -> dict[str, list[dict[str, object]]]:
+def sync_market_data(request: Request, db: Db) -> dict[str, object]:
     return asyncio.run(sync_market_data_for_settings(request.app.state.settings, db))

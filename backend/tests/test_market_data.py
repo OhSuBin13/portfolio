@@ -309,6 +309,50 @@ def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
     assert latest["price_krw"] == 700_000
     assert "Alpha Vantage API 키" in latest["error_message"]
     assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 700_000
+    payload = response.json()
+    assert payload["snapshot"]["source"] == "market_sync"
+    assert payload["snapshot"]["net_worth_krw"] == 700_000
+
+    db = connect(client.app.state.settings.database_path)
+    try:
+        count = db.execute("select count(*) from portfolio_snapshots").fetchone()[0]
+    finally:
+        db.close()
+
+    assert count == 1
+
+
+def test_sync_reports_snapshot_error_when_summary_cannot_be_valued(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "달러 현금", "type": "cash"},
+    ).json()
+    usd_cash = next(
+        asset
+        for asset in client.get("/api/assets").json()
+        if asset["type"] == "cash" and asset["currency"] == "USD"
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-17",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": usd_cash["id"],
+            "quantity": None,
+            "amount": 1_000,
+            "currency": "USD",
+            "memo": "환율 없는 달러 현금",
+        },
+    )
+
+    response = client.post("/api/market-data/sync")
+
+    assert response.status_code == 200
+    assert response.json()["results"] == []
+    assert "snapshot_error" in response.json()
+    assert "환율" in response.json()["snapshot_error"]
 
 
 def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
