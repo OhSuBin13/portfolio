@@ -10,6 +10,7 @@ from portfolio_app.api import (
     assets,
     backups,
     goals,
+    growth,
     market_data,
     summary,
     transactions,
@@ -18,7 +19,6 @@ from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.services.backup_scheduler import start_backup_task, stop_backup_task
-from portfolio_app.services.backups import create_recorded_backup
 from portfolio_app.services.market_sync_scheduler import (
     start_market_sync_task,
     stop_market_sync_task,
@@ -106,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
+    app.include_router(growth.router)
     app.include_router(market_data.router)
 
     return app
