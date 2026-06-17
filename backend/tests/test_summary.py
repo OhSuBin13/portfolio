@@ -25,6 +25,21 @@ def create_test_client(tmp_path):
     return TestClient(app)
 
 
+def test_summary_endpoint_documents_typed_response_model(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    summary_response = schema["components"]["schemas"]["SummaryResponse"]
+    assert schema["paths"]["/api/summary"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/SummaryResponse"}
+    assert "asset_mix" in summary_response["properties"]
+    assert "asset_allocations" in summary_response["properties"]
+
+
 def test_build_summary_from_rows_calculates_empty_summary_without_db():
     build_summary_from_rows = getattr(summary_service, "build_summary_from_rows", None)
     assert build_summary_from_rows is not None

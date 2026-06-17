@@ -71,6 +71,11 @@ class AssetAllocation(BaseModel):
     percent: float = Field(ge=0, le=100, allow_inf_nan=False)
 
 
+class SummaryResponse(PortfolioSummary):
+    asset_mix: dict[str, float]
+    asset_allocations: list[AssetAllocation]
+
+
 class Goal(BaseModel):
     model_config = ConfigDict(strict=True)
 
