@@ -5,8 +5,8 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from portfolio_app.api.summary import build_summary
 from portfolio_app.models import GrowthHistoryRow, GrowthPeriod, PortfolioSnapshot, SnapshotSource
+from portfolio_app.services.summary import build_summary
 
 KST = ZoneInfo("Asia/Seoul")
 EXTERNAL_CONTRIBUTION_TYPES = {"deposit", "debt_payment"}
@@ -152,19 +152,6 @@ def _period_key(snapshot_date: date, period: GrowthPeriod) -> str:
     return snapshot_date.strftime("%Y")
 
 
-def _period_bounds(key: str, period: GrowthPeriod) -> tuple[str, str]:
-    if period == "monthly":
-        start = _parse_month(key)
-        if start.month == 12:
-            end = date(start.year + 1, 1, 1)
-        else:
-            end = date(start.year, start.month + 1, 1)
-        return start.isoformat(), end.isoformat()
-
-    year = int(key)
-    return date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
-
-
 def _amount_to_krw(row: sqlite3.Row) -> float:
     amount = float(row["amount"] or 0)
     currency = str(row["currency"]).upper()
@@ -228,16 +215,15 @@ def build_growth_history(
         period_snapshots = grouped[key]
         starting = period_snapshots[0]
         ending = period_snapshots[-1]
-        start_bound, end_bound = _period_bounds(key, period)
         external_cash_flow, dividend_interest = _period_cashflow(
             db,
-            start=start_bound,
-            end=end_bound,
+            start=starting.snapshot_date.isoformat(),
+            end=(ending.snapshot_date + timedelta(days=1)).isoformat(),
         )
         profit = ending.net_worth_krw - starting.net_worth_krw - external_cash_flow
         growth_rate = profit / starting.net_worth_krw if starting.net_worth_krw > 0 else None
 
-        if first_baseline is None:
+        if not rows:
             first_baseline = starting.net_worth_krw if starting.net_worth_krw > 0 else None
         cumulative_profit += profit
         cumulative_growth_rate = (

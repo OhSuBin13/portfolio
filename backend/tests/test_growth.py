@@ -49,13 +49,23 @@ def insert_snapshot(db, snapshot_date: str, net_worth_krw: float) -> None:
     db.commit()
 
 
-def insert_transaction(db, occurred_on: str, transaction_type: str, amount: float) -> None:
+def insert_transaction(
+    db,
+    occurred_on: str,
+    transaction_type: str,
+    amount: float,
+    *,
+    currency: str = "KRW",
+    fx_rate_to_krw: float | None = None,
+) -> None:
     db.execute(
         """
-        insert into transactions(occurred_on, type, amount, currency, memo)
-        values (?, ?, ?, ?, ?)
+        insert into transactions(
+          occurred_on, type, amount, currency, fx_rate_to_krw, memo
+        )
+        values (?, ?, ?, ?, ?, ?)
         """,
-        (occurred_on, transaction_type, amount, "KRW", transaction_type),
+        (occurred_on, transaction_type, amount, currency, fx_rate_to_krw, transaction_type),
     )
     db.commit()
 
@@ -189,6 +199,27 @@ def test_monthly_history_excludes_debt_payments_from_profit(tmp_path):
     assert rows[0].growth_rate == 0
 
 
+def test_monthly_history_uses_cashflows_within_snapshot_window(tmp_path):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-10", 15_000_000)
+        insert_snapshot(db, "2026-06-30", 15_500_000)
+        insert_transaction(db, "2026-06-05", "deposit", 5_000_000)
+
+        rows = build_growth_history(
+            db,
+            period="monthly",
+            from_value="2026-06",
+            to_value="2026-06",
+        )
+    finally:
+        db.close()
+
+    assert rows[0].external_cash_flow_krw == 0
+    assert rows[0].profit_krw == 500_000
+    assert rows[0].growth_rate == pytest.approx(500_000 / 15_000_000)
+
+
 def test_growth_rate_is_missing_when_starting_net_worth_is_zero(tmp_path):
     db = create_growth_db(tmp_path)
     try:
@@ -207,6 +238,30 @@ def test_growth_rate_is_missing_when_starting_net_worth_is_zero(tmp_path):
     assert rows[0].profit_krw == 1_000_000
     assert rows[0].growth_rate is None
     assert rows[0].cumulative_growth_rate is None
+
+
+def test_cumulative_growth_rate_stays_missing_after_initial_zero_baseline(tmp_path):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 0)
+        insert_snapshot(db, "2026-06-30", 1_000_000)
+        insert_snapshot(db, "2026-07-01", 1_000_000)
+        insert_snapshot(db, "2026-07-31", 1_500_000)
+
+        rows = build_growth_history(
+            db,
+            period="monthly",
+            from_value="2026-06",
+            to_value="2026-07",
+        )
+    finally:
+        db.close()
+
+    assert [row.period for row in rows] == ["2026-06", "2026-07"]
+    assert rows[0].cumulative_profit_krw == 1_000_000
+    assert rows[0].cumulative_growth_rate is None
+    assert rows[1].cumulative_profit_krw == 1_500_000
+    assert rows[1].cumulative_growth_rate is None
 
 
 def test_cumulative_profit_accumulates_returned_rows_when_periods_are_missing(tmp_path):
@@ -232,6 +287,60 @@ def test_cumulative_profit_accumulates_returned_rows_when_periods_are_missing(tm
     assert rows[1].profit_krw == 1_000_000
     assert rows[1].cumulative_profit_krw == 2_000_000
     assert rows[1].cumulative_growth_rate == pytest.approx(0.04)
+
+
+def test_growth_history_converts_usd_cashflow_to_krw(tmp_path):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 10_000_000)
+        insert_snapshot(db, "2026-06-30", 11_300_000)
+        insert_transaction(
+            db,
+            "2026-06-15",
+            "deposit",
+            1_000,
+            currency="USD",
+            fx_rate_to_krw=1_300,
+        )
+
+        rows = build_growth_history(
+            db,
+            period="monthly",
+            from_value="2026-06",
+            to_value="2026-06",
+        )
+    finally:
+        db.close()
+
+    assert rows[0].external_cash_flow_krw == 1_300_000
+    assert rows[0].profit_krw == 0
+    assert rows[0].growth_rate == 0
+
+
+@pytest.mark.parametrize("fx_rate_to_krw", [None, 0, -1])
+def test_growth_history_requires_positive_fx_for_usd_cashflow(tmp_path, fx_rate_to_krw):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 10_000_000)
+        insert_snapshot(db, "2026-06-30", 11_300_000)
+        insert_transaction(
+            db,
+            "2026-06-15",
+            "deposit",
+            1_000,
+            currency="USD",
+            fx_rate_to_krw=fx_rate_to_krw,
+        )
+
+        with pytest.raises(ValueError, match="USD 거래의 성장률 계산에 필요한 환율"):
+            build_growth_history(
+                db,
+                period="monthly",
+                from_value="2026-06",
+                to_value="2026-06",
+            )
+    finally:
+        db.close()
 
 
 def test_annual_history_uses_annual_snapshots_and_cashflow(tmp_path):

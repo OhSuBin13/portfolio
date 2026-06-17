@@ -12,9 +12,9 @@ from portfolio_app.api import (
     require_positive_number,
     row_to_dict,
 )
-from portfolio_app.api.summary import build_summary
 from portfolio_app.finance import calculate_goal_progress
 from portfolio_app.models import Goal
+from portfolio_app.services.summary import build_summary
 
 GOAL_TYPES = {"net_worth", "monthly_income"}
 
@@ -71,7 +71,14 @@ def list_goals(db: Db) -> list[dict[str, object]]:
 
 @router.get("/progress")
 def list_goal_progress(db: Db) -> list[dict[str, object]]:
-    summary, _asset_mix, _asset_allocations = build_summary(db)
+    try:
+        summary, _asset_mix, _asset_allocations = build_summary(db)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
     rows = db.execute("select * from goals order by id").fetchall()
     progress_rows = []
     for row in rows:

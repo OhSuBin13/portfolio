@@ -1,11 +1,11 @@
 from fastapi.testclient import TestClient
 
-from portfolio_app.api.summary import build_summary
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, create_asset, upsert_holding
+from portfolio_app.services.summary import build_summary
 
 
 def create_summary_db(tmp_path):
