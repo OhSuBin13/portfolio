@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict
 
 from portfolio_app import repositories
 from portfolio_app.api import (
-    created_row,
     get_db,
     require_allowed,
     require_non_empty,
@@ -44,14 +43,14 @@ def create_account_endpoint(payload: AccountWritePayload, db: Db) -> dict[str, o
     account = validate_account_payload(payload)
 
     try:
-        account_id = repositories.create_account(db, name=account.name, type=account.type)
+        row = repositories.create_account_record(db, name=account.name, type=account.type)
     except sqlite3.IntegrityError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="계좌 정보를 저장할 수 없습니다.",
         ) from exc
 
-    return created_row(db, "accounts", account_id)
+    return row_to_dict(row)
 
 
 @router.get("")
@@ -86,14 +85,14 @@ def update_account(
 ) -> dict[str, object]:
     account = validate_account_payload(payload)
 
-    updated = repositories.update_account(
+    row = repositories.update_account_record(
         db,
         account_id=account_id,
         name=account.name,
         type=account.type,
     )
-    if not updated:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="계좌를 찾을 수 없습니다."
         )
-    return created_row(db, "accounts", account_id)
+    return row_to_dict(row)

@@ -39,6 +39,14 @@ def create_account(db: sqlite3.Connection, *, name: str, type: str) -> int:
     return int(cursor.lastrowid)
 
 
+def create_account_record(db: sqlite3.Connection, *, name: str, type: str) -> sqlite3.Row:
+    account_id = create_account(db, name=name, type=type)
+    row = fetch_account(db, account_id=account_id)
+    if row is None:
+        raise RuntimeError("생성된 계좌를 찾을 수 없습니다.")
+    return row
+
+
 def fetch_accounts(db: sqlite3.Connection) -> list[sqlite3.Row]:
     return db.execute("select * from accounts order by id").fetchall()
 
@@ -61,6 +69,18 @@ def update_account(
     )
     db.commit()
     return cursor.rowcount > 0
+
+
+def update_account_record(
+    db: sqlite3.Connection,
+    *,
+    account_id: int,
+    name: str,
+    type: str,
+) -> sqlite3.Row | None:
+    if not update_account(db, account_id=account_id, name=name, type=type):
+        return None
+    return fetch_account(db, account_id=account_id)
 
 
 def delete_account(db: sqlite3.Connection, *, account_id: int) -> bool:

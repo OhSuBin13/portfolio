@@ -43,6 +43,19 @@ def test_fetch_account_returns_none_when_missing(tmp_path):
     assert row is None
 
 
+def test_create_account_record_returns_created_account_row(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert hasattr(repositories, "create_account_record")
+    row = repositories.create_account_record(db, name="원화 현금", type="cash")
+
+    assert row["id"] > 0
+    assert row["name"] == "원화 현금"
+    assert row["type"] == "cash"
+    assert "currency" not in set(row.keys())
+
+
 def test_update_account_repository_updates_existing_account(tmp_path):
     from portfolio_app import repositories
 
@@ -64,6 +77,40 @@ def test_update_account_repository_updates_existing_account(tmp_path):
     assert account is not None
     assert account["name"] == "해외 증권"
     assert account["type"] == "brokerage"
+
+
+def test_update_account_record_returns_updated_account_row(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+
+    assert hasattr(repositories, "update_account_record")
+    row = repositories.update_account_record(
+        db,
+        account_id=account_id,
+        name="해외 증권",
+        type="brokerage",
+    )
+
+    assert row is not None
+    assert row["id"] == account_id
+    assert row["name"] == "해외 증권"
+    assert row["type"] == "brokerage"
+
+
+def test_update_account_record_returns_none_when_missing(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert hasattr(repositories, "update_account_record")
+    row = repositories.update_account_record(
+        db,
+        account_id=999,
+        name="해외 증권",
+        type="brokerage",
+    )
+
+    assert row is None
 
 
 def test_delete_account_repository_deletes_existing_account(tmp_path):
