@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
-class AccountCreate(BaseModel):
+class AccountWritePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -33,14 +33,14 @@ class ValidatedAccountPayload:
     type: str
 
 
-def validate_account_payload(payload: AccountCreate) -> ValidatedAccountPayload:
+def validate_account_payload(payload: AccountWritePayload) -> ValidatedAccountPayload:
     name = require_non_empty(payload.name, "계좌 이름을 입력해 주세요.")
     account_type = require_allowed(payload.type, ACCOUNT_TYPES, "지원하지 않는 계좌 유형입니다.")
     return ValidatedAccountPayload(name=name, type=account_type)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_account_endpoint(payload: AccountCreate, db: Db) -> dict[str, object]:
+def create_account_endpoint(payload: AccountWritePayload, db: Db) -> dict[str, object]:
     account = validate_account_payload(payload)
 
     try:
@@ -79,7 +79,11 @@ def delete_account(account_id: int, db: Db) -> None:
 
 
 @router.put("/{account_id}")
-def update_account(account_id: int, payload: AccountCreate, db: Db) -> dict[str, object]:
+def update_account(
+    account_id: int,
+    payload: AccountWritePayload,
+    db: Db,
+) -> dict[str, object]:
     account = validate_account_payload(payload)
 
     updated = repositories.update_account(

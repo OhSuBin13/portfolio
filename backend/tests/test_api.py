@@ -184,7 +184,7 @@ def test_can_get_update_and_delete_account(tmp_path):
 def test_account_payload_validation_normalizes_shared_post_put_input():
     from portfolio_app.api import accounts
 
-    payload = accounts.AccountCreate(name="  해외 증권  ", type=" brokerage ")
+    payload = accounts.AccountWritePayload(name="  해외 증권  ", type=" brokerage ")
 
     assert hasattr(accounts, "validate_account_payload")
     validated = accounts.validate_account_payload(payload)
@@ -198,7 +198,7 @@ def test_account_payload_validation_rejects_invalid_type():
 
     from portfolio_app.api import accounts
 
-    payload = accounts.AccountCreate(name="원화 현금", type="checking")
+    payload = accounts.AccountWritePayload(name="원화 현금", type="checking")
 
     assert hasattr(accounts, "validate_account_payload")
     with pytest.raises(HTTPException) as exc_info:
