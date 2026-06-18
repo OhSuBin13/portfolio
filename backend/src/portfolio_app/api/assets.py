@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,8 +24,16 @@ class AssetCreate(BaseModel):
     market: str | None = None
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
+@dataclass(frozen=True)
+class ValidatedAssetPayload:
+    symbol: str | None
+    name: str
+    type: str
+    currency: str
+    market: str | None
+
+
+def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
     symbol = payload.symbol.strip().upper() if payload.symbol else None
     name = require_non_empty(payload.name, "자산 이름을 입력해 주세요.")
     asset_type = require_allowed(payload.type, ASSET_TYPES, "지원하지 않는 자산 유형입니다.")
@@ -38,14 +47,27 @@ def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
         symbol = None
         market = None
 
+    return ValidatedAssetPayload(
+        symbol=symbol,
+        name=name,
+        type=asset_type,
+        currency=currency,
+        market=market,
+    )
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
+    asset = validate_asset_payload(payload)
+
     try:
         asset_id = create_asset(
             db,
-            symbol=symbol,
-            name=name,
-            type=asset_type,
-            currency=currency,
-            market=market,
+            symbol=asset.symbol,
+            name=asset.name,
+            type=asset.type,
+            currency=asset.currency,
+            market=asset.market,
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(

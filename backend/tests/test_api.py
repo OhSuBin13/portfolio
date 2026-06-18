@@ -208,6 +208,69 @@ def test_account_payload_validation_rejects_invalid_type():
     assert exc_info.value.detail == "지원하지 않는 계좌 유형입니다."
 
 
+def test_asset_payload_validation_normalizes_stock_etf_input():
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol=" voo ",
+        name="  Vanguard S&P 500 ETF  ",
+        type="stock_etf",
+        currency=" usd ",
+        market=" us ",
+    )
+
+    assert hasattr(assets, "validate_asset_payload")
+    validated = assets.validate_asset_payload(payload)
+
+    assert validated.symbol == "VOO"
+    assert validated.name == "Vanguard S&P 500 ETF"
+    assert validated.type == "stock_etf"
+    assert validated.currency == "USD"
+    assert validated.market == "US"
+
+
+def test_asset_payload_validation_normalizes_builtin_asset_input():
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol=" krw ",
+        name="  원화 현금  ",
+        type="cash",
+        currency=" krw ",
+        market=" kr ",
+    )
+
+    assert hasattr(assets, "validate_asset_payload")
+    validated = assets.validate_asset_payload(payload)
+
+    assert validated.symbol is None
+    assert validated.name == "원화 현금"
+    assert validated.type == "cash"
+    assert validated.currency == "KRW"
+    assert validated.market is None
+
+
+def test_asset_payload_validation_rejects_missing_stock_etf_market():
+    from fastapi import HTTPException
+
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol="VOO",
+        name="Vanguard S&P 500 ETF",
+        type="stock_etf",
+        currency="USD",
+        market=None,
+    )
+
+    assert hasattr(assets, "validate_asset_payload")
+    with pytest.raises(HTTPException) as exc_info:
+        assets.validate_asset_payload(payload)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "시장을 입력해 주세요."
+
+
 def test_account_create_rejects_currency_field(tmp_path):
     client = create_test_client(tmp_path)
 
