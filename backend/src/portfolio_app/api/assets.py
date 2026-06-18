@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
-from portfolio_app.repositories import create_asset
+from portfolio_app import repositories
+from portfolio_app.api import get_db, require_allowed, require_non_empty, row_to_dict
 
 ASSET_TYPES = {"cash", "savings", "stock_etf", "debt"}
 
@@ -61,7 +61,7 @@ def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
     asset = validate_asset_payload(payload)
 
     try:
-        asset_id = create_asset(
+        row = repositories.create_asset_record(
             db,
             symbol=asset.symbol,
             name=asset.name,
@@ -75,10 +75,9 @@ def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
             detail="자산 정보를 저장할 수 없습니다.",
         ) from exc
 
-    return created_row(db, "assets", asset_id)
+    return row_to_dict(row)
 
 
 @router.get("")
 def list_assets(db: Db) -> list[dict[str, object]]:
-    rows = db.execute("select * from assets order by id").fetchall()
-    return [row_to_dict(row) for row in rows]
+    return [row_to_dict(row) for row in repositories.fetch_assets(db)]

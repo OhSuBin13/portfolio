@@ -106,6 +106,37 @@ def create_asset(
     return int(cursor.lastrowid)
 
 
+def fetch_assets(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute("select * from assets order by id").fetchall()
+
+
+def fetch_asset(db: sqlite3.Connection, *, asset_id: int) -> sqlite3.Row | None:
+    return db.execute("select * from assets where id = ?", (asset_id,)).fetchone()
+
+
+def create_asset_record(
+    db: sqlite3.Connection,
+    *,
+    symbol: str | None,
+    name: str,
+    type: str,
+    currency: str,
+    market: str | None,
+) -> sqlite3.Row:
+    asset_id = create_asset(
+        db,
+        symbol=symbol,
+        name=name,
+        type=type,
+        currency=currency,
+        market=market,
+    )
+    row = fetch_asset(db, asset_id=asset_id)
+    if row is None:
+        raise RuntimeError("생성된 자산을 찾을 수 없습니다.")
+    return row
+
+
 def get_holding(db: sqlite3.Connection, *, account_id: int, asset_id: int) -> sqlite3.Row:
     row = db.execute(
         "select * from holdings where account_id = ? and asset_id = ?",
