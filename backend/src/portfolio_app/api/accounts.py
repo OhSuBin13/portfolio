@@ -5,23 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
+from portfolio_app import repositories
 from portfolio_app.api import (
     created_row,
     get_db,
     require_allowed,
     require_non_empty,
     row_to_dict,
-)
-from portfolio_app.repositories import (
-    create_account,
-    fetch_account,
-    fetch_accounts,
-)
-from portfolio_app.repositories import (
-    delete_account as delete_account_record,
-)
-from portfolio_app.repositories import (
-    update_account as update_account_record,
 )
 
 ACCOUNT_TYPES = {"cash", "savings", "brokerage", "debt"}
@@ -54,7 +44,7 @@ def create_account_endpoint(payload: AccountCreate, db: Db) -> dict[str, object]
     account = validate_account_payload(payload)
 
     try:
-        account_id = create_account(db, name=account.name, type=account.type)
+        account_id = repositories.create_account(db, name=account.name, type=account.type)
     except sqlite3.IntegrityError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,12 +56,12 @@ def create_account_endpoint(payload: AccountCreate, db: Db) -> dict[str, object]
 
 @router.get("")
 def list_accounts(db: Db) -> list[dict[str, object]]:
-    return [row_to_dict(row) for row in fetch_accounts(db)]
+    return [row_to_dict(row) for row in repositories.fetch_accounts(db)]
 
 
 @router.get("/{account_id}")
 def get_account(account_id: int, db: Db) -> dict[str, object]:
-    row = fetch_account(db, account_id=account_id)
+    row = repositories.fetch_account(db, account_id=account_id)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="계좌를 찾을 수 없습니다."
@@ -81,7 +71,7 @@ def get_account(account_id: int, db: Db) -> dict[str, object]:
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: int, db: Db) -> None:
-    deleted = delete_account_record(db, account_id=account_id)
+    deleted = repositories.delete_account(db, account_id=account_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="계좌를 찾을 수 없습니다."
@@ -92,7 +82,7 @@ def delete_account(account_id: int, db: Db) -> None:
 def update_account(account_id: int, payload: AccountCreate, db: Db) -> dict[str, object]:
     account = validate_account_payload(payload)
 
-    updated = update_account_record(
+    updated = repositories.update_account(
         db,
         account_id=account_id,
         name=account.name,

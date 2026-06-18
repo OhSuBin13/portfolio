@@ -283,8 +283,7 @@ class AlphaVantageProvider:
         quote = payload.get("Global Quote") if isinstance(payload, dict) else None
         if not isinstance(quote, dict):
             logger.warning(
-                "Alpha Vantage quote response missing Global Quote: symbol=%s "
-                "payload_summary=%s",
+                "Alpha Vantage quote response missing Global Quote: symbol=%s payload_summary=%s",
                 normalized_symbol,
                 payload_summary,
                 extra={

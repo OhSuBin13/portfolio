@@ -226,9 +226,7 @@ def test_assets_include_builtin_cash_without_manual_asset_creation(tmp_path):
 
     assert response.status_code == 200
     cash_assets = [
-        asset
-        for asset in response.json()
-        if asset["type"] == "cash" and asset["currency"] == "KRW"
+        asset for asset in response.json() if asset["type"] == "cash" and asset["currency"] == "KRW"
     ]
     assert cash_assets
     assert cash_assets[0]["name"] == "원화 현금"
