@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,7 @@ TransactionType = Literal[
     "debt_payment",
     "adjustment",
 ]
+TRANSACTION_TYPES = frozenset(get_args(TransactionType))
 GoalType = Literal["net_worth", "monthly_income"]
 SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]

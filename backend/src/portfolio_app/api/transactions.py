@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from portfolio_app.api import created_row, get_db, require_non_empty, row_to_dict
-from portfolio_app.models import TransactionResponse
+from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
+from portfolio_app.models import TRANSACTION_TYPES, TransactionResponse
 from portfolio_app.services.transactions import apply_transaction
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -29,7 +29,11 @@ class TransactionCreate(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=TransactionResponse)
 def create_transaction_endpoint(payload: TransactionCreate, db: Db) -> dict[str, object]:
-    transaction_type = require_non_empty(payload.type, "거래 유형을 입력해 주세요.")
+    transaction_type = require_allowed(
+        payload.type,
+        TRANSACTION_TYPES,
+        "지원하지 않는 거래 유형입니다.",
+    )
     currency = require_non_empty(payload.currency, "통화를 입력해 주세요.").upper()
 
     try:

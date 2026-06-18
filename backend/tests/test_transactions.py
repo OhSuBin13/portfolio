@@ -22,6 +22,20 @@ def count_transactions(db, transaction_type):
     return row[0]
 
 
+def test_transaction_layers_share_model_transaction_type_contract():
+    from typing import get_args
+
+    from portfolio_app import models
+    from portfolio_app.api import transactions as transaction_api
+    from portfolio_app.services import transactions as transaction_service
+
+    model_types = models.TRANSACTION_TYPES
+
+    assert model_types == frozenset(get_args(models.TransactionType))
+    assert transaction_api.TRANSACTION_TYPES is model_types
+    assert transaction_service.TRANSACTION_TYPES is model_types
+
+
 def test_buy_transaction_increases_holding_quantity(tmp_path):
     db = setup_db(tmp_path)
     account_id = create_account(db, name="증권계좌", type="brokerage")

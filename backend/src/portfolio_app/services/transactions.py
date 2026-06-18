@@ -2,12 +2,11 @@ import math
 import sqlite3
 from datetime import date
 
+from portfolio_app.models import TRANSACTION_TYPES
 from portfolio_app.repositories import upsert_holding
 
 INCREASE_TYPES = {"deposit", "interest", "dividend"}
 DECREASE_TYPES = {"withdrawal", "fee", "debt_payment"}
-NORMAL_TYPES = {"buy", "sell"} | INCREASE_TYPES | DECREASE_TYPES
-SUPPORTED_TYPES = NORMAL_TYPES | {"adjustment"}
 CASHFLOW_TYPES = {"deposit", "withdrawal", "dividend", "interest", "fee"}
 CASH_LIKE_ASSET_TYPES = {"cash", "savings"}
 MARKET_ASSET_TYPES = {"stock_etf"}
@@ -95,7 +94,7 @@ def apply_transaction(
     memo: str,
     fx_rate_to_krw: float | None = None,
 ) -> int:
-    if type not in SUPPORTED_TYPES:
+    if type not in TRANSACTION_TYPES:
         raise ValueError("지원하지 않는 거래 유형입니다.")
 
     _validate_fx_rate(fx_rate_to_krw)
