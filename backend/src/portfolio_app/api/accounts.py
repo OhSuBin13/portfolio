@@ -18,6 +18,9 @@ from portfolio_app.repositories import (
     fetch_accounts,
 )
 from portfolio_app.repositories import (
+    delete_account as delete_account_record,
+)
+from portfolio_app.repositories import (
     update_account as update_account_record,
 )
 
@@ -78,12 +81,11 @@ def get_account(account_id: int, db: Db) -> dict[str, object]:
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(account_id: int, db: Db) -> None:
-    cursor = db.execute("delete from accounts where id = ?", (account_id,))
-    if cursor.rowcount == 0:
+    deleted = delete_account_record(db, account_id=account_id)
+    if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="계좌를 찾을 수 없습니다."
         )
-    db.commit()
 
 
 @router.put("/{account_id}")

@@ -63,6 +63,12 @@ def update_account(
     return cursor.rowcount > 0
 
 
+def delete_account(db: sqlite3.Connection, *, account_id: int) -> bool:
+    cursor = db.execute("delete from accounts where id = ?", (account_id,))
+    db.commit()
+    return cursor.rowcount > 0
+
+
 def create_asset(
     db: sqlite3.Connection,
     *,
