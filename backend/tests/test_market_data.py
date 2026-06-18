@@ -333,19 +333,30 @@ def test_sync_reports_snapshot_error_when_summary_cannot_be_valued(tmp_path):
         for asset in client.get("/api/assets").json()
         if asset["type"] == "cash" and asset["currency"] == "USD"
     )
-    client.post(
-        "/api/transactions",
-        json={
-            "occurred_on": "2026-06-17",
-            "type": "deposit",
-            "account_id": account["id"],
-            "asset_id": usd_cash["id"],
-            "quantity": None,
-            "amount": 1_000,
-            "currency": "USD",
-            "memo": "환율 없는 달러 현금",
-        },
+    db = connect(client.app.state.settings.database_path)
+    db.execute(
+        "insert into holdings(account_id, asset_id, quantity) values (?, ?, ?)",
+        (account["id"], usd_cash["id"], 1_000),
     )
+    db.execute(
+        """
+        insert into transactions(
+          occurred_on, type, account_id, asset_id, amount, currency, memo
+        )
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "2026-06-17",
+            "deposit",
+            account["id"],
+            usd_cash["id"],
+            1_000,
+            "USD",
+            "환율 없는 달러 현금",
+        ),
+    )
+    db.commit()
+    db.close()
 
     response = client.post("/api/market-data/sync")
 

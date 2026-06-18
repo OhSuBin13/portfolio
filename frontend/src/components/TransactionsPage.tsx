@@ -97,6 +97,7 @@ export function TransactionsPage() {
     const quantityValue = Number(form.quantity)
     const quantity = needsQuantity ? quantityValue : null
     const fxRateToKrw = form.fxRateToKrw.trim() ? Number(form.fxRateToKrw) : null
+    const requiresFxRate = form.currency.trim().toUpperCase() !== "KRW"
 
     if (!accountId || !assetId) {
       setError("계좌와 자산을 선택하세요.")
@@ -120,8 +121,13 @@ export function TransactionsPage() {
       return
     }
 
+    if (requiresFxRate && fxRateToKrw === null) {
+      setError("외화 거래에는 환율을 입력하세요.")
+      return
+    }
+
     if (fxRateToKrw !== null && (!Number.isFinite(fxRateToKrw) || fxRateToKrw <= 0)) {
-      setError("환율은 비워두거나 0보다 큰 숫자로 입력하세요.")
+      setError("환율은 0보다 큰 숫자로 입력하세요.")
       return
     }
 
@@ -258,7 +264,7 @@ export function TransactionsPage() {
               inputMode="decimal"
               value={form.fxRateToKrw}
               onChange={(event) => setForm((prev) => ({ ...prev, fxRateToKrw: event.target.value }))}
-              placeholder="선택"
+              placeholder={form.currency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
             />
           </label>
         </div>

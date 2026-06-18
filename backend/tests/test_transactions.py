@@ -161,6 +161,7 @@ def test_sell_more_than_holding_is_rejected(tmp_path):
             amount=500,
             currency="USD",
             memo="보유량 초과",
+            fx_rate_to_krw=1400,
         )
     except ValueError as exc:
         assert "보유 수량" in str(exc)
@@ -376,6 +377,7 @@ def test_failed_transaction_insert_rolls_back_holding_update(tmp_path):
             amount=200,
             currency="USD",
             memo=None,
+            fx_rate_to_krw=1400,
         )
 
     assert count_transactions(db, "buy") == 0
@@ -444,6 +446,29 @@ def test_invalid_fx_rate_is_rejected_without_changes(tmp_path, fx_rate_to_krw):
         get_holding(db, account_id=account_id, asset_id=asset_id)
 
 
+def test_usd_transaction_without_fx_rate_is_rejected_without_changes(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="달러 현금", type="cash")
+    asset_id = create_asset(db, symbol=None, name="USD", type="cash", currency="USD", market="US")
+
+    with pytest.raises(ValueError, match="외화 거래에는 환율"):
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="deposit",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=None,
+            amount=1_000,
+            currency="USD",
+            memo="환율 누락 달러 입금",
+        )
+
+    assert count_transactions(db, "deposit") == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
 def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
     db = setup_db(tmp_path)
     account_id = create_account(db, name="대출", type="debt")
@@ -481,7 +506,33 @@ def test_debt_payment_more_than_holding_is_rejected_without_changes(tmp_path):
     assert count_transactions(db, "debt_payment") == 0
 
 
-def test_direct_holding_edit_defaults_to_asset_currency(tmp_path):
+def test_direct_holding_edit_for_usd_asset_requires_fx_rate_without_changes(tmp_path):
+    db = setup_db(tmp_path)
+    account_id = create_account(db, name="해외 증권", type="brokerage")
+    asset_id = create_asset(
+        db,
+        symbol="VOO",
+        name="Vanguard S&P 500 ETF",
+        type="stock_etf",
+        currency="USD",
+        market="US",
+    )
+
+    with pytest.raises(ValueError, match="외화 거래에는 환율"):
+        edit_holding_balance(
+            db,
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=3,
+            memo="해외 ETF 입력",
+        )
+
+    assert count_transactions(db, "adjustment") == 0
+    with pytest.raises(ValueError):
+        get_holding(db, account_id=account_id, asset_id=asset_id)
+
+
+def test_direct_holding_edit_for_usd_asset_records_fx_rate_when_provided(tmp_path):
     db = setup_db(tmp_path)
     account_id = create_account(db, name="해외 증권", type="brokerage")
     asset_id = create_asset(
@@ -499,7 +550,14 @@ def test_direct_holding_edit_defaults_to_asset_currency(tmp_path):
         asset_id=asset_id,
         quantity=3,
         memo="해외 ETF 입력",
+        fx_rate_to_krw=1400,
     )
 
-    tx = db.execute("select currency from transactions where id = ?", (tx_id,)).fetchone()
+    holding = get_holding(db, account_id=account_id, asset_id=asset_id)
+    tx = db.execute(
+        "select currency, fx_rate_to_krw from transactions where id = ?",
+        (tx_id,),
+    ).fetchone()
+    assert holding["quantity"] == 3
     assert tx["currency"] == "USD"
+    assert tx["fx_rate_to_krw"] == 1400

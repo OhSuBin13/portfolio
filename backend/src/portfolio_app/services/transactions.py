@@ -64,6 +64,11 @@ def _validate_fx_rate(fx_rate_to_krw: float | None) -> None:
         raise ValueError("환율은 0보다 커야 합니다.")
 
 
+def _validate_foreign_currency_fx_rate(command: TransactionCommand) -> None:
+    if command.currency.strip().upper() != "KRW" and command.fx_rate_to_krw is None:
+        raise ValueError("외화 거래에는 환율을 입력해 주세요.")
+
+
 def _positive_quantity(quantity: float | None, message: str) -> float:
     if not _is_finite_number(quantity) or quantity <= 0:
         raise ValueError(message)
@@ -75,6 +80,7 @@ def _validate_transaction_command(command: TransactionCommand) -> None:
         raise ValueError("지원하지 않는 거래 유형입니다.")
 
     _validate_fx_rate(command.fx_rate_to_krw)
+    _validate_foreign_currency_fx_rate(command)
 
     if command.type == "adjustment":
         _validate_adjustment_amount(command.amount)
@@ -217,6 +223,7 @@ def edit_holding_balance(
     memo: str,
     occurred_on: str | None = None,
     currency: str | None = None,
+    fx_rate_to_krw: float | None = None,
 ) -> int:
     return apply_transaction(
         db,
@@ -228,4 +235,5 @@ def edit_holding_balance(
         amount=quantity,
         currency=currency if currency is not None else get_asset_currency(db, asset_id=asset_id),
         memo=memo,
+        fx_rate_to_krw=fx_rate_to_krw,
     )

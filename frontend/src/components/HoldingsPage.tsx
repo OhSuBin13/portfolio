@@ -319,6 +319,7 @@ export function HoldingsPage() {
     const quantity = Number(balanceForm.quantity)
     const fxRateToKrw = balanceForm.fxRateToKrw.trim() ? Number(balanceForm.fxRateToKrw) : null
     const isBuy = showBalanceQuantity && balanceForm.type === "buy"
+    const requiresFxRate = balanceForm.currency.trim().toUpperCase() !== "KRW"
 
     if (!accountId || !assetId) {
       setBalanceError("계좌와 자산을 선택하세요.")
@@ -342,8 +343,13 @@ export function HoldingsPage() {
       return
     }
 
+    if (requiresFxRate && fxRateToKrw === null) {
+      setBalanceError("외화 거래에는 환율을 입력하세요.")
+      return
+    }
+
     if (fxRateToKrw !== null && (!Number.isFinite(fxRateToKrw) || fxRateToKrw <= 0)) {
-      setBalanceError("환율은 비워두거나 0보다 큰 숫자로 입력하세요.")
+      setBalanceError("환율은 0보다 큰 숫자로 입력하세요.")
       return
     }
 
@@ -692,7 +698,7 @@ export function HoldingsPage() {
               onChange={(event) =>
                 setBalanceForm((prev) => ({ ...prev, fxRateToKrw: event.target.value }))
               }
-              placeholder="선택"
+              placeholder={balanceForm.currency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
             />
           </label>
           <label>

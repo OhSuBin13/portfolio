@@ -816,20 +816,24 @@ def test_summary_rejects_non_krw_monthly_income_without_transaction_fx_rate(tmp_
         "/api/assets",
         json={"symbol": "USD", "name": "USD", "type": "cash", "currency": "USD", "market": "US"},
     ).json()
-    client.post(
-        "/api/transactions",
-        json={
-            "occurred_on": current_month_date(),
-            "type": "interest",
-            "account_id": account["id"],
-            "asset_id": asset["id"],
-            "quantity": None,
-            "amount": 100,
-            "currency": "USD",
-            "memo": "환율 누락 이자",
-        },
-    )
     db = connect(client.app.state.settings.database_path)
+    db.execute(
+        """
+        insert into transactions(
+          occurred_on, type, account_id, asset_id, amount, currency, memo
+        )
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            current_month_date(),
+            "interest",
+            account["id"],
+            asset["id"],
+            100,
+            "USD",
+            "환율 누락 이자",
+        ),
+    )
     db.execute(
         """
         insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
@@ -948,19 +952,34 @@ def test_summary_rejects_non_krw_holding_without_fx_rate(tmp_path):
             "market": "US",
         },
     ).json()
-    client.post(
-        "/api/transactions",
-        json={
-            "occurred_on": "2026-06-12",
-            "type": "buy",
-            "account_id": account["id"],
-            "asset_id": asset["id"],
-            "quantity": 1,
-            "amount": 500,
-            "currency": "USD",
-            "memo": "환율 누락 매수",
-        },
+    db = connect(client.app.state.settings.database_path)
+    db.execute(
+        """
+        insert into holdings(account_id, asset_id, quantity, average_cost)
+        values (?, ?, ?, ?)
+        """,
+        (account["id"], asset["id"], 1, 500),
     )
+    db.execute(
+        """
+        insert into transactions(
+          occurred_on, type, account_id, asset_id, quantity, amount, currency, memo
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "2026-06-12",
+            "buy",
+            account["id"],
+            asset["id"],
+            1,
+            500,
+            "USD",
+            "환율 누락 매수",
+        ),
+    )
+    db.commit()
+    db.close()
 
     response = client.get("/api/summary?refresh=false")
 
@@ -1065,4 +1084,34 @@ def test_transaction_create_rejects_invalid_fx_rate_without_persistence(tmp_path
 
     assert response.status_code == 400
     assert "환율" in response.json()["detail"]
+    assert client.get("/api/transactions").json() == []
+
+
+def test_transaction_create_rejects_usd_without_fx_rate_without_persistence(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "달러 현금", "type": "cash"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": "USD", "name": "USD", "type": "cash", "currency": "USD", "market": "US"},
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": None,
+            "amount": 1_000,
+            "currency": "USD",
+            "memo": "환율 누락 달러 입금",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "외화 거래에는 환율" in response.json()["detail"]
     assert client.get("/api/transactions").json() == []
