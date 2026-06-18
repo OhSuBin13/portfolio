@@ -239,6 +239,10 @@ def insert_transaction(
     return int(cursor.lastrowid)
 
 
+def fetch_transactions(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute("select * from transactions order by id").fetchall()
+
+
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
     rows = db.execute(
         """

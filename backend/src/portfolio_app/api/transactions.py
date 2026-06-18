@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
+from portfolio_app import repositories
 from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
 from portfolio_app.models import TRANSACTION_TYPES, TransactionResponse
 from portfolio_app.services.transactions import apply_transaction
@@ -62,5 +63,4 @@ def create_transaction_endpoint(payload: TransactionCreate, db: Db) -> dict[str,
 
 @router.get("", response_model=list[TransactionResponse])
 def list_transactions(db: Db) -> list[dict[str, object]]:
-    rows = db.execute("select * from transactions order by id").fetchall()
-    return [row_to_dict(row) for row in rows]
+    return [row_to_dict(row) for row in repositories.fetch_transactions(db)]

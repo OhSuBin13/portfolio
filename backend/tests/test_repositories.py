@@ -180,6 +180,49 @@ def test_insert_transaction_can_defer_commit(tmp_path):
     assert observer_count_after_commit == 1
 
 
+def test_fetch_transactions_returns_transactions_ordered_by_id(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+    asset_id = repositories.create_asset(
+        db,
+        symbol=None,
+        name="KRW",
+        type="cash",
+        currency="KRW",
+        market="KR",
+    )
+    first_id = repositories.insert_transaction(
+        db,
+        occurred_on="2026-06-13",
+        type="deposit",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=200_000,
+        currency="KRW",
+        fx_rate_to_krw=None,
+        memo="두 번째 날짜",
+    )
+    second_id = repositories.insert_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type="deposit",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=100_000,
+        currency="KRW",
+        fx_rate_to_krw=None,
+        memo="첫 번째 날짜",
+    )
+
+    rows = repositories.fetch_transactions(db)
+
+    assert [row["id"] for row in rows] == [first_id, second_id]
+    assert [row["memo"] for row in rows] == ["두 번째 날짜", "첫 번째 날짜"]
+
+
 def test_get_current_holding_returns_zero_state_when_missing(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
