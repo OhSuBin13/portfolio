@@ -74,6 +74,29 @@ def test_migrate_creates_summary_query_indexes(tmp_path):
     assert SUMMARY_QUERY_INDEXES.issubset(index_names(db))
 
 
+def test_update_account_repository_updates_existing_account(tmp_path):
+    from portfolio_app import repositories
+
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+
+    assert hasattr(repositories, "update_account")
+    updated = repositories.update_account(
+        db,
+        account_id=account_id,
+        name="해외 증권",
+        type="brokerage",
+    )
+
+    account = repositories.fetch_account(db, account_id=account_id)
+    assert updated is True
+    assert account is not None
+    assert account["name"] == "해외 증권"
+    assert account["type"] == "brokerage"
+
+
 def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
     db_path = tmp_path / "portfolio.sqlite"
     db = connect(db_path)

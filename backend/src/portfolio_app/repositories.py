@@ -47,6 +47,22 @@ def fetch_account(db: sqlite3.Connection, *, account_id: int) -> sqlite3.Row | N
     return db.execute("select * from accounts where id = ?", (account_id,)).fetchone()
 
 
+def update_account(
+    db: sqlite3.Connection,
+    *,
+    account_id: int,
+    name: str,
+    type: str,
+) -> bool:
+    cursor = db.execute(
+        """update accounts set name = ?, type = ?,
+        updated_at = current_timestamp where id = ?""",
+        (name, type, account_id),
+    )
+    db.commit()
+    return cursor.rowcount > 0
+
+
 def create_asset(
     db: sqlite3.Connection,
     *,

@@ -5,8 +5,21 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
-from portfolio_app.repositories import create_account, fetch_account, fetch_accounts
+from portfolio_app.api import (
+    created_row,
+    get_db,
+    require_allowed,
+    require_non_empty,
+    row_to_dict,
+)
+from portfolio_app.repositories import (
+    create_account,
+    fetch_account,
+    fetch_accounts,
+)
+from portfolio_app.repositories import (
+    update_account as update_account_record,
+)
 
 ACCOUNT_TYPES = {"cash", "savings", "brokerage", "debt"}
 
@@ -77,14 +90,14 @@ def delete_account(account_id: int, db: Db) -> None:
 def update_account(account_id: int, payload: AccountCreate, db: Db) -> dict[str, object]:
     account = validate_account_payload(payload)
 
-    cursor = db.execute(
-        """update accounts set name = ?, type = ?,
-        updated_at = current_timestamp where id = ?""",
-        (account.name, account.type, account_id),
+    updated = update_account_record(
+        db,
+        account_id=account_id,
+        name=account.name,
+        type=account.type,
     )
-    if cursor.rowcount == 0:
+    if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="계좌를 찾을 수 없습니다."
         )
-    db.commit()
     return created_row(db, "accounts", account_id)
