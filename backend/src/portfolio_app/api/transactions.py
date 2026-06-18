@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from portfolio_app import repositories
 from portfolio_app.api import created_row, get_db, require_allowed, require_non_empty, row_to_dict
-from portfolio_app.models import TRANSACTION_TYPES, TransactionResponse
+from portfolio_app.models import TRANSACTION_TYPES, Currency, TransactionResponse, TransactionType
 from portfolio_app.services.transactions import apply_transaction
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -21,12 +21,12 @@ class TransactionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     occurred_on: date
-    type: str
+    type: TransactionType
     account_id: int
     asset_id: int
     quantity: float | None = None
     amount: float
-    currency: str
+    currency: Currency
     memo: str = ""
     fx_rate_to_krw: float | None = None
 

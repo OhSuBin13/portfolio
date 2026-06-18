@@ -182,6 +182,7 @@ def test_transaction_endpoints_document_typed_response_model(tmp_path):
 
     assert response.status_code == 200
     schema = response.json()
+    transaction_create = schema["components"]["schemas"]["TransactionCreate"]
     transaction_response = schema["components"]["schemas"]["TransactionResponse"]
     assert schema["paths"]["/api/transactions"]["post"]["responses"]["201"]["content"][
         "application/json"
@@ -202,6 +203,11 @@ def test_transaction_endpoints_document_typed_response_model(tmp_path):
         "memo",
         "created_at",
     }.issubset(transaction_response["properties"])
+    assert transaction_create["properties"]["type"]["enum"] == transaction_response["properties"][
+        "type"
+    ]["enum"]
+    assert transaction_create["properties"]["currency"]["enum"] == ["USD", "KRW"]
+    assert transaction_response["properties"]["currency"]["enum"] == ["USD", "KRW"]
 
 
 def test_transactions_keep_history_with_null_account_after_account_delete(tmp_path):

@@ -4,6 +4,7 @@ from typing import Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field
 
 AssetType = Literal["cash", "savings", "stock_etf", "debt"]
+Currency = Literal["USD", "KRW"]
 TransactionType = Literal[
     "deposit",
     "withdrawal",
@@ -97,7 +98,7 @@ class TransactionResponse(BaseModel):
     asset_id: int | None
     quantity: float | None
     amount: float = Field(allow_inf_nan=False)
-    currency: str
+    currency: Currency
     fx_rate_to_krw: float | None = Field(default=None, allow_inf_nan=False)
     memo: str
     created_at: str
