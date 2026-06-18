@@ -39,6 +39,14 @@ def create_account(db: sqlite3.Connection, *, name: str, type: str) -> int:
     return int(cursor.lastrowid)
 
 
+def fetch_accounts(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute("select * from accounts order by id").fetchall()
+
+
+def fetch_account(db: sqlite3.Connection, *, account_id: int) -> sqlite3.Row | None:
+    return db.execute("select * from accounts where id = ?", (account_id,)).fetchone()
+
+
 def create_asset(
     db: sqlite3.Connection,
     *,
