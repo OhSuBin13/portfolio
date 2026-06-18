@@ -1087,6 +1087,36 @@ def test_transaction_create_rejects_invalid_fx_rate_without_persistence(tmp_path
     assert client.get("/api/transactions").json() == []
 
 
+def test_transaction_create_rejects_quantity_for_non_buy_sell_without_persistence(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={"symbol": None, "name": "KRW", "type": "cash", "currency": "KRW", "market": "KR"},
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 123,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "수량이 들어간 입금",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "수량" in response.json()["detail"]
+    assert client.get("/api/transactions").json() == []
+
+
 def test_transaction_create_rejects_usd_without_fx_rate_without_persistence(tmp_path):
     client = create_test_client(tmp_path)
 

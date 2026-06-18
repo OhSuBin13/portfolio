@@ -17,6 +17,7 @@ DECREASE_TYPES = {"withdrawal", "fee", "debt_payment"}
 CASHFLOW_TYPES = {"deposit", "withdrawal", "dividend", "interest", "fee"}
 CASH_LIKE_ASSET_TYPES = {"cash", "savings"}
 MARKET_ASSET_TYPES = {"stock_etf"}
+QUANTITY_TYPES = {"buy", "sell"}
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,9 @@ def _validate_transaction_command(command: TransactionCommand) -> None:
         raise ValueError("지원하지 않는 거래 유형입니다.")
 
     _validate_fx_rate(command.fx_rate_to_krw)
+
+    if command.type not in QUANTITY_TYPES and command.quantity is not None:
+        raise ValueError("매수와 매도 외 거래에는 수량을 입력할 수 없습니다.")
 
     if command.type == "adjustment":
         _validate_adjustment_amount(command.amount)
