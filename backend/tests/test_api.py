@@ -179,6 +179,43 @@ def test_transaction_endpoints_document_typed_response_model(tmp_path):
     }.issubset(transaction_response["properties"])
 
 
+def test_transactions_keep_history_with_null_account_after_account_delete(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash"},
+    ).json()
+    cash_asset = next(
+        asset
+        for asset in client.get("/api/assets").json()
+        if asset["type"] == "cash" and asset["currency"] == "KRW"
+    )
+    created = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "deposit",
+            "account_id": account["id"],
+            "asset_id": cash_asset["id"],
+            "quantity": None,
+            "amount": 1_000_000,
+            "currency": "KRW",
+            "memo": "초기 입금",
+        },
+    ).json()
+
+    deleted = client.delete(f"/api/accounts/{account['id']}")
+    transactions = client.get("/api/transactions").json()
+
+    assert deleted.status_code == 204
+    assert transactions == [
+        {
+            **created,
+            "account_id": None,
+        }
+    ]
+
+
 def test_can_get_update_and_delete_account(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(

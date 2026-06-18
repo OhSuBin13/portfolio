@@ -65,8 +65,8 @@ export type Transaction = {
   id: number
   occurred_on: string
   type: string
-  account_id: number
-  asset_id: number
+  account_id: number | null
+  asset_id: number | null
   quantity: number | null
   amount: number
   currency: string

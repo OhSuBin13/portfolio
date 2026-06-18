@@ -304,8 +304,16 @@ export function TransactionsPage() {
                   <tr key={transaction.id}>
                     <td>{transaction.occurred_on}</td>
                     <td>{transactionTypeLabel(transaction.type)}</td>
-                    <td>{accountNames.get(transaction.account_id) ?? transaction.account_id}</td>
-                    <td>{assetNames.get(transaction.asset_id) ?? transaction.asset_id}</td>
+                    <td>
+                      {transaction.account_id === null
+                        ? "삭제된 계좌"
+                        : (accountNames.get(transaction.account_id) ?? transaction.account_id)}
+                    </td>
+                    <td>
+                      {transaction.asset_id === null
+                        ? "삭제된 자산"
+                        : (assetNames.get(transaction.asset_id) ?? transaction.asset_id)}
+                    </td>
                     <td className="numeric-cell">
                       {transaction.quantity === null ? "-" : formatNumber(transaction.quantity)}
                     </td>
