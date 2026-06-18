@@ -64,8 +64,12 @@ def _validate_fx_rate(fx_rate_to_krw: float | None) -> None:
         raise ValueError("환율은 0보다 커야 합니다.")
 
 
-def _validate_foreign_currency_fx_rate(command: TransactionCommand) -> None:
-    if command.currency.strip().upper() != "KRW" and command.fx_rate_to_krw is None:
+def _validate_foreign_asset_fx_rate(
+    command: TransactionCommand,
+    *,
+    asset_currency: str,
+) -> None:
+    if asset_currency.strip().upper() != "KRW" and command.fx_rate_to_krw is None:
         raise ValueError("외화 거래에는 환율을 입력해 주세요.")
 
 
@@ -80,7 +84,6 @@ def _validate_transaction_command(command: TransactionCommand) -> None:
         raise ValueError("지원하지 않는 거래 유형입니다.")
 
     _validate_fx_rate(command.fx_rate_to_krw)
-    _validate_foreign_currency_fx_rate(command)
 
     if command.type == "adjustment":
         _validate_adjustment_amount(command.amount)
@@ -176,6 +179,10 @@ def apply_transaction(
         db,
         transaction_type=command.type,
         asset_id=command.asset_id,
+    )
+    _validate_foreign_asset_fx_rate(
+        command,
+        asset_currency=get_asset_currency(db, asset_id=command.asset_id),
     )
 
     with db:

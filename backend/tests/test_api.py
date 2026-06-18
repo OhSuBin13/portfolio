@@ -1115,3 +1115,42 @@ def test_transaction_create_rejects_usd_without_fx_rate_without_persistence(tmp_
     assert response.status_code == 400
     assert "외화 거래에는 환율" in response.json()["detail"]
     assert client.get("/api/transactions").json() == []
+
+
+def test_transaction_create_rejects_usd_asset_without_fx_even_when_currency_is_krw(
+    tmp_path,
+):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "KRW",
+            "memo": "자산 통화 기준 환율 누락",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "외화 거래에는 환율" in response.json()["detail"]
+    assert client.get("/api/transactions").json() == []
