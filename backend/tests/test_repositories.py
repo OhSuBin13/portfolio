@@ -41,3 +41,42 @@ def test_fetch_account_returns_none_when_missing(tmp_path):
     row = repositories.fetch_account(db, account_id=999)
 
     assert row is None
+
+
+def test_update_account_repository_updates_existing_account(tmp_path):
+    from portfolio_app import repositories
+
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+
+    assert hasattr(repositories, "update_account")
+    updated = repositories.update_account(
+        db,
+        account_id=account_id,
+        name="해외 증권",
+        type="brokerage",
+    )
+
+    account = repositories.fetch_account(db, account_id=account_id)
+    assert updated is True
+    assert account is not None
+    assert account["name"] == "해외 증권"
+    assert account["type"] == "brokerage"
+
+
+def test_delete_account_repository_deletes_existing_account(tmp_path):
+    from portfolio_app import repositories
+
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+
+    deleted = repositories.delete_account(db, account_id=account_id)
+    missing_deleted = repositories.delete_account(db, account_id=account_id)
+
+    assert deleted is True
+    assert repositories.fetch_account(db, account_id=account_id) is None
+    assert missing_deleted is False
