@@ -4,7 +4,13 @@ from dataclasses import dataclass
 from datetime import date
 
 from portfolio_app.models import TRANSACTION_TYPES
-from portfolio_app.repositories import insert_transaction, upsert_holding
+from portfolio_app.repositories import (
+    get_asset_currency,
+    get_asset_type,
+    get_current_holding,
+    insert_transaction,
+    upsert_holding,
+)
 
 INCREASE_TYPES = {"deposit", "interest", "dividend"}
 DECREASE_TYPES = {"withdrawal", "fee", "debt_payment"}
@@ -30,34 +36,6 @@ class TransactionCommand:
 class HoldingEffect:
     quantity: float
     average_cost: float | None
-
-
-def _current_holding(
-    db: sqlite3.Connection,
-    account_id: int,
-    asset_id: int,
-) -> tuple[float, float | None]:
-    row = db.execute(
-        "select quantity, average_cost from holdings where account_id = ? and asset_id = ?",
-        (account_id, asset_id),
-    ).fetchone()
-    if row is None:
-        return 0.0, None
-    return float(row["quantity"]), row["average_cost"]
-
-
-def _asset_currency(db: sqlite3.Connection, asset_id: int) -> str:
-    row = db.execute("select currency from assets where id = ?", (asset_id,)).fetchone()
-    if row is None:
-        return "KRW"
-    return str(row["currency"])
-
-
-def _asset_type(db: sqlite3.Connection, asset_id: int) -> str:
-    row = db.execute("select type from assets where id = ?", (asset_id,)).fetchone()
-    if row is None:
-        raise ValueError("자산을 찾을 수 없습니다.")
-    return str(row["type"])
 
 
 def _is_finite_number(value: float | None) -> bool:
@@ -110,7 +88,7 @@ def _validate_asset_type_for_transaction(
     transaction_type: str,
     asset_id: int,
 ) -> None:
-    asset_type = _asset_type(db, asset_id)
+    asset_type = get_asset_type(db, asset_id=asset_id)
     if transaction_type in CASHFLOW_TYPES and asset_type not in CASH_LIKE_ASSET_TYPES:
         raise ValueError("입출금, 배당, 이자, 수수료는 현금성 자산에만 기록할 수 있습니다.")
     if transaction_type == "debt_payment" and asset_type != "debt":
@@ -195,10 +173,10 @@ def apply_transaction(
     )
 
     with db:
-        current_quantity, current_average = _current_holding(
+        current_quantity, current_average = get_current_holding(
             db,
-            command.account_id,
-            command.asset_id,
+            account_id=command.account_id,
+            asset_id=command.asset_id,
         )
         effect = calculate_holding_effect(
             command,
@@ -248,6 +226,6 @@ def edit_holding_balance(
         asset_id=asset_id,
         quantity=None,
         amount=quantity,
-        currency=currency if currency is not None else _asset_currency(db, asset_id),
+        currency=currency if currency is not None else get_asset_currency(db, asset_id=asset_id),
         memo=memo,
     )

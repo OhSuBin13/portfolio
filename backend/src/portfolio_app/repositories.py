@@ -147,6 +147,35 @@ def get_holding(db: sqlite3.Connection, *, account_id: int, asset_id: int) -> sq
     return row
 
 
+def get_current_holding(
+    db: sqlite3.Connection,
+    *,
+    account_id: int,
+    asset_id: int,
+) -> tuple[float, float | None]:
+    row = db.execute(
+        "select quantity, average_cost from holdings where account_id = ? and asset_id = ?",
+        (account_id, asset_id),
+    ).fetchone()
+    if row is None:
+        return 0.0, None
+    return float(row["quantity"]), row["average_cost"]
+
+
+def get_asset_currency(db: sqlite3.Connection, *, asset_id: int) -> str:
+    row = db.execute("select currency from assets where id = ?", (asset_id,)).fetchone()
+    if row is None:
+        return "KRW"
+    return str(row["currency"])
+
+
+def get_asset_type(db: sqlite3.Connection, *, asset_id: int) -> str:
+    row = db.execute("select type from assets where id = ?", (asset_id,)).fetchone()
+    if row is None:
+        raise ValueError("자산을 찾을 수 없습니다.")
+    return str(row["type"])
+
+
 def upsert_holding(
     db: sqlite3.Connection,
     *,

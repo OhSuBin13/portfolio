@@ -178,3 +178,86 @@ def test_insert_transaction_can_defer_commit(tmp_path):
     assert row["memo"] == "초기 입금"
     assert observer_count_before_commit == 0
     assert observer_count_after_commit == 1
+
+
+def test_get_current_holding_returns_zero_state_when_missing(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    quantity, average_cost = repositories.get_current_holding(
+        db,
+        account_id=999,
+        asset_id=999,
+    )
+
+    assert quantity == 0
+    assert average_cost is None
+
+
+def test_get_current_holding_returns_quantity_and_average_cost(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    account_id = repositories.create_account(db, name="해외 증권", type="brokerage")
+    asset_id = repositories.create_asset(
+        db,
+        symbol="VOO",
+        name="Vanguard S&P 500 ETF",
+        type="stock_etf",
+        currency="USD",
+        market="US",
+    )
+    repositories.upsert_holding(
+        db,
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=3,
+        average_cost=500,
+    )
+
+    quantity, average_cost = repositories.get_current_holding(
+        db,
+        account_id=account_id,
+        asset_id=asset_id,
+    )
+
+    assert quantity == 3
+    assert average_cost == 500
+
+
+def test_get_asset_type_returns_type_and_raises_when_missing(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    asset_id = repositories.create_asset(
+        db,
+        symbol=None,
+        name="원화 현금",
+        type="cash",
+        currency="KRW",
+        market="KR",
+    )
+
+    asset_type = repositories.get_asset_type(db, asset_id=asset_id)
+
+    assert asset_type == "cash"
+    try:
+        repositories.get_asset_type(db, asset_id=999)
+    except ValueError as exc:
+        assert "자산을 찾을 수 없습니다." in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_get_asset_currency_returns_currency_and_krw_default_when_missing(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    asset_id = repositories.create_asset(
+        db,
+        symbol="VOO",
+        name="Vanguard S&P 500 ETF",
+        type="stock_etf",
+        currency="USD",
+        market="US",
+    )
+
+    assert repositories.get_asset_currency(db, asset_id=asset_id) == "USD"
+    assert repositories.get_asset_currency(db, asset_id=999) == "KRW"
