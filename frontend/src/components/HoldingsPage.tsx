@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiDelete, apiGet, apiPost, apiPut } from "../api"
+import { buildTransactionPayload } from "../transactionPayload"
 import type { Account, Asset, Transaction } from "../types"
 
 const accountTypes = [
@@ -354,17 +355,17 @@ export function HoldingsPage() {
     }
 
     try {
-      await apiPost<Transaction>("/api/transactions", {
-        occurred_on: balanceForm.occurredOn,
+      await apiPost<Transaction>("/api/transactions", buildTransactionPayload({
+        occurredOn: balanceForm.occurredOn,
         type: isBuy ? "buy" : "adjustment",
-        account_id: accountId,
-        asset_id: assetId,
+        accountId,
+        assetId,
         quantity: isBuy ? quantity : null,
         amount,
-        currency: balanceForm.currency.trim().toUpperCase(),
-        memo: balanceForm.memo.trim(),
-        fx_rate_to_krw: fxRateToKrw,
-      })
+        currency: balanceForm.currency,
+        memo: balanceForm.memo,
+        fxRateToKrw,
+      }))
       setBalanceForm((prev) => ({
         ...prev,
         quantity: "",

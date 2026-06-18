@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
+import { buildTransactionPayload } from "../transactionPayload"
 import type { Account, Asset, Transaction } from "../types"
 
 const transactionTypes = [
@@ -132,17 +133,17 @@ export function TransactionsPage() {
     }
 
     try {
-      await apiPost<Transaction>("/api/transactions", {
-        occurred_on: form.occurredOn,
+      await apiPost<Transaction>("/api/transactions", buildTransactionPayload({
+        occurredOn: form.occurredOn,
         type: form.type,
-        account_id: accountId,
-        asset_id: assetId,
+        accountId,
+        assetId,
         quantity,
         amount,
-        currency: form.currency.trim().toUpperCase(),
-        memo: form.memo.trim(),
-        fx_rate_to_krw: fxRateToKrw,
-      })
+        currency: form.currency,
+        memo: form.memo,
+        fxRateToKrw,
+      }))
       await loadTransactions()
       setForm((prev) => ({
         ...prev,
