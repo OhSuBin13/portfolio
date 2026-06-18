@@ -22,6 +22,28 @@ def count_transactions(db, transaction_type):
     return row[0]
 
 
+def transaction_command(
+    *,
+    transaction_type,
+    quantity=None,
+    amount=100_000,
+    fx_rate_to_krw=None,
+):
+    from portfolio_app.services.transactions import TransactionCommand
+
+    return TransactionCommand(
+        occurred_on="2026-06-12",
+        type=transaction_type,
+        account_id=1,
+        asset_id=1,
+        quantity=quantity,
+        amount=amount,
+        currency="KRW",
+        memo="테스트 거래",
+        fx_rate_to_krw=fx_rate_to_krw,
+    )
+
+
 def test_transaction_layers_share_model_transaction_type_contract():
     from typing import get_args
 
@@ -34,6 +56,56 @@ def test_transaction_layers_share_model_transaction_type_contract():
     assert model_types == frozenset(get_args(models.TransactionType))
     assert transaction_api.TRANSACTION_TYPES is model_types
     assert transaction_service.TRANSACTION_TYPES is model_types
+
+
+def test_calculate_holding_effect_returns_weighted_average_for_buy():
+    from portfolio_app.services.transactions import calculate_holding_effect
+
+    effect = calculate_holding_effect(
+        transaction_command(transaction_type="buy", quantity=5, amount=600),
+        current_quantity=10,
+        current_average=90,
+    )
+
+    assert effect.quantity == 15
+    assert effect.average_cost == pytest.approx(100)
+
+
+def test_calculate_holding_effect_keeps_average_when_selling():
+    from portfolio_app.services.transactions import calculate_holding_effect
+
+    effect = calculate_holding_effect(
+        transaction_command(transaction_type="sell", quantity=3, amount=300),
+        current_quantity=10,
+        current_average=90,
+    )
+
+    assert effect.quantity == 7
+    assert effect.average_cost == 90
+
+
+@pytest.mark.parametrize(
+    ("transaction_type", "expected_quantity"),
+    [
+        ("deposit", 35_000),
+        ("withdrawal", 15_000),
+        ("adjustment", 10_000),
+    ],
+)
+def test_calculate_holding_effect_maps_cash_and_adjustment_transactions(
+    transaction_type,
+    expected_quantity,
+):
+    from portfolio_app.services.transactions import calculate_holding_effect
+
+    effect = calculate_holding_effect(
+        transaction_command(transaction_type=transaction_type, amount=10_000),
+        current_quantity=25_000,
+        current_average=None,
+    )
+
+    assert effect.quantity == expected_quantity
+    assert effect.average_cost is None
 
 
 def test_buy_transaction_increases_holding_quantity(tmp_path):

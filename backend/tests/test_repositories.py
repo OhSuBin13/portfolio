@@ -127,3 +127,54 @@ def test_delete_account_repository_deletes_existing_account(tmp_path):
     assert deleted is True
     assert repositories.fetch_account(db, account_id=account_id) is None
     assert missing_deleted is False
+
+
+def test_insert_transaction_can_defer_commit(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+    account_id = repositories.create_account(db, name="원화 현금", type="cash")
+    asset_id = repositories.create_asset(
+        db,
+        symbol=None,
+        name="KRW",
+        type="cash",
+        currency="KRW",
+        market="KR",
+    )
+
+    transaction_id = repositories.insert_transaction(
+        db,
+        occurred_on="2026-06-12",
+        type="deposit",
+        account_id=account_id,
+        asset_id=asset_id,
+        quantity=None,
+        amount=100_000,
+        currency="KRW",
+        fx_rate_to_krw=None,
+        memo="초기 입금",
+        commit=False,
+    )
+
+    row = db.execute("select * from transactions where id = ?", (transaction_id,)).fetchone()
+    observer = connect(db_path)
+    observer_count_before_commit = observer.execute(
+        "select count(*) from transactions"
+    ).fetchone()[0]
+    observer.close()
+    db.commit()
+    observer = connect(db_path)
+    observer_count_after_commit = observer.execute(
+        "select count(*) from transactions"
+    ).fetchone()[0]
+    observer.close()
+
+    assert row is not None
+    assert row["type"] == "deposit"
+    assert row["account_id"] == account_id
+    assert row["asset_id"] == asset_id
+    assert row["amount"] == 100_000
+    assert row["memo"] == "초기 입금"
+    assert observer_count_before_commit == 0
+    assert observer_count_after_commit == 1

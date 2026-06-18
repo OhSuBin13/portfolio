@@ -171,6 +171,45 @@ def upsert_holding(
         db.commit()
 
 
+def insert_transaction(
+    db: sqlite3.Connection,
+    *,
+    occurred_on: str,
+    type: str,
+    account_id: int,
+    asset_id: int,
+    quantity: float | None,
+    amount: float,
+    currency: str,
+    fx_rate_to_krw: float | None,
+    memo: str,
+    commit: bool = True,
+) -> int:
+    cursor = db.execute(
+        """
+        insert into transactions(
+          occurred_on, type, account_id, asset_id, quantity, amount, currency,
+          fx_rate_to_krw, memo
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            occurred_on,
+            type,
+            account_id,
+            asset_id,
+            quantity,
+            amount,
+            currency,
+            fx_rate_to_krw,
+            memo,
+        ),
+    )
+    if commit:
+        db.commit()
+    return int(cursor.lastrowid)
+
+
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
     rows = db.execute(
         """
