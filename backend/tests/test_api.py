@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
@@ -178,6 +179,33 @@ def test_can_get_update_and_delete_account(tmp_path):
     assert deleted.content == b""
     assert client.get(f"/api/accounts/{account['id']}").status_code == 404
     assert client.delete(f"/api/accounts/{account['id']}").status_code == 404
+
+
+def test_account_payload_validation_normalizes_shared_post_put_input():
+    from portfolio_app.api import accounts
+
+    payload = accounts.AccountCreate(name="  해외 증권  ", type=" brokerage ")
+
+    assert hasattr(accounts, "validate_account_payload")
+    validated = accounts.validate_account_payload(payload)
+
+    assert validated.name == "해외 증권"
+    assert validated.type == "brokerage"
+
+
+def test_account_payload_validation_rejects_invalid_type():
+    from fastapi import HTTPException
+
+    from portfolio_app.api import accounts
+
+    payload = accounts.AccountCreate(name="원화 현금", type="checking")
+
+    assert hasattr(accounts, "validate_account_payload")
+    with pytest.raises(HTTPException) as exc_info:
+        accounts.validate_account_payload(payload)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "지원하지 않는 계좌 유형입니다."
 
 
 def test_account_create_rejects_currency_field(tmp_path):
