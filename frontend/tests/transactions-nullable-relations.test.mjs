@@ -27,14 +27,30 @@ assert.ok(
   "package test script should include nullable transaction relation checks",
 )
 assert.ok(
-  pageSource.includes('const requiresFxRate = form.currency.trim().toUpperCase() !== "KRW"'),
-  "Transactions page should require an FX rate before posting non-KRW transactions",
+  pageSource.includes('const requiresFxRate = transactionCurrency.trim().toUpperCase() !== "KRW"'),
+  "Transactions page should require an FX rate from the selected asset currency",
 )
 assert.ok(
   holdingsSource.includes(
-    'const requiresFxRate = balanceForm.currency.trim().toUpperCase() !== "KRW"',
+    'const requiresFxRate = balanceCurrency.trim().toUpperCase() !== "KRW"',
   ),
-  "Holdings initial-balance form should require an FX rate before posting non-KRW transactions",
+  "Holdings initial-balance form should require an FX rate from the selected asset currency",
+)
+assert.ok(
+  pageSource.includes("selectedTransactionAsset?.currency ?? form.currency"),
+  "Transactions page should derive transaction currency from the selected asset",
+)
+assert.ok(
+  holdingsSource.includes("selectedBalanceAsset?.currency ?? balanceForm.currency"),
+  "Holdings initial-balance form should derive transaction currency from the selected asset",
+)
+assert.ok(
+  pageSource.includes("currency: transactionCurrency"),
+  "Transactions page should post the selected asset currency",
+)
+assert.ok(
+  holdingsSource.includes("currency: balanceCurrency"),
+  "Holdings initial-balance form should post the selected asset currency",
 )
 assert.ok(
   pageSource.includes("외화 거래에는 환율을 입력하세요."),

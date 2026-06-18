@@ -1117,7 +1117,44 @@ def test_transaction_create_rejects_usd_without_fx_rate_without_persistence(tmp_
     assert client.get("/api/transactions").json() == []
 
 
-def test_transaction_create_rejects_usd_asset_without_fx_even_when_currency_is_krw(
+def test_transaction_create_rejects_currency_mismatch_with_asset_without_persistence(tmp_path):
+    client = create_test_client(tmp_path)
+
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    response = client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "KRW",
+            "fx_rate_to_krw": 1400,
+            "memo": "자산 통화와 다른 거래 통화",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "자산 통화" in response.json()["detail"]
+    assert client.get("/api/transactions").json() == []
+
+
+def test_transaction_create_rejects_usd_asset_without_fx_when_currency_matches_asset(
     tmp_path,
 ):
     client = create_test_client(tmp_path)
@@ -1146,7 +1183,7 @@ def test_transaction_create_rejects_usd_asset_without_fx_even_when_currency_is_k
             "asset_id": asset["id"],
             "quantity": 1,
             "amount": 500,
-            "currency": "KRW",
+            "currency": "USD",
             "memo": "자산 통화 기준 환율 누락",
         },
     )

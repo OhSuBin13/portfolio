@@ -76,14 +76,22 @@ export function TransactionsPage() {
         setAssets(assetData)
         setTransactions(transactionData)
         setLoadError("")
-        setForm((prev) => ({
-          ...prev,
-          accountId: prev.accountId || (accountData[0] ? String(accountData[0].id) : ""),
-          assetId: prev.assetId || (assetData[0] ? String(assetData[0].id) : ""),
-        }))
+        setForm((prev) => {
+          const assetId = prev.assetId || (assetData[0] ? String(assetData[0].id) : "")
+          const asset = assetData.find((item) => String(item.id) === assetId)
+          return {
+            ...prev,
+            accountId: prev.accountId || (accountData[0] ? String(accountData[0].id) : ""),
+            assetId,
+            currency: asset?.currency ?? prev.currency,
+          }
+        })
       })
       .catch((err) => setLoadError(getErrorMessage(err)))
   }, [])
+
+  const selectedTransactionAsset = assets.find((asset) => String(asset.id) === form.assetId)
+  const transactionCurrency = selectedTransactionAsset?.currency ?? form.currency
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -98,7 +106,7 @@ export function TransactionsPage() {
     const quantityValue = Number(form.quantity)
     const quantity = needsQuantity ? quantityValue : null
     const fxRateToKrw = form.fxRateToKrw.trim() ? Number(form.fxRateToKrw) : null
-    const requiresFxRate = form.currency.trim().toUpperCase() !== "KRW"
+    const requiresFxRate = transactionCurrency.trim().toUpperCase() !== "KRW"
 
     if (!accountId || !assetId) {
       setError("계좌와 자산을 선택하세요.")
@@ -140,7 +148,7 @@ export function TransactionsPage() {
         assetId,
         quantity,
         amount,
-        currency: form.currency,
+        currency: transactionCurrency,
         memo: form.memo,
         fxRateToKrw,
       }))
@@ -203,8 +211,8 @@ export function TransactionsPage() {
           <label>
             통화
             <input
-              value={form.currency}
-              onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}
+              value={transactionCurrency}
+              readOnly
             />
           </label>
         </div>
@@ -228,7 +236,15 @@ export function TransactionsPage() {
             자산
             <select
               value={form.assetId}
-              onChange={(event) => setForm((prev) => ({ ...prev, assetId: event.target.value }))}
+              onChange={(event) => {
+                const assetId = event.target.value
+                const asset = assets.find((item) => String(item.id) === assetId)
+                setForm((prev) => ({
+                  ...prev,
+                  assetId,
+                  currency: asset?.currency ?? prev.currency,
+                }))
+              }}
             >
               <option value="">선택</option>
               {assets.map((asset) => (
@@ -265,7 +281,7 @@ export function TransactionsPage() {
               inputMode="decimal"
               value={form.fxRateToKrw}
               onChange={(event) => setForm((prev) => ({ ...prev, fxRateToKrw: event.target.value }))}
-              placeholder={form.currency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
+              placeholder={transactionCurrency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
             />
           </label>
         </div>

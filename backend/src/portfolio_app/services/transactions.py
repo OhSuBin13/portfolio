@@ -69,7 +69,10 @@ def _validate_foreign_asset_fx_rate(
     *,
     asset_currency: str,
 ) -> None:
-    if asset_currency.strip().upper() != "KRW" and command.fx_rate_to_krw is None:
+    normalized_asset_currency = asset_currency.strip().upper()
+    if command.currency.strip().upper() != normalized_asset_currency:
+        raise ValueError("거래 통화는 자산 통화와 같아야 합니다.")
+    if normalized_asset_currency != "KRW" and command.fx_rate_to_krw is None:
         raise ValueError("외화 거래에는 환율을 입력해 주세요.")
 
 
@@ -169,7 +172,7 @@ def apply_transaction(
         asset_id=asset_id,
         quantity=quantity,
         amount=amount,
-        currency=currency,
+        currency=currency.strip().upper(),
         memo=memo,
         fx_rate_to_krw=fx_rate_to_krw,
     )

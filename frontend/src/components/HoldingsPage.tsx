@@ -120,6 +120,7 @@ export function HoldingsPage() {
   const [balanceMessage, setBalanceMessage] = useState("")
   const [balanceError, setBalanceError] = useState("")
   const selectedBalanceAsset = assets.find((asset) => String(asset.id) === balanceForm.assetId)
+  const balanceCurrency = selectedBalanceAsset?.currency ?? balanceForm.currency
   const showBalanceQuantity = selectedBalanceAsset?.type === "stock_etf"
   const availableInitialTransactionTypes = showBalanceQuantity
     ? initialTransactionTypes
@@ -300,7 +301,10 @@ export function HoldingsPage() {
       const nextAssets = await refreshAssets()
       const createdAsset = nextAssets.find((asset) => asset.id === created.id)
       setBalanceForm((prev) =>
-        balanceFormForAsset({ ...prev, assetId: String(created.id) }, createdAsset),
+        balanceFormForAsset(
+          { ...prev, assetId: String(created.id), currency: createdAsset?.currency ?? created.currency },
+          createdAsset,
+        ),
       )
       setAssetForm((prev) => ({ ...prev, symbol: "", name: "" }))
       setAssetMessage("자산을 만들었습니다.")
@@ -320,7 +324,7 @@ export function HoldingsPage() {
     const quantity = Number(balanceForm.quantity)
     const fxRateToKrw = balanceForm.fxRateToKrw.trim() ? Number(balanceForm.fxRateToKrw) : null
     const isBuy = showBalanceQuantity && balanceForm.type === "buy"
-    const requiresFxRate = balanceForm.currency.trim().toUpperCase() !== "KRW"
+    const requiresFxRate = balanceCurrency.trim().toUpperCase() !== "KRW"
 
     if (!accountId || !assetId) {
       setBalanceError("계좌와 자산을 선택하세요.")
@@ -362,7 +366,7 @@ export function HoldingsPage() {
         assetId,
         quantity: isBuy ? quantity : null,
         amount,
-        currency: balanceForm.currency,
+        currency: balanceCurrency,
         memo: balanceForm.memo,
         fxRateToKrw,
       }))
@@ -626,7 +630,8 @@ export function HoldingsPage() {
           <label>
             통화
             <select
-              value={balanceForm.currency}
+              value={balanceCurrency}
+              disabled={selectedBalanceAsset !== undefined}
               onChange={(event) => setBalanceForm((prev) => ({ ...prev, currency: event.target.value }))}
             >
               <option value="KRW">KRW</option>
@@ -656,7 +661,12 @@ export function HoldingsPage() {
               onChange={(event) => {
                 const assetId = event.target.value
                 const nextAsset = assets.find((asset) => String(asset.id) === assetId)
-                setBalanceForm((prev) => balanceFormForAsset({ ...prev, assetId }, nextAsset))
+                setBalanceForm((prev) =>
+                  balanceFormForAsset(
+                    { ...prev, assetId, currency: nextAsset?.currency ?? prev.currency },
+                    nextAsset,
+                  ),
+                )
               }}
             >
               <option value="">선택</option>
@@ -699,7 +709,7 @@ export function HoldingsPage() {
               onChange={(event) =>
                 setBalanceForm((prev) => ({ ...prev, fxRateToKrw: event.target.value }))
               }
-              placeholder={balanceForm.currency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
+              placeholder={balanceCurrency.trim().toUpperCase() === "KRW" ? "선택" : "필수"}
             />
           </label>
           <label>
