@@ -1,5 +1,6 @@
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -239,8 +240,38 @@ def insert_transaction(
     return int(cursor.lastrowid)
 
 
-def fetch_transactions(db: sqlite3.Connection) -> list[sqlite3.Row]:
-    return db.execute("select * from transactions order by id").fetchall()
+def fetch_transactions(
+    db: sqlite3.Connection,
+    *,
+    account_id: int | None = None,
+    asset_id: int | None = None,
+    transaction_type: str | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> list[sqlite3.Row]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if account_id is not None:
+        clauses.append("account_id = ?")
+        params.append(account_id)
+    if asset_id is not None:
+        clauses.append("asset_id = ?")
+        params.append(asset_id)
+    if transaction_type is not None:
+        clauses.append("type = ?")
+        params.append(transaction_type)
+    if from_date is not None:
+        clauses.append("occurred_on >= ?")
+        params.append(from_date.isoformat())
+    if to_date is not None:
+        clauses.append("occurred_on <= ?")
+        params.append(to_date.isoformat())
+
+    where = f"where {' and '.join(clauses)}" if clauses else ""
+    return db.execute(
+        f"select * from transactions {where} order by occurred_on desc, id desc",
+        params,
+    ).fetchall()
 
 
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:

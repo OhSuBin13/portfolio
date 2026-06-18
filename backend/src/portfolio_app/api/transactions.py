@@ -2,7 +2,7 @@ import sqlite3
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app import repositories
@@ -12,6 +12,9 @@ from portfolio_app.services.transactions import apply_transaction
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
+FromDateQuery = Annotated[date | None, Query(alias="from")]
+ToDateQuery = Annotated[date | None, Query(alias="to")]
+TransactionTypeQuery = Annotated[str | None, Query(alias="type")]
 
 
 class TransactionCreate(BaseModel):
@@ -62,5 +65,25 @@ def create_transaction_endpoint(payload: TransactionCreate, db: Db) -> dict[str,
 
 
 @router.get("", response_model=list[TransactionResponse])
-def list_transactions(db: Db) -> list[dict[str, object]]:
-    return [row_to_dict(row) for row in repositories.fetch_transactions(db)]
+def list_transactions(
+    db: Db,
+    account_id: int | None = None,
+    asset_id: int | None = None,
+    transaction_type: TransactionTypeQuery = None,
+    from_date: FromDateQuery = None,
+    to_date: ToDateQuery = None,
+) -> list[dict[str, object]]:
+    validated_type = (
+        require_allowed(transaction_type, TRANSACTION_TYPES, "지원하지 않는 거래 유형입니다.")
+        if transaction_type is not None
+        else None
+    )
+    rows = repositories.fetch_transactions(
+        db,
+        account_id=account_id,
+        asset_id=asset_id,
+        transaction_type=validated_type,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return [row_to_dict(row) for row in rows]

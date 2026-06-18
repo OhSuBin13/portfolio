@@ -42,6 +42,31 @@ def previous_month_date() -> str:
     return (date.today().replace(day=1) - timedelta(days=1)).isoformat()
 
 
+def post_transaction(
+    client,
+    *,
+    occurred_on,
+    transaction_type,
+    account_id,
+    asset_id,
+    amount,
+    memo,
+):
+    return client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": occurred_on,
+            "type": transaction_type,
+            "account_id": account_id,
+            "asset_id": asset_id,
+            "quantity": None,
+            "amount": amount,
+            "currency": "KRW",
+            "memo": memo,
+        },
+    )
+
+
 def test_health_returns_ok():
     client = TestClient(create_app())
 
@@ -214,6 +239,135 @@ def test_transactions_keep_history_with_null_account_after_account_delete(tmp_pa
             "account_id": None,
         }
     ]
+
+
+def test_list_transactions_returns_latest_transactions_first(tmp_path):
+    client = create_test_client(tmp_path)
+    account = client.post(
+        "/api/accounts",
+        json={"name": "원화 현금", "type": "cash"},
+    ).json()
+    cash_asset = next(
+        asset
+        for asset in client.get("/api/assets").json()
+        if asset["type"] == "cash" and asset["currency"] == "KRW"
+    )
+
+    oldest = post_transaction(
+        client,
+        occurred_on="2026-06-10",
+        transaction_type="deposit",
+        account_id=account["id"],
+        asset_id=cash_asset["id"],
+        amount=10_000,
+        memo="가장 오래된 거래",
+    ).json()
+    same_day_first = post_transaction(
+        client,
+        occurred_on="2026-06-12",
+        transaction_type="deposit",
+        account_id=account["id"],
+        asset_id=cash_asset["id"],
+        amount=20_000,
+        memo="같은 날 먼저 저장",
+    ).json()
+    same_day_latest = post_transaction(
+        client,
+        occurred_on="2026-06-12",
+        transaction_type="interest",
+        account_id=account["id"],
+        asset_id=cash_asset["id"],
+        amount=1_000,
+        memo="같은 날 나중에 저장",
+    ).json()
+
+    response = client.get("/api/transactions")
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [
+        same_day_latest["id"],
+        same_day_first["id"],
+        oldest["id"],
+    ]
+
+
+def test_list_transactions_filters_by_account_asset_type_and_date_range(tmp_path):
+    client = create_test_client(tmp_path)
+    cash_account = client.post(
+        "/api/accounts",
+        json={"name": "생활비", "type": "cash"},
+    ).json()
+    savings_account = client.post(
+        "/api/accounts",
+        json={"name": "예금", "type": "savings"},
+    ).json()
+    assets = client.get("/api/assets").json()
+    cash_asset = next(
+        asset for asset in assets if asset["type"] == "cash" and asset["currency"] == "KRW"
+    )
+    savings_asset = next(
+        asset for asset in assets if asset["type"] == "savings" and asset["currency"] == "KRW"
+    )
+
+    post_transaction(
+        client,
+        occurred_on="2026-06-01",
+        transaction_type="deposit",
+        account_id=cash_account["id"],
+        asset_id=cash_asset["id"],
+        amount=10_000,
+        memo="계좌 불일치",
+    )
+    matching = post_transaction(
+        client,
+        occurred_on="2026-06-15",
+        transaction_type="interest",
+        account_id=savings_account["id"],
+        asset_id=savings_asset["id"],
+        amount=20_000,
+        memo="필터 대상",
+    ).json()
+    post_transaction(
+        client,
+        occurred_on="2026-06-20",
+        transaction_type="interest",
+        account_id=savings_account["id"],
+        asset_id=cash_asset["id"],
+        amount=30_000,
+        memo="자산 불일치",
+    )
+    post_transaction(
+        client,
+        occurred_on="2026-06-10",
+        transaction_type="deposit",
+        account_id=savings_account["id"],
+        asset_id=savings_asset["id"],
+        amount=40_000,
+        memo="유형 불일치",
+    )
+    post_transaction(
+        client,
+        occurred_on="2026-07-01",
+        transaction_type="interest",
+        account_id=savings_account["id"],
+        asset_id=savings_asset["id"],
+        amount=50_000,
+        memo="기간 불일치",
+    )
+
+    response = client.get(
+        "/api/transactions",
+        params={
+            "account_id": savings_account["id"],
+            "asset_id": savings_asset["id"],
+            "type": "interest",
+            "from": "2026-06-01",
+            "to": "2026-06-30",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [matching]
 
 
 def test_can_get_update_and_delete_account(tmp_path):
