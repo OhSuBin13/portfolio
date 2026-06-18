@@ -150,6 +150,35 @@ def test_can_create_account_asset_and_transaction(tmp_path):
     assert client.get("/api/transactions").json()[0]["id"] == tx.json()["id"]
 
 
+def test_transaction_endpoints_document_typed_response_model(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    transaction_response = schema["components"]["schemas"]["TransactionResponse"]
+    assert schema["paths"]["/api/transactions"]["post"]["responses"]["201"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/TransactionResponse"}
+    assert schema["paths"]["/api/transactions"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["items"] == {"$ref": "#/components/schemas/TransactionResponse"}
+    assert {
+        "id",
+        "occurred_on",
+        "type",
+        "account_id",
+        "asset_id",
+        "quantity",
+        "amount",
+        "currency",
+        "fx_rate_to_krw",
+        "memo",
+        "created_at",
+    }.issubset(transaction_response["properties"])
+
+
 def test_can_get_update_and_delete_account(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(

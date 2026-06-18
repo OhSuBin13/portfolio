@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app.api import created_row, get_db, require_non_empty, row_to_dict
+from portfolio_app.models import TransactionResponse
 from portfolio_app.services.transactions import apply_transaction
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
@@ -26,7 +27,7 @@ class TransactionCreate(BaseModel):
     fx_rate_to_krw: float | None = None
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=TransactionResponse)
 def create_transaction_endpoint(payload: TransactionCreate, db: Db) -> dict[str, object]:
     transaction_type = require_non_empty(payload.type, "거래 유형을 입력해 주세요.")
     currency = require_non_empty(payload.currency, "통화를 입력해 주세요.").upper()
@@ -55,7 +56,7 @@ def create_transaction_endpoint(payload: TransactionCreate, db: Db) -> dict[str,
     return created_row(db, "transactions", transaction_id)
 
 
-@router.get("")
+@router.get("", response_model=list[TransactionResponse])
 def list_transactions(db: Db) -> list[dict[str, object]]:
     rows = db.execute("select * from transactions order by id").fetchall()
     return [row_to_dict(row) for row in rows]

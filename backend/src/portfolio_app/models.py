@@ -4,6 +4,17 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 AssetType = Literal["cash", "savings", "stock_etf", "debt"]
+TransactionType = Literal[
+    "deposit",
+    "withdrawal",
+    "buy",
+    "sell",
+    "dividend",
+    "interest",
+    "fee",
+    "debt_payment",
+    "adjustment",
+]
 GoalType = Literal["net_worth", "monthly_income"]
 SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]
@@ -73,6 +84,22 @@ class AssetAllocation(BaseModel):
 class SummaryResponse(PortfolioSummary):
     asset_mix: dict[str, float]
     asset_allocations: list[AssetAllocation]
+
+
+class TransactionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    occurred_on: date
+    type: TransactionType
+    account_id: int | None
+    asset_id: int | None
+    quantity: float | None
+    amount: float = Field(allow_inf_nan=False)
+    currency: str
+    fx_rate_to_krw: float | None = Field(default=None, allow_inf_nan=False)
+    memo: str
+    created_at: str
 
 
 class Goal(BaseModel):
