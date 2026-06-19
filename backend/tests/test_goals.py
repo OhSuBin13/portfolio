@@ -4,7 +4,8 @@ from pydantic import ValidationError
 
 from portfolio_app.config import Settings
 from portfolio_app.main import create_app
-from portfolio_app.models import Goal, PortfolioSummary
+from portfolio_app.models import Goal, GoalProgress, PortfolioSummary
+from portfolio_app.services.summary import SummaryResult
 
 
 def create_test_client(tmp_path):
@@ -104,6 +105,57 @@ def test_goal_payload_validation_rejects_invalid_type():
             type="wealth",
             target_amount_krw=100_000_000,
         )
+
+
+@pytest.mark.asyncio
+async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(monkeypatch):
+    from portfolio_app.api import summary as summary_api
+
+    db = object()
+    portfolio_summary = PortfolioSummary(
+        net_worth_krw=1_000_000,
+        gross_assets_krw=1_000_000,
+        debt_krw=0,
+        monthly_income_krw=100_000,
+    )
+    progress = [
+        GoalProgress(
+            goal=Goal(
+                id=1,
+                name="월 소득 100만",
+                type="monthly_income",
+                target_amount_krw=1_000_000,
+            ),
+            current_amount_krw=100_000,
+            percent=10,
+            remaining_krw=900_000,
+        )
+    ]
+    calls = []
+
+    def fake_build_summary(received_db):
+        assert received_db is db
+        return SummaryResult(
+            summary=portfolio_summary,
+            asset_mix={},
+            asset_allocations=[],
+        )
+
+    def fake_list_goal_progress_for_summary(received_db, received_summary):
+        calls.append((received_db, received_summary))
+        return progress
+
+    monkeypatch.setattr(summary_api, "build_summary", fake_build_summary)
+    monkeypatch.setattr(
+        summary_api.goal_service,
+        "list_goal_progress_for_summary",
+        fake_list_goal_progress_for_summary,
+    )
+
+    response = await summary_api.get_summary(db, refresh=False)
+
+    assert response.goal_progress == progress
+    assert calls == [(db, portfolio_summary)]
 
 
 def test_build_goal_progress_uses_summary_amount_for_goal_type():

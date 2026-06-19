@@ -34,8 +34,5 @@ async def get_summary(
         **result.summary.model_dump(),
         asset_mix=result.asset_mix,
         asset_allocations=result.asset_allocations,
-        goal_progress=goal_service.build_goal_progress(
-            result.summary,
-            goal_service.list_goals(db),
-        ),
+        goal_progress=goal_service.list_goal_progress_for_summary(db, result.summary),
     )

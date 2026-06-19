@@ -92,6 +92,13 @@ def build_goal_progress(summary: PortfolioSummary, goals: Sequence[Goal]) -> lis
     return progress_rows
 
 
+def list_goal_progress_for_summary(
+    db: sqlite3.Connection,
+    summary: PortfolioSummary,
+) -> list[GoalProgress]:
+    return build_goal_progress(summary, list_goals(db))
+
+
 def list_goal_progress(db: sqlite3.Connection) -> list[GoalProgress]:
     result = build_summary(db)
-    return build_goal_progress(result.summary, list_goals(db))
+    return list_goal_progress_for_summary(db, result.summary)
