@@ -56,6 +56,47 @@ def test_create_account_record_returns_created_account_row(tmp_path):
     assert "currency" not in set(row.keys())
 
 
+def test_create_goal_record_returns_created_goal_row(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert hasattr(repositories, "create_goal_record")
+    row = repositories.create_goal_record(
+        db,
+        name="순자산 1억",
+        type="net_worth",
+        target_amount_krw=100_000_000,
+    )
+
+    assert row["id"] > 0
+    assert row["name"] == "순자산 1억"
+    assert row["type"] == "net_worth"
+    assert row["target_amount_krw"] == 100_000_000
+
+
+def test_fetch_goals_returns_goals_ordered_by_id(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+    first = repositories.create_goal(
+        db,
+        name="순자산 1억",
+        type="net_worth",
+        target_amount_krw=100_000_000,
+    )
+    second = repositories.create_goal(
+        db,
+        name="월 소득 100만",
+        type="monthly_income",
+        target_amount_krw=1_000_000,
+    )
+
+    assert hasattr(repositories, "fetch_goals")
+    rows = repositories.fetch_goals(db)
+
+    assert [row["id"] for row in rows] == [first, second]
+    assert [row["name"] for row in rows] == ["순자산 1억", "월 소득 100만"]
+
+
 def test_update_account_repository_updates_existing_account(tmp_path):
     from portfolio_app import repositories
 

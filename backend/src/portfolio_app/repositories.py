@@ -56,6 +56,43 @@ def fetch_account(db: sqlite3.Connection, *, account_id: int) -> sqlite3.Row | N
     return db.execute("select * from accounts where id = ?", (account_id,)).fetchone()
 
 
+def create_goal(
+    db: sqlite3.Connection,
+    *,
+    name: str,
+    type: str,
+    target_amount_krw: float,
+) -> int:
+    cursor = db.execute(
+        "insert into goals(name, type, target_amount_krw) values (?, ?, ?)",
+        (name, type, target_amount_krw),
+    )
+    db.commit()
+    return int(cursor.lastrowid)
+
+
+def fetch_goals(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute("select * from goals order by id").fetchall()
+
+
+def fetch_goal(db: sqlite3.Connection, *, goal_id: int) -> sqlite3.Row | None:
+    return db.execute("select * from goals where id = ?", (goal_id,)).fetchone()
+
+
+def create_goal_record(
+    db: sqlite3.Connection,
+    *,
+    name: str,
+    type: str,
+    target_amount_krw: float,
+) -> sqlite3.Row:
+    goal_id = create_goal(db, name=name, type=type, target_amount_krw=target_amount_krw)
+    row = fetch_goal(db, goal_id=goal_id)
+    if row is None:
+        raise RuntimeError("생성된 목표를 찾을 수 없습니다.")
+    return row
+
+
 def update_account(
     db: sqlite3.Connection,
     *,

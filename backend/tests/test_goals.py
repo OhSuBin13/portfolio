@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
 from portfolio_app.main import create_app
+from portfolio_app.models import Goal, PortfolioSummary
 
 
 def create_test_client(tmp_path):
@@ -36,3 +37,23 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
     assert {"goal", "current_amount_krw", "percent", "remaining_krw"} <= set(
         goal_progress_schema["properties"]
     )
+
+
+def test_build_goal_progress_uses_summary_amount_for_goal_type():
+    from portfolio_app.services import goals as goal_service
+
+    summary = PortfolioSummary(
+        net_worth_krw=1_000_000,
+        gross_assets_krw=1_000_000,
+        debt_krw=0,
+        monthly_income_krw=100_000,
+    )
+    goals = [
+        Goal(id=1, name="순자산 1억", type="net_worth", target_amount_krw=100_000_000),
+        Goal(id=2, name="월 소득 100만", type="monthly_income", target_amount_krw=1_000_000),
+    ]
+
+    progress = goal_service.build_goal_progress(summary, goals)
+
+    assert [row.current_amount_krw for row in progress] == [1_000_000, 100_000]
+    assert [row.percent for row in progress] == [1, 10]
