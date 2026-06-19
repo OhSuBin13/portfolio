@@ -92,3 +92,23 @@ def test_build_goal_progress_uses_summary_amount_for_goal_type():
 
     assert [row.current_amount_krw for row in progress] == [1_000_000, 100_000]
     assert [row.percent for row in progress] == [1, 10]
+
+
+def test_build_goal_progress_rejects_unknown_goal_type():
+    from portfolio_app.services import goals as goal_service
+
+    summary = PortfolioSummary(
+        net_worth_krw=1_000_000,
+        gross_assets_krw=1_000_000,
+        debt_krw=0,
+        monthly_income_krw=100_000,
+    )
+    goal = Goal.model_construct(
+        id=3,
+        name="지원 전 목표",
+        type="cash_flow",
+        target_amount_krw=1_000_000,
+    )
+
+    with pytest.raises(ValueError, match="지원하지 않는 목표 유형입니다"):
+        goal_service.build_goal_progress(summary, [goal])

@@ -36,12 +36,20 @@ def list_goals(db: sqlite3.Connection) -> list[Goal]:
     return [_goal_from_row(row) for row in repositories.fetch_goals(db)]
 
 
+def _current_amount_for_goal(summary: PortfolioSummary, goal: Goal) -> float:
+    match goal.type:
+        case "net_worth":
+            return summary.net_worth_krw
+        case "monthly_income":
+            return summary.monthly_income_krw
+        case _:
+            raise ValueError(f"지원하지 않는 목표 유형입니다: {goal.type}")
+
+
 def build_goal_progress(summary: PortfolioSummary, goals: Sequence[Goal]) -> list[GoalProgress]:
     progress_rows = []
     for goal in goals:
-        current_amount = (
-            summary.net_worth_krw if goal.type == "net_worth" else summary.monthly_income_krw
-        )
+        current_amount = _current_amount_for_goal(summary, goal)
         progress_rows.append(calculate_goal_progress(goal, current_amount))
     return progress_rows
 
