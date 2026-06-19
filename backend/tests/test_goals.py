@@ -46,21 +46,53 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
     )
 
 
-def test_goal_payload_validation_normalizes_input():
-    from portfolio_app.api import goals
+def test_goal_input_validation_normalizes_input():
+    from portfolio_app.services import goals as goal_service
 
-    payload = goals.GoalCreate(
+    assert hasattr(goal_service, "validate_goal_input")
+    validated = goal_service.validate_goal_input(
         name="  순자산 1억  ",
         type=" net_worth ",
         target_amount_krw=100_000_000,
     )
 
-    assert hasattr(goals, "validate_goal_payload")
-    validated = goals.validate_goal_payload(payload)
-
     assert validated.name == "순자산 1억"
     assert validated.type == "net_worth"
     assert validated.target_amount_krw == 100_000_000
+
+
+def test_goal_input_validation_rejects_empty_name():
+    from portfolio_app.services import goals as goal_service
+
+    with pytest.raises(ValueError, match="목표 이름을 입력해 주세요."):
+        goal_service.validate_goal_input(
+            name="  ",
+            type="net_worth",
+            target_amount_krw=100_000_000,
+        )
+
+
+def test_create_goal_validates_and_normalizes_input(tmp_path):
+    from portfolio_app.db import connect
+    from portfolio_app.migrations import migrate
+    from portfolio_app.services import goals as goal_service
+
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    try:
+        goal = goal_service.create_goal(
+            db,
+            name="  순자산 1억  ",
+            type=" net_worth ",
+            target_amount_krw=100_000_000,
+        )
+    finally:
+        db.close()
+
+    assert goal.name == "순자산 1억"
+    assert goal.type == "net_worth"
+    assert goal.target_amount_krw == 100_000_000
 
 
 def test_goal_payload_validation_rejects_invalid_type():
