@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from portfolio_app.api import (
     get_db,
@@ -11,19 +11,29 @@ from portfolio_app.api import (
     require_non_empty,
     require_positive_number,
 )
-from portfolio_app.models import GOAL_TYPES, Goal, GoalProgress
+from portfolio_app.models import GOAL_TYPES, Goal, GoalProgress, GoalType
 from portfolio_app.services import goals as goal_service
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
+def _strip_string(value: object) -> object:
+    if isinstance(value, str):
+        return value.strip()
+    return value
+
+
+GoalTypeInput = Annotated[GoalType, BeforeValidator(_strip_string)]
+GoalTargetAmountKrw = Annotated[float, Field(gt=0, strict=True, allow_inf_nan=False)]
+
+
 class GoalCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    type: str
-    target_amount_krw: float
+    type: GoalTypeInput
+    target_amount_krw: GoalTargetAmountKrw
 
 
 @dataclass(frozen=True)

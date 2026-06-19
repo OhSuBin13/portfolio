@@ -590,6 +590,21 @@ def test_can_create_and_list_goal(tmp_path):
     assert client.get("/api/goals").json()[0]["id"] == goal["id"]
 
 
+def test_goal_create_rejects_numeric_string_target_amount(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/goals",
+        json={
+            "name": "순자산 1억",
+            "type": "net_worth",
+            "target_amount_krw": "100000000",
+        },
+    )
+
+    assert_korean_validation_error(response, "target_amount_krw: 입력값 형식")
+
+
 def test_goal_progress_reports_one_percent_for_net_worth_goal(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(

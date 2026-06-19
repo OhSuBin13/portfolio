@@ -1,4 +1,6 @@
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from portfolio_app.config import Settings
 from portfolio_app.main import create_app
@@ -22,6 +24,7 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
 
     assert response.status_code == 200
     schema = response.json()
+    goal_create_schema = schema["components"]["schemas"]["GoalCreate"]
     goal_schema = schema["components"]["schemas"]["Goal"]
     goal_progress_schema = schema["components"]["schemas"]["GoalProgress"]
     assert schema["paths"]["/api/goals"]["post"]["responses"]["201"]["content"][
@@ -34,6 +37,10 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
         "application/json"
     ]["schema"]["items"] == {"$ref": "#/components/schemas/GoalProgress"}
     assert {"id", "name", "type", "target_amount_krw"} <= set(goal_schema["properties"])
+    assert goal_create_schema["properties"]["type"]["enum"] == goal_schema["properties"][
+        "type"
+    ]["enum"]
+    assert goal_create_schema["properties"]["target_amount_krw"]["exclusiveMinimum"] == 0.0
     assert {"goal", "current_amount_krw", "percent", "remaining_krw"} <= set(
         goal_progress_schema["properties"]
     )
@@ -57,24 +64,14 @@ def test_goal_payload_validation_normalizes_input():
 
 
 def test_goal_payload_validation_rejects_invalid_type():
-    from fastapi import HTTPException
-
     from portfolio_app.api import goals
 
-    payload = goals.GoalCreate(
-        name="부자 되기",
-        type="wealth",
-        target_amount_krw=100_000_000,
-    )
-
-    assert hasattr(goals, "validate_goal_payload")
-    try:
-        goals.validate_goal_payload(payload)
-    except HTTPException as exc:
-        assert exc.status_code == 400
-        assert exc.detail == "지원하지 않는 목표 유형입니다."
-    else:
-        raise AssertionError("validate_goal_payload should reject unsupported goal types")
+    with pytest.raises(ValidationError):
+        goals.GoalCreate(
+            name="부자 되기",
+            type="wealth",
+            target_amount_krw=100_000_000,
+        )
 
 
 def test_build_goal_progress_uses_summary_amount_for_goal_type():
