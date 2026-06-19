@@ -62,7 +62,7 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [7]
+    assert migration_versions(db) == [8]
 
 
 def test_migrate_creates_summary_query_indexes(tmp_path):
@@ -72,6 +72,60 @@ def test_migrate_creates_summary_query_indexes(tmp_path):
     migrate(db)
 
     assert SUMMARY_QUERY_INDEXES.issubset(index_names(db))
+
+
+def test_goals_require_positive_target_amount_in_fresh_schema(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into goals(name, type, target_amount_krw)
+            values (?, ?, ?)
+            """,
+            ("잘못된 목표", "net_worth", 0),
+        )
+
+
+def test_migrate_upgrades_version_7_database_with_goal_target_check(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        create table goals (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('net_worth','monthly_income')),
+          target_amount_krw real not null,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        insert into goals(id, name, type, target_amount_krw, created_at, updated_at)
+        values (42, '순자산 1억', 'net_worth', 100000000, '2026-06-19', '2026-06-19');
+        insert into schema_migrations(version) values (7);
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    row = db.execute("select * from goals where id = 42").fetchone()
+    assert migration_versions(db) == [7, 8]
+    assert row["target_amount_krw"] == 100_000_000
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into goals(name, type, target_amount_krw)
+            values (?, ?, ?)
+            """,
+            ("잘못된 목표", "monthly_income", -1),
+        )
 
 
 def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
@@ -121,7 +175,7 @@ def test_migrate_removes_account_currency_from_version_4_database(tmp_path):
 
     account_columns = {row["name"] for row in db.execute("pragma table_info(accounts)").fetchall()}
     row = db.execute("select id, name, type, created_at, updated_at from accounts").fetchone()
-    assert migration_versions(db) == [4, 5, 6, 7]
+    assert migration_versions(db) == [4, 5, 6, 7, 8]
     assert "currency" not in account_columns
     assert dict(row) == {
         "id": 42,
@@ -261,7 +315,7 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
         order by type, name
         """
     ).fetchall()
-    assert migration_versions(db) == [2, 3, 4, 5, 6, 7]
+    assert migration_versions(db) == [2, 3, 4, 5, 6, 7, 8]
     assert [dict(row) for row in rows] == [
         {
             "name": "부채",
@@ -306,7 +360,7 @@ def test_migrate_upgrades_version_5_database_with_portfolio_snapshots(tmp_path):
     columns = {
         row["name"] for row in db.execute("pragma table_info(portfolio_snapshots)").fetchall()
     }
-    assert migration_versions(db) == [5, 6, 7]
+    assert migration_versions(db) == [5, 6, 7, 8]
     assert {
         "id",
         "snapshot_date",
@@ -362,7 +416,7 @@ def test_migrate_upgrades_version_6_database_with_summary_query_indexes(tmp_path
 
     migrate(db)
 
-    assert migration_versions(db) == [6, 7]
+    assert migration_versions(db) == [6, 7, 8]
     assert SUMMARY_QUERY_INDEXES.issubset(index_names(db))
 
 
@@ -373,7 +427,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [7]
+    assert migration_versions(db) == [8]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -382,7 +436,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [7]
+    assert migration_versions(db) == [8]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -396,7 +450,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (8)")
+    db.execute("insert into schema_migrations(version) values (9)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -433,14 +487,14 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (7)")
+    db.execute("insert into schema_migrations(version) values (8)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 8)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 9)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [7]
+    assert migration_versions(db) == [8]
 
 
 def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
@@ -489,7 +543,7 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
         order by currency
         """
     ).fetchall()
-    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7]
+    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8]
     assert [dict(row) for row in rows] == [
         {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
         {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},

@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -73,6 +73,19 @@ def _create_accounts_table_sql(table_name: str) -> str:
           id integer primary key,
           name text not null,
           type text not null check (type in ('cash','savings','brokerage','debt')),
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        )
+        """
+
+
+def _create_goals_table_sql(table_name: str) -> str:
+    return f"""
+        create table {table_name} (
+          id integer primary key,
+          name text not null,
+          type text not null check (type in ('net_worth','monthly_income')),
+          target_amount_krw real not null check (target_amount_krw > 0),
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         )
@@ -253,6 +266,36 @@ def _migrate_from_6_to_7(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (7)")
 
 
+def _migrate_from_7_to_8(db: sqlite3.Connection) -> None:
+    if not _table_exists(db, "goals"):
+        with db:
+            db.execute("insert or ignore into schema_migrations(version) values (8)")
+        return
+
+    db.execute("pragma foreign_keys = off")
+    try:
+        with db:
+            db.execute("begin")
+            db.execute(_create_goals_table_sql("goals_v8"))
+            db.execute(
+                """
+                insert into goals_v8(id, name, type, target_amount_krw, created_at, updated_at)
+                select id, name, type, target_amount_krw, created_at, updated_at
+                from goals
+                """
+            )
+            db.execute("drop table goals")
+            db.execute("alter table goals_v8 rename to goals")
+
+            violations = db.execute("pragma foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError("Database foreign key check failed during schema migration.")
+
+            db.execute("insert or ignore into schema_migrations(version) values (8)")
+    finally:
+        db.execute("pragma foreign_keys = on")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -295,6 +338,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 6:
         _migrate_from_6_to_7(db)
         version = 7
+
+    if version == 7:
+        _migrate_from_7_to_8(db)
+        version = 8
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

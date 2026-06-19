@@ -102,7 +102,7 @@ create table if not exists goals (
   id integer primary key,
   name text not null,
   type text not null check (type in ('net_worth','monthly_income')),
-  target_amount_krw real not null,
+  target_amount_krw real not null check (target_amount_krw > 0),
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
 );
