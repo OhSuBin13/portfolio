@@ -689,6 +689,7 @@ def test_summary_counts_krw_income_and_monthly_income_goal_progress(tmp_path):
     progress = client.get("/api/goals/progress").json()
 
     assert summary["monthly_income_krw"] == 100_000
+    assert summary["goal_progress"] == progress
     assert progress == [
         {
             "goal": {

@@ -38,6 +38,9 @@ def test_summary_endpoint_documents_typed_response_model(tmp_path):
     ]["schema"] == {"$ref": "#/components/schemas/SummaryResponse"}
     assert "asset_mix" in summary_response["properties"]
     assert "asset_allocations" in summary_response["properties"]
+    assert summary_response["properties"]["goal_progress"]["items"] == {
+        "$ref": "#/components/schemas/GoalProgress"
+    }
 
 
 def test_build_summary_from_rows_calculates_empty_summary_without_db():

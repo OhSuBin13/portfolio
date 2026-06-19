@@ -17,6 +17,7 @@ export type PortfolioSummary = {
   usd_krw_change_percent: number | null
   asset_mix: Record<string, number>
   asset_allocations: AssetAllocation[]
+  goal_progress: GoalProgress[]
 }
 
 export type PortfolioSnapshot = {

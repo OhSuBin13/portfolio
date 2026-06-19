@@ -17,6 +17,11 @@ assert.match(
   /asset_allocations:\s*AssetAllocation\[\]/,
   "PortfolioSummary should expose asset allocation rows",
 )
+assert.match(
+  types,
+  /goal_progress:\s*GoalProgress\[\]/,
+  "PortfolioSummary should expose goal progress rows for the dashboard",
+)
 
 assert.ok(source.includes('type DisplayCurrency = "KRW" | "USD"'), "Dashboard should model display currency explicitly")
 assert.ok(
@@ -45,6 +50,8 @@ assert.ok(source.includes("현금"), "Dashboard should label the cash allocation
 assert.ok(source.includes("기타"), "Dashboard should preserve remaining allocation as other")
 assert.ok(source.includes("allocationSegments"), "Dashboard should render allocation segments")
 assert.ok(source.includes("summary.asset_allocations"), "Dashboard should use per-asset allocation rows")
+assert.ok(source.includes("summary.goal_progress"), "Dashboard should use goal progress from the summary response")
+assert.ok(!source.includes('"/api/goals/progress"'), "Dashboard should not fetch goal progress separately")
 assert.ok(
   source.includes('allocation.asset_type === "stock_etf"'),
   "Dashboard should split stock/ETF allocations by holding ticker",

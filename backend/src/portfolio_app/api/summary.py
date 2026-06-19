@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from portfolio_app.api import get_db
 from portfolio_app.models import SummaryResponse
+from portfolio_app.services import goals as goal_service
 from portfolio_app.services.fx_rates import FX_REFRESH_TTL_SECONDS, refresh_fx_rate_if_stale
 from portfolio_app.services.summary import build_summary
 
@@ -33,4 +34,8 @@ async def get_summary(
         **result.summary.model_dump(),
         asset_mix=result.asset_mix,
         asset_allocations=result.asset_allocations,
+        goal_progress=goal_service.build_goal_progress(
+            result.summary,
+            goal_service.list_goals(db),
+        ),
     )

@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react"
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
-import type { AssetAllocation, GoalProgress, PortfolioSummary } from "../types"
+import type { AssetAllocation, PortfolioSummary } from "../types"
 
 const emptySummary: PortfolioSummary = {
   net_worth_krw: 0,
@@ -12,6 +12,7 @@ const emptySummary: PortfolioSummary = {
   usd_krw_change_percent: null,
   asset_mix: {},
   asset_allocations: [],
+  goal_progress: [],
 }
 
 type DisplayCurrency = "KRW" | "USD"
@@ -270,20 +271,19 @@ const getAllocationCallouts = (segments: AllocationSegment[]) => {
 
 export function Dashboard() {
   const [summary, setSummary] = useState<PortfolioSummary>(emptySummary)
-  const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([])
   const [error, setError] = useState("")
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("KRW")
 
   useEffect(() => {
-    Promise.all([apiGet<PortfolioSummary>("/api/summary"), apiGet<GoalProgress[]>("/api/goals/progress")])
-      .then(([summaryData, progressData]) => {
+    apiGet<PortfolioSummary>("/api/summary")
+      .then((summaryData) => {
         setSummary(summaryData)
-        setGoalProgress(progressData)
         setError("")
       })
       .catch((err) => setError(getErrorMessage(err)))
   }, [])
 
+  const goalProgress = summary.goal_progress
   const assetMixEntries = Object.entries(summary.asset_mix)
   const allocationSegments = getAllocationSegments(summary.asset_mix, summary.asset_allocations)
   const visibleAllocationSegments = allocationSegments.filter((segment) => segment.value > 0)

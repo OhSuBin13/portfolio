@@ -84,11 +84,6 @@ class AssetAllocation(BaseModel):
     percent: float = Field(ge=0, le=100, allow_inf_nan=False)
 
 
-class SummaryResponse(PortfolioSummary):
-    asset_mix: dict[str, float]
-    asset_allocations: list[AssetAllocation]
-
-
 class TransactionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,3 +116,9 @@ class GoalProgress(BaseModel):
     current_amount_krw: float = Field(ge=0, allow_inf_nan=False)
     percent: float = Field(ge=0, le=100, allow_inf_nan=False)
     remaining_krw: float = Field(ge=0, allow_inf_nan=False)
+
+
+class SummaryResponse(PortfolioSummary):
+    asset_mix: dict[str, float]
+    asset_allocations: list[AssetAllocation]
+    goal_progress: list[GoalProgress]
