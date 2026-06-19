@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from portfolio_app.finance import calculate_asset_mix, calculate_goal_progress, calculate_net_worth
-from portfolio_app.models import Goal, HoldingValue, PortfolioSummary
+from portfolio_app.models import GOAL_TYPES, Goal, HoldingValue, PortfolioSummary
 
 
 def test_net_worth_subtracts_debt_from_krw_values():
@@ -130,6 +130,10 @@ def test_holding_value_rejects_numeric_string_value():
 def test_goal_rejects_unknown_type():
     with pytest.raises(ValidationError):
         Goal(id=1, name="부자 되기", type="wealth", target_amount_krw=100_000_000)
+
+
+def test_goal_types_constant_matches_goal_model_literal():
+    assert frozenset({"net_worth", "monthly_income"}) == GOAL_TYPES
 
 
 def test_goal_rejects_numeric_string_id():

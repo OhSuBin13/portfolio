@@ -1,6 +1,6 @@
 import sqlite3
 from dataclasses import dataclass
-from typing import Annotated, get_args
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
@@ -11,10 +11,8 @@ from portfolio_app.api import (
     require_non_empty,
     require_positive_number,
 )
-from portfolio_app.models import Goal, GoalProgress, GoalType
+from portfolio_app.models import GOAL_TYPES, Goal, GoalProgress
 from portfolio_app.services import goals as goal_service
-
-GOAL_TYPES = set(get_args(GoalType))
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]

@@ -18,6 +18,7 @@ TransactionType = Literal[
 ]
 TRANSACTION_TYPES = frozenset(get_args(TransactionType))
 GoalType = Literal["net_worth", "monthly_income"]
+GOAL_TYPES = frozenset(get_args(GoalType))
 SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]
 
