@@ -13,7 +13,7 @@ from portfolio_app.api import (
     row_to_dict,
 )
 from portfolio_app.finance import calculate_goal_progress
-from portfolio_app.models import Goal
+from portfolio_app.models import Goal, GoalProgress
 from portfolio_app.services.summary import build_summary
 
 GOAL_TYPES = {"net_worth", "monthly_income"}
@@ -39,7 +39,7 @@ def _goal_from_row(row: sqlite3.Row) -> Goal:
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=Goal)
 def create_goal_endpoint(payload: GoalCreate, db: Db) -> dict[str, object]:
     name = require_non_empty(payload.name, "목표 이름을 입력해 주세요.")
     goal_type = require_allowed(payload.type, GOAL_TYPES, "지원하지 않는 목표 유형입니다.")
@@ -63,13 +63,13 @@ def create_goal_endpoint(payload: GoalCreate, db: Db) -> dict[str, object]:
     return created_row(db, "goals", int(cursor.lastrowid))
 
 
-@router.get("")
+@router.get("", response_model=list[Goal])
 def list_goals(db: Db) -> list[dict[str, object]]:
     rows = db.execute("select * from goals order by id").fetchall()
     return [row_to_dict(row) for row in rows]
 
 
-@router.get("/progress")
+@router.get("/progress", response_model=list[GoalProgress])
 def list_goal_progress(db: Db) -> list[dict[str, object]]:
     try:
         result = build_summary(db)
