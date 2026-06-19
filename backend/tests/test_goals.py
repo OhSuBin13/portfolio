@@ -39,6 +39,44 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
     )
 
 
+def test_goal_payload_validation_normalizes_input():
+    from portfolio_app.api import goals
+
+    payload = goals.GoalCreate(
+        name="  순자산 1억  ",
+        type=" net_worth ",
+        target_amount_krw=100_000_000,
+    )
+
+    assert hasattr(goals, "validate_goal_payload")
+    validated = goals.validate_goal_payload(payload)
+
+    assert validated.name == "순자산 1억"
+    assert validated.type == "net_worth"
+    assert validated.target_amount_krw == 100_000_000
+
+
+def test_goal_payload_validation_rejects_invalid_type():
+    from fastapi import HTTPException
+
+    from portfolio_app.api import goals
+
+    payload = goals.GoalCreate(
+        name="부자 되기",
+        type="wealth",
+        target_amount_krw=100_000_000,
+    )
+
+    assert hasattr(goals, "validate_goal_payload")
+    try:
+        goals.validate_goal_payload(payload)
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "지원하지 않는 목표 유형입니다."
+    else:
+        raise AssertionError("validate_goal_payload should reject unsupported goal types")
+
+
 def test_build_goal_progress_uses_summary_amount_for_goal_type():
     from portfolio_app.services import goals as goal_service
 
