@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a private local Korean personal finance portfolio app with SQLite persistence, holdings, transactions, goals, CSV import, market sync, and automatic backups.
+**Goal:** Build a private local Korean personal finance portfolio app with SQLite persistence, holdings, transactions, goals, market sync, and automatic backups.
 
-**Architecture:** Use a local full-stack web app. A FastAPI backend owns the SQLite database, finance calculations, imports, market data, and backups. A Vite React TypeScript frontend renders the Korean Snapshot First UI and talks to the backend over HTTP.
+**Architecture:** Use a local full-stack web app. A FastAPI backend owns the SQLite database, finance calculations, market data, and backups. A Vite React TypeScript frontend renders the Korean Snapshot First UI and talks to the backend over HTTP.
 
 **Tech Stack:** Python 3.12, FastAPI, Pydantic, stdlib `sqlite3`, pytest, httpx, Vite, React, TypeScript, CSS modules, lucide-react.
 
@@ -37,12 +37,11 @@ The plan is split into small tasks that produce working software incrementally:
 4. Transaction application.
 5. Backend API.
 6. Backup service.
-7. CSV import.
-8. Market data sync.
-9. Frontend shell.
-10. Dashboard, holdings, transactions, and goals UI.
-11. Import, settings, backup, and sync UI.
-12. End-to-end verification and docs.
+7. Market data sync.
+8. Frontend shell.
+9. Dashboard, holdings, transactions, and goals UI.
+10. Settings, backup, and sync UI.
+11. End-to-end verification and docs.
 
 ## File Structure
 
@@ -64,7 +63,6 @@ backend/
     services/
       __init__.py
       backups.py
-      imports.py
       market_data.py
       transactions.py
     api/
@@ -73,7 +71,6 @@ backend/
       assets.py
       backups.py
       goals.py
-      imports.py
       market_data.py
       summary.py
       transactions.py
@@ -83,7 +80,6 @@ backend/
     test_finance.py
     test_transactions.py
     test_backups.py
-    test_imports.py
     test_market_data.py
     test_api.py
 frontend/
@@ -101,7 +97,6 @@ frontend/
       HoldingsPage.tsx
       TransactionsPage.tsx
       GoalsPage.tsx
-      ImportPage.tsx
       SettingsPage.tsx
 data/
   .gitkeep
@@ -295,8 +290,6 @@ def test_migrate_creates_core_tables(tmp_path):
         "price_snapshots",
         "fx_rates",
         "goals",
-        "import_runs",
-        "import_rows",
         "backups",
         "settings",
     }.issubset(table_names(db))
@@ -441,22 +434,6 @@ create table if not exists goals (
   target_amount_krw real not null,
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
-);
-
-create table if not exists import_runs (
-  id integer primary key,
-  filename text not null,
-  status text not null check (status in ('previewed','confirmed','failed')),
-  created_at text not null default current_timestamp
-);
-
-create table if not exists import_rows (
-  id integer primary key,
-  import_run_id integer not null references import_runs(id) on delete cascade,
-  row_number integer not null,
-  status text not null check (status in ('mapped','ignored','error')),
-  raw_json text not null,
-  message text not null default ''
 );
 
 create table if not exists backups (
@@ -1246,180 +1223,7 @@ git add backend/src/portfolio_app/services/backups.py backend/src/portfolio_app/
 git commit -m "feat: add automatic sqlite backups"
 ```
 
-## Task 7: CSV Import Preview And Confirm
-
-**Files:**
-- Create: `backend/src/portfolio_app/services/imports.py`
-- Create: `backend/src/portfolio_app/api/imports.py`
-- Create: `backend/tests/test_imports.py`
-
-- [ ] **Step 1: Write failing import tests**
-
-Create `backend/tests/test_imports.py`:
-
-```python
-from portfolio_app.services.imports import parse_portfolio_csv
-
-
-def test_parse_portfolio_csv_maps_holding_rows():
-    csv_text = "\n".join(
-        [
-            "종류,이름,수익률,개수,개당 가격,평단가,환율,평가액,투자금,수익,배당,배당률,연배당,비중",
-            "현금,달러 예수금,-,1,\"6,375.00\",-,\"1,523.5\",\"₩ 9,712,568\",-,-,-,-,-,100.00%",
-            "적금,주택청약,-,1,\"12,800,000\",-,1,\"₩ 12,800,000\",-,-,-,-,-,-",
-        ]
-    )
-
-    preview = parse_portfolio_csv(csv_text)
-
-    assert len(preview.mapped_rows) == 2
-    assert preview.mapped_rows[0].asset_type == "cash"
-    assert preview.mapped_rows[0].name == "달러 예수금"
-    assert preview.mapped_rows[0].quantity == 1
-    assert preview.mapped_rows[0].price == 6375.0
-    assert preview.mapped_rows[0].fx_rate_to_krw == 1523.5
-    assert preview.mapped_rows[0].value_krw == 9712568
-
-
-def test_parse_portfolio_csv_ignores_formula_errors():
-    csv_text = "종류,이름,평가액\n현금,오류행,#DIV/0!\n"
-
-    preview = parse_portfolio_csv(csv_text)
-
-    assert preview.mapped_rows == []
-    assert preview.ignored_rows[0].message == "평가액을 읽을 수 없습니다."
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run:
-
-```bash
-.venv/bin/python -m pytest backend/tests/test_imports.py -q
-```
-
-Expected: FAIL because import service is missing.
-
-- [ ] **Step 3: Add CSV parser**
-
-Create `backend/src/portfolio_app/services/imports.py` with:
-
-```python
-from dataclasses import dataclass
-import csv
-import io
-import re
-
-
-ASSET_TYPE_MAP = {
-    "현금": "cash",
-    "적금": "savings",
-    "주식": "stock_etf",
-    "ETF": "stock_etf",
-    "가상자산": "crypto",
-    "코인": "crypto",
-    "부채": "debt",
-}
-
-
-@dataclass
-class ImportRow:
-    row_number: int
-    asset_type: str
-    name: str
-    quantity: float
-    price: float | None
-    average_cost: float | None
-    fx_rate_to_krw: float | None
-    value_krw: float
-    message: str = ""
-
-
-@dataclass
-class IgnoredRow:
-    row_number: int
-    message: str
-
-
-@dataclass
-class ImportPreview:
-    mapped_rows: list[ImportRow]
-    ignored_rows: list[IgnoredRow]
-
-
-def parse_number(value: str) -> float | None:
-    cleaned = value.strip().replace("₩", "").replace(",", "").replace("%", "")
-    cleaned = re.sub(r"\s+", "", cleaned)
-    if cleaned in {"", "-", "#DIV/0!", "#REF!"}:
-        return None
-    return float(cleaned)
-
-
-def parse_portfolio_csv(csv_text: str) -> ImportPreview:
-    reader = csv.DictReader(io.StringIO(csv_text))
-    mapped: list[ImportRow] = []
-    ignored: list[IgnoredRow] = []
-
-    for row_number, row in enumerate(reader, start=2):
-        raw_type = (row.get("종류") or "").strip()
-        name = (row.get("이름") or "").strip()
-        asset_type = ASSET_TYPE_MAP.get(raw_type)
-        value_krw = parse_number(row.get("평가액") or "")
-
-        if not asset_type or not name:
-            ignored.append(IgnoredRow(row_number=row_number, message="종류 또는 이름을 읽을 수 없습니다."))
-            continue
-        if value_krw is None:
-            ignored.append(IgnoredRow(row_number=row_number, message="평가액을 읽을 수 없습니다."))
-            continue
-
-        mapped.append(
-            ImportRow(
-                row_number=row_number,
-                asset_type=asset_type,
-                name=name,
-                quantity=parse_number(row.get("개수") or "") or 0,
-                price=parse_number(row.get("개당 가격") or ""),
-                average_cost=parse_number(row.get("평단가") or ""),
-                fx_rate_to_krw=parse_number(row.get("환율") or ""),
-                value_krw=value_krw,
-            )
-        )
-
-    return ImportPreview(mapped_rows=mapped, ignored_rows=ignored)
-```
-
-- [ ] **Step 4: Add import API**
-
-Create `backend/src/portfolio_app/api/imports.py` with:
-
-```text
-POST /api/imports/preview
-POST /api/imports/confirm
-```
-
-`preview` accepts an uploaded CSV file and returns `ImportPreview`. `confirm` accepts mapped rows, creates a pre-import backup, creates accounts/assets/holdings, and creates `adjustment` transactions for starting balances.
-
-- [ ] **Step 5: Run import tests**
-
-Run:
-
-```bash
-.venv/bin/python -m pytest backend/tests/test_imports.py -q
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-Run:
-
-```bash
-git add backend/src/portfolio_app/services/imports.py backend/src/portfolio_app/api/imports.py backend/tests/test_imports.py
-git commit -m "feat: add csv import preview"
-```
-
-## Task 8: Market Data Sync
+## Task 7: Market Data Sync
 
 **Files:**
 - Create: `backend/src/portfolio_app/services/market_data.py`
@@ -1635,7 +1439,7 @@ git add backend/pyproject.toml backend/src/portfolio_app/services/market_data.py
 git commit -m "feat: add market data providers"
 ```
 
-## Task 9: Frontend Shell And API Client
+## Task 8: Frontend Shell And API Client
 
 **Files:**
 - Create: `frontend/package.json`
@@ -1748,7 +1552,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 Create `frontend/src/components/AppShell.tsx`:
 
 ```tsx
-import { BarChart3, Database, Flag, History, Settings, Upload } from "lucide-react"
+import { BarChart3, Database, Flag, History, Settings } from "lucide-react"
 
 type Props = {
   active: string
@@ -1761,7 +1565,6 @@ const navItems = [
   { id: "holdings", label: "보유자산", icon: Database },
   { id: "transactions", label: "거래내역", icon: History },
   { id: "goals", label: "목표", icon: Flag },
-  { id: "import", label: "가져오기", icon: Upload },
   { id: "settings", label: "설정", icon: Settings },
 ]
 
@@ -1832,7 +1635,7 @@ git add frontend
 git commit -m "feat: add korean frontend shell"
 ```
 
-## Task 10: Dashboard, Holdings, Transactions, And Goals UI
+## Task 9: Dashboard, Holdings, Transactions, And Goals UI
 
 **Files:**
 - Create: `frontend/src/components/Dashboard.tsx`
@@ -1930,7 +1733,6 @@ export default function App() {
       {active === "holdings" && <HoldingsPage />}
       {active === "transactions" && <TransactionsPage />}
       {active === "goals" && <GoalsPage />}
-      {active === "import" && <div>가져오기</div>}
       {active === "settings" && <div>설정</div>}
     </AppShell>
   )
@@ -2049,86 +1851,14 @@ git add frontend/src
 git commit -m "feat: build portfolio dashboard screens"
 ```
 
-## Task 11: Import, Settings, Backup, And Sync UI
+## Task 10: Settings, Backup, And Sync UI
 
 **Files:**
-- Create: `frontend/src/components/ImportPage.tsx`
 - Create: `frontend/src/components/SettingsPage.tsx`
 - Modify: `frontend/src/App.tsx`
-- Modify: `frontend/src/api.ts`
 - Modify: `frontend/src/types.ts`
 
-- [ ] **Step 1: Add file upload helper**
-
-Modify `frontend/src/api.ts`:
-
-```ts
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
-  const formData = new FormData()
-  formData.append("file", file)
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    body: formData,
-  })
-  if (!response.ok) {
-    throw new Error(await response.text())
-  }
-  return response.json() as Promise<T>
-}
-```
-
-- [ ] **Step 2: Add import page**
-
-Create `frontend/src/components/ImportPage.tsx`:
-
-```tsx
-import { useState } from "react"
-import { apiPost, apiUpload } from "../api"
-
-type ImportPreview = {
-  mapped_rows: Array<{ row_number: number; asset_type: string; name: string; value_krw: number }>
-  ignored_rows: Array<{ row_number: number; message: string }>
-}
-
-export function ImportPage() {
-  const [preview, setPreview] = useState<ImportPreview | null>(null)
-  const [error, setError] = useState("")
-
-  async function onFile(file: File) {
-    setError("")
-    try {
-      setPreview(await apiUpload<ImportPreview>("/api/imports/preview", file))
-    } catch (err) {
-      setError(String(err))
-    }
-  }
-
-  async function confirmImport() {
-    if (!preview) return
-    await apiPost("/api/imports/confirm", preview)
-  }
-
-  return (
-    <section>
-      <header className="page-header">
-        <h2>가져오기</h2>
-        <p>스프레드시트에서 내보낸 CSV를 확인한 뒤 반영합니다.</p>
-      </header>
-      <input type="file" accept=".csv,text/csv" onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0])} />
-      {error && <div className="error">{error}</div>}
-      {preview && (
-        <div className="panel">
-          <strong>매핑된 행 {preview.mapped_rows.length}개</strong>
-          <strong>무시된 행 {preview.ignored_rows.length}개</strong>
-          <button onClick={confirmImport}>백업 후 가져오기</button>
-        </div>
-      )}
-    </section>
-  )
-}
-```
-
-- [ ] **Step 3: Add settings page**
+- [ ] **Step 1: Add settings page**
 
 Create `frontend/src/components/SettingsPage.tsx` with controls for:
 
@@ -2142,11 +1872,11 @@ market sync status
 
 All labels are Korean. API keys are displayed as password inputs and never logged.
 
-- [ ] **Step 4: Wire import and settings**
+- [ ] **Step 2: Wire settings**
 
-Modify `frontend/src/App.tsx` to render `ImportPage` and `SettingsPage` for the existing `import` and `settings` navigation ids.
+Modify `frontend/src/App.tsx` to render `SettingsPage` for the existing `settings` navigation id.
 
-- [ ] **Step 5: Run build**
+- [ ] **Step 3: Run build**
 
 Run:
 
@@ -2157,16 +1887,16 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 Run:
 
 ```bash
 git add frontend/src
-git commit -m "feat: add import and settings workflows"
+git commit -m "feat: add settings workflows"
 ```
 
-## Task 12: End-To-End Verification And Documentation
+## Task 11: End-To-End Verification And Documentation
 
 **Files:**
 - Modify: `README.md`
@@ -2259,10 +1989,9 @@ Verify these actions in the UI:
 3. Confirm dashboard net worth shows 1,000,000 원.
 4. Create a net worth goal for 100,000,000 원.
 5. Confirm goal progress shows 1%.
-6. Upload a CSV export and preview rows before confirming.
-7. Trigger a manual backup and confirm a new file appears in data/backups.
-8. Configure an Alpha Vantage key and run market sync for a test stock symbol.
-9. Confirm failed symbols show an error without deleting last known good prices.
+6. Trigger a manual backup and confirm a new file appears in data/backups.
+7. Configure an Alpha Vantage key and run market sync for a test stock symbol.
+8. Confirm failed symbols show an error without deleting last known good prices.
 ```
 
 - [ ] **Step 6: Commit**
@@ -2283,6 +2012,5 @@ Before executing this plan, confirm:
 - The first implementation step writes failing tests before the production code it exercises.
 - SQLite files, backups, API keys, `.superpowers/`, `node_modules/`, and build outputs are ignored.
 - Direct holding edits create adjustment transactions.
-- CSV import previews before writing and creates a backup before confirm.
 - Market-data failures keep last known good prices and surface stale status.
 - Korean labels are used for user-facing UI and errors.

@@ -18,7 +18,7 @@ The first version focuses on daily personal use:
 - Maintain current balances and holdings directly.
 - Record transaction history.
 - Track first-class asset types: cash, savings, stocks/ETFs, crypto, and debts.
-- Import starting holdings from a CSV export of the spreadsheet.
+- Enter starting balances and holdings directly in the app.
 - Fetch market prices automatically for Korean stocks/ETFs, US stocks/ETFs, major crypto, and FX rates.
 - Use KRW as the base currency.
 - Track net worth and monthly dividend/income goals.
@@ -32,23 +32,23 @@ Out of scope for MVP:
 - Mobile-first PWA behavior.
 - Brokerage or exchange account connection.
 - Full accounting-style double-entry ledger.
-- Live Google Sheets sync after setup import.
+- Bulk file-based onboarding.
+- Live Google Sheets sync.
 
 ## 3. Architecture
 
 Use a local full-stack web app.
 
-The frontend runs in the browser and presents a Korean dashboard UI. It communicates with a local backend over HTTP. The backend owns persistence and finance logic: SQLite database access, CSV import, price fetching, FX conversion, goal calculations, backup creation, and validation.
+The frontend runs in the browser and presents a Korean dashboard UI. It communicates with a local backend over HTTP. The backend owns persistence and finance logic: SQLite database access, price fetching, FX conversion, goal calculations, backup creation, and validation.
 
 The SQLite database and backups live inside the project folder so the application stays private and easy to back up or migrate.
 
 Core modules:
 
-- Frontend UI: dashboard, holdings editor, transaction ledger, goals, import, and settings.
-- Backend API: typed endpoints for portfolio summary, holdings, transactions, goals, prices, imports, and backups.
+- Frontend UI: dashboard, holdings editor, transaction ledger, goals, growth history, and settings.
+- Backend API: typed endpoints for portfolio summary, holdings, transactions, goals, growth history, prices, and backups.
 - Finance engine: net worth, asset allocation, KRW conversion, monthly income, goal progress, and holding valuation.
 - Market data service: Korean/US stock and ETF prices, crypto prices, and FX rates through configured providers.
-- Import service: CSV parsing, preview, mapping, confirmation, and row-level import reporting.
 - Backup service: automatic dated SQLite database copies and retention.
 
 The implementation plan may choose the exact web framework, but it must preserve this separation: UI in the frontend, finance and persistence logic in the backend.
@@ -63,7 +63,7 @@ Screens:
 - `보유자산`: editable accounts and holdings for cash, savings, stocks/ETFs, crypto, and debts.
 - `거래내역`: transaction ledger with supported transaction types.
 - `목표`: net worth goal and monthly dividend/income goals.
-- `가져오기`: CSV import from spreadsheet export.
+- `성장기록`: daily snapshots and monthly/yearly growth history.
 - `설정`: API keys, market data settings, currency settings, and backup settings.
 
 Dashboard structure:
@@ -87,7 +87,6 @@ Core records:
 - `price_snapshots`: fetched market prices by asset, timestamp, source, and native currency.
 - `fx_rates`: exchange rates into KRW.
 - `goals`: target records for net worth and monthly dividend/income.
-- `import_runs`: CSV import attempts, summaries, and row-level warnings/errors.
 - `backups`: metadata for automatic dated backup files.
 
 Supported transaction types:
@@ -109,7 +108,7 @@ Rules:
 - Valuation always reports totals in KRW.
 - Market-priced assets keep native currency and latest KRW-converted value.
 - Debts reduce net worth.
-- CSV import creates starting accounts, assets, holdings, and starting adjustment transactions.
+- Starting balances and holdings are entered through holdings and transaction screens, and direct balance edits create adjustment transactions.
 
 ## 6. Market Data
 
@@ -132,35 +131,13 @@ Provider requirements:
 - The UI shows last successful sync, failed symbols, provider errors, and stale prices.
 - Manual price override exists as a fallback for unsupported symbols or provider outages.
 
-## 7. CSV Import
-
-CSV import is setup-oriented. It is not live spreadsheet sync.
-
-Flow:
-
-1. User exports the existing spreadsheet to CSV.
-2. User uploads the CSV in `가져오기`.
-3. The app parses rows and shows a preview.
-4. The preview shows mapped accounts, assets, holdings, ignored rows, and warnings.
-5. User confirms before any data is written.
-6. The app creates a backup before writing imported data.
-7. The app reports created records and row-level errors.
-
-Parsing requirements:
-
-- Accept currency symbols, commas, percentages, blank cells, and Korean labels.
-- Ignore or warn on formula error text such as `#DIV/0!` and `#REF!`.
-- Map spreadsheet-style holding rows into asset type, name, quantity, price, average cost, FX rate, valuation, investment amount, dividend data, and weight when present.
-- Never silently overwrite existing user-entered data during import.
-
-## 8. Backups
+## 7. Backups
 
 The app creates automatic dated backups of the local SQLite database into a project-folder backup directory.
 
 Backup triggers:
 
 - On app startup or shutdown.
-- Before CSV import.
 - Before other bulk changes.
 
 Retention:
@@ -174,15 +151,14 @@ UI requirements:
 - Backup failures are visible and blocking for risky operations.
 - Restore/export can be considered after MVP, but backup creation and retention are in MVP.
 
-## 9. Error Handling And Safety
+## 8. Error Handling And Safety
 
 The app treats financial data as sensitive and high-value.
 
 Safety rules:
 
 - Destructive actions require confirmation.
-- CSV import uses preview-confirm before writing.
-- A dated backup is created before CSV import and other bulk changes.
+- A dated backup is created before risky bulk changes.
 - API keys are validated before market sync is enabled.
 - Failed price fetches do not overwrite last known good prices.
 - Stale prices are visible in the dashboard and holdings table.
@@ -200,7 +176,7 @@ Validation examples:
 
 Errors are shown in Korean and should identify the field, cause, and recovery action.
 
-## 10. Testing Strategy
+## 9. Testing Strategy
 
 Prioritize tests around data correctness and safety.
 
@@ -209,21 +185,19 @@ Required coverage:
 - Finance calculations: net worth, debts, asset allocation, KRW conversion, monthly income, and goal progress.
 - Transaction effects on holdings.
 - Direct holding edits creating adjustment transactions.
-- CSV parsing, mapping, preview, confirmation, and row-level error reporting.
 - Market-data failure behavior, stale price display data, and manual price override.
-- Backup creation, backup-before-import, and retention cleanup.
-- API validation for create, update, delete, import, sync, and backup flows.
+- Backup creation and retention cleanup.
+- API validation for create, update, delete, sync, and backup flows.
 
 UI tests should cover the main user flows after the finance logic has coverage:
 
 - View dashboard.
 - Add/edit holding.
 - Add transaction.
-- Run CSV import preview and confirm.
 - Configure market data provider.
 - Observe backup status.
 
-## 11. Acceptance Criteria
+## 10. Acceptance Criteria
 
 The MVP is complete when:
 
@@ -232,9 +206,8 @@ The MVP is complete when:
 - The user can create/edit accounts, assets, holdings, transactions, and goals.
 - Direct holding edits are recorded as adjustment transactions.
 - Net worth, asset mix, KRW valuation, goal progress, and monthly income are calculated from stored data.
-- CSV import supports preview-confirm and creates starting data from a spreadsheet export.
 - Market sync supports Korean stocks/ETFs, US stocks/ETFs, major crypto, and FX into KRW through configured providers.
 - Stale/failed market data is visible and does not erase last known good data.
 - Automatic dated backups are created and retained.
 - Destructive and bulk operations have confirmation and backup safeguards.
-- Core finance, import, market failure, and backup behavior are covered by tests.
+- Core finance, market failure, and backup behavior are covered by tests.

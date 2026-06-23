@@ -140,7 +140,7 @@ create_or_refresh_today_snapshot(db, source="market_sync", refresh=False)
 스냅샷 source별 갱신 정책을 분리하는 것이 좋다.
 
 - `manual`: 사용자가 명시적으로 만든 값이므로 덮어쓸지 여부를 UI에서 선택하게 한다.
-- `import`: 가져오기 직후 기준 스냅샷이므로 보존하는 편이 안전하다.
+- future external source snapshots: 외부 데이터 반영 직후 기준 스냅샷이므로 보존하는 편이 안전하다.
 - `market_sync`: 자동 계산 결과이므로 같은 날 재동기화 시 갱신해도 자연스럽다.
 - `scheduled`: 일마감 배치라면 하루 한 번 고정하고, 장중 자동 갱신이라면 갱신한다.
 

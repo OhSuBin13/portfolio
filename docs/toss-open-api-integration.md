@@ -272,7 +272,7 @@ These features should remain local:
 | Backups | Local SQLite backup policy is unrelated to brokerage APIs. |
 | Portfolio snapshots and growth history | The app calculates these from local summary state and cashflow semantics. |
 | Manual adjustments | Needed for onboarding, corrections, non-Toss assets, and unsupported products. |
-| CSV import | Still useful for spreadsheet migration and non-brokerage data. |
+| Manual onboarding and adjustments | Still useful for initial balances, corrections, and non-brokerage data. |
 | Transaction semantics beyond orders | Deposits, withdrawals, dividends, interest, fees, and debt payments are broader than Toss order history. |
 
 ## 8. Recommended Adoption Plan
