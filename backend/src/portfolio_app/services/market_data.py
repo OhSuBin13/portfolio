@@ -43,6 +43,19 @@ class FxRateProvider(Protocol):
         pass
 
 
+class MarketDataProvider(Protocol):
+    async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
+        pass
+
+
+class UnsupportedMarketDataProvider:
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    async def fetch_equity_quote(self, _symbol: str) -> MarketQuote:
+        raise ValueError(self.message)
+
+
 def _positive_number(value: Any, message: str) -> float:
     try:
         number = float(value)
@@ -319,6 +332,24 @@ class AlphaVantageProvider:
         )
 
 
+def market_data_provider_for_asset(
+    asset: Any,
+    *,
+    alpha_provider: MarketDataProvider,
+) -> MarketDataProvider:
+    asset_type = str(asset["type"])
+    market = str(asset["market"]).upper()
+    currency = str(asset["currency"]).upper()
+
+    if asset_type == "stock_etf" and market == "US" and currency == "USD":
+        return alpha_provider
+    if asset_type == "stock_etf" and market == "KR" and currency == "KRW":
+        return UnsupportedMarketDataProvider("KR 시장 시세 동기화는 아직 지원하지 않습니다.")
+    return UnsupportedMarketDataProvider(
+        f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다."
+    )
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -426,16 +457,9 @@ async def _fetch_quote(
     *,
     alpha_provider: AlphaVantageProvider,
 ) -> MarketQuote:
-    asset_type = str(asset["type"])
     symbol = str(asset["symbol"])
-
-    market = str(asset["market"]).upper()
-    currency = str(asset["currency"]).upper()
-    if asset_type == "stock_etf" and market == "US" and currency == "USD":
-        return await alpha_provider.fetch_equity_quote(symbol)
-    if asset_type == "stock_etf" and market == "KR" and currency == "KRW":
-        raise ValueError("KR 시장 시세 동기화는 아직 지원하지 않습니다.")
-    raise ValueError(f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다.")
+    provider = market_data_provider_for_asset(asset, alpha_provider=alpha_provider)
+    return await provider.fetch_equity_quote(symbol)
 
 
 async def sync_market_data_for_settings(

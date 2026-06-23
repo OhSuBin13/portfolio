@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
+from portfolio_app.services import market_data as market_data_service
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
     FallbackFxRateProvider,
@@ -76,6 +77,32 @@ def test_keep_last_good_quote_uses_previous_value_on_error():
     assert result.price == 500.0
     assert result.status == "stale"
     assert result.error_message == "rate limit"
+
+
+def test_market_data_provider_resolver_selects_alpha_for_us_stock():
+    alpha_provider = AlphaVantageProvider("demo-key")
+    asset = {"type": "stock_etf", "market": "US", "currency": "USD"}
+
+    provider = market_data_service.market_data_provider_for_asset(
+        asset,
+        alpha_provider=alpha_provider,
+    )
+
+    assert provider is alpha_provider
+
+
+@pytest.mark.asyncio
+async def test_market_data_provider_resolver_rejects_kr_stock():
+    alpha_provider = AlphaVantageProvider("demo-key")
+    asset = {"type": "stock_etf", "market": "KR", "currency": "KRW"}
+
+    provider = market_data_service.market_data_provider_for_asset(
+        asset,
+        alpha_provider=alpha_provider,
+    )
+
+    with pytest.raises(ValueError, match="KR 시장 시세 동기화는 아직 지원하지 않습니다."):
+        await provider.fetch_equity_quote("005930")
 
 
 @pytest.mark.asyncio
