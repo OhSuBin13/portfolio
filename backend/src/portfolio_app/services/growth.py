@@ -8,6 +8,14 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from portfolio_app.models import GrowthHistoryRow, GrowthPeriod, PortfolioSnapshot, SnapshotSource
+from portfolio_app.repositories import (
+    GrowthCashflowRow,
+    GrowthSnapshotRow,
+    fetch_growth_cashflow_rows,
+    fetch_growth_snapshot_by_date,
+    fetch_growth_snapshots,
+    upsert_portfolio_snapshot,
+)
 from portfolio_app.services.summary import build_summary
 
 KST = ZoneInfo("Asia/Seoul")
@@ -39,18 +47,18 @@ def today_kst(now: datetime | None = None) -> date:
     return current.astimezone(KST).date()
 
 
-def _snapshot_from_row(row: sqlite3.Row) -> PortfolioSnapshot:
+def _snapshot_from_record(row: GrowthSnapshotRow) -> PortfolioSnapshot:
     return PortfolioSnapshot(
-        id=int(row["id"]),
-        snapshot_date=date.fromisoformat(str(row["snapshot_date"])),
-        net_worth_krw=float(row["net_worth_krw"]),
-        gross_assets_krw=float(row["gross_assets_krw"]),
-        debt_krw=float(row["debt_krw"]),
-        monthly_income_krw=float(row["monthly_income_krw"]),
-        asset_mix=json.loads(str(row["asset_mix_json"])),
-        source=row["source"],
-        created_at=str(row["created_at"]),
-        updated_at=str(row["updated_at"]),
+        id=row.id,
+        snapshot_date=row.snapshot_date,
+        net_worth_krw=row.net_worth_krw,
+        gross_assets_krw=row.gross_assets_krw,
+        debt_krw=row.debt_krw,
+        monthly_income_krw=row.monthly_income_krw,
+        asset_mix=json.loads(row.asset_mix_json),
+        source=row.source,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -58,13 +66,10 @@ def _fetch_snapshot_by_date(
     db: sqlite3.Connection,
     snapshot_date: date,
 ) -> PortfolioSnapshot | None:
-    row = db.execute(
-        "select * from portfolio_snapshots where snapshot_date = ?",
-        (snapshot_date.isoformat(),),
-    ).fetchone()
+    row = fetch_growth_snapshot_by_date(db, snapshot_date=snapshot_date)
     if row is None:
         return None
-    return _snapshot_from_row(row)
+    return _snapshot_from_record(row)
 
 
 def create_or_refresh_today_snapshot(
@@ -83,31 +88,15 @@ def create_or_refresh_today_snapshot(
     asset_mix_json = json.dumps(summary_result.asset_mix, ensure_ascii=False, sort_keys=True)
 
     with db:
-        db.execute(
-            """
-            insert into portfolio_snapshots(
-              snapshot_date, net_worth_krw, gross_assets_krw, debt_krw,
-              monthly_income_krw, asset_mix_json, source
-            )
-            values (?, ?, ?, ?, ?, ?, ?)
-            on conflict(snapshot_date)
-            do update set net_worth_krw = excluded.net_worth_krw,
-                          gross_assets_krw = excluded.gross_assets_krw,
-                          debt_krw = excluded.debt_krw,
-                          monthly_income_krw = excluded.monthly_income_krw,
-                          asset_mix_json = excluded.asset_mix_json,
-                          source = excluded.source,
-                          updated_at = current_timestamp
-            """,
-            (
-                snapshot_date.isoformat(),
-                summary_result.summary.net_worth_krw,
-                summary_result.summary.gross_assets_krw,
-                summary_result.summary.debt_krw,
-                summary_result.summary.monthly_income_krw,
-                asset_mix_json,
-                source,
-            ),
+        upsert_portfolio_snapshot(
+            db,
+            snapshot_date=snapshot_date,
+            net_worth_krw=summary_result.summary.net_worth_krw,
+            gross_assets_krw=summary_result.summary.gross_assets_krw,
+            debt_krw=summary_result.summary.debt_krw,
+            monthly_income_krw=summary_result.summary.monthly_income_krw,
+            asset_mix_json=asset_mix_json,
+            source=source,
         )
 
     snapshot = _fetch_snapshot_by_date(db, snapshot_date)
@@ -138,21 +127,8 @@ def list_snapshots(
     from_date: date | None = None,
     to_date: date | None = None,
 ) -> list[PortfolioSnapshot]:
-    clauses: list[str] = []
-    params: list[str] = []
-    if from_date is not None:
-        clauses.append("snapshot_date >= ?")
-        params.append(from_date.isoformat())
-    if to_date is not None:
-        clauses.append("snapshot_date <= ?")
-        params.append(to_date.isoformat())
-
-    where = f"where {' and '.join(clauses)}" if clauses else ""
-    rows = db.execute(
-        f"select * from portfolio_snapshots {where} order by snapshot_date, id",
-        params,
-    ).fetchall()
-    return [_snapshot_from_row(row) for row in rows]
+    rows = fetch_growth_snapshots(db, from_date=from_date, to_date=to_date)
+    return [_snapshot_from_record(row) for row in rows]
 
 
 def _parse_month(value: str) -> date:
@@ -205,14 +181,6 @@ def _amount_value_to_krw(
     return amount * float(fx_rate_to_krw)
 
 
-def _amount_to_krw(row: sqlite3.Row) -> float:
-    return _amount_value_to_krw(
-        amount=float(row["amount"] or 0),
-        currency=str(row["currency"]),
-        fx_rate_to_krw=row["fx_rate_to_krw"],
-    )
-
-
 def _cashflow_input_to_krw(cashflow: GrowthCashflowInput) -> float:
     return _amount_value_to_krw(
         amount=float(cashflow.amount or 0),
@@ -245,32 +213,28 @@ def _period_cashflow_from_inputs(
     return external_cash_flow, dividend_interest
 
 
-def _period_cashflow(db: sqlite3.Connection, *, start: str, end: str) -> tuple[float, float]:
-    rows = db.execute(
-        """
-        select type, amount, currency, fx_rate_to_krw
-        from transactions
-        where occurred_on >= ?
-          and occurred_on < ?
-          and type in ('deposit', 'withdrawal', 'debt_payment', 'dividend', 'interest')
-        order by occurred_on, id
-        """,
-        (start, end),
-    ).fetchall()
-    external_cash_flow = 0.0
-    dividend_interest = 0.0
+def _cashflow_row_to_input(row: GrowthCashflowRow) -> GrowthCashflowInput:
+    return GrowthCashflowInput(
+        occurred_on=row.occurred_on,
+        type=row.type,
+        amount=row.amount,
+        currency=row.currency,
+        fx_rate_to_krw=row.fx_rate_to_krw,
+    )
 
-    for row in rows:
-        amount_krw = _amount_to_krw(row)
-        transaction_type = str(row["type"])
-        if transaction_type in EXTERNAL_CONTRIBUTION_TYPES:
-            external_cash_flow += amount_krw
-        elif transaction_type in EXTERNAL_WITHDRAWAL_TYPES:
-            external_cash_flow -= amount_krw
-        elif transaction_type in INCOME_TYPES:
-            dividend_interest += amount_krw
 
-    return external_cash_flow, dividend_interest
+def _period_cashflow(
+    db: sqlite3.Connection,
+    *,
+    start: date,
+    end_exclusive: date,
+) -> tuple[float, float]:
+    rows = fetch_growth_cashflow_rows(db, start=start, end_exclusive=end_exclusive)
+    return _period_cashflow_from_inputs(
+        [_cashflow_row_to_input(row) for row in rows],
+        start=start,
+        end_exclusive=end_exclusive,
+    )
 
 
 def build_growth_history(
@@ -298,8 +262,8 @@ def build_growth_history(
         ending = period_snapshots[-1]
         external_cash_flow, dividend_interest = _period_cashflow(
             db,
-            start=starting.snapshot_date.isoformat(),
-            end=(ending.snapshot_date + timedelta(days=1)).isoformat(),
+            start=starting.snapshot_date,
+            end_exclusive=ending.snapshot_date + timedelta(days=1),
         )
         profit = ending.net_worth_krw - starting.net_worth_krw - external_cash_flow
         growth_rate = profit / starting.net_worth_krw if starting.net_worth_krw > 0 else None

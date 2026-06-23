@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -71,6 +72,24 @@ def insert_transaction(
         (occurred_on, transaction_type, amount, currency, fx_rate_to_krw, transaction_type),
     )
     db.commit()
+
+
+def test_growth_persistence_queries_live_in_repositories():
+    backend_dir = Path(__file__).parents[1]
+    service_source = (backend_dir / "src/portfolio_app/services/growth.py").read_text()
+    repository_source = (backend_dir / "src/portfolio_app/repositories.py").read_text()
+
+    assert "portfolio_snapshots" not in service_source
+    assert "from transactions" not in service_source
+    for symbol in [
+        "GrowthSnapshotRow",
+        "GrowthCashflowRow",
+        "fetch_growth_snapshot_by_date",
+        "fetch_growth_snapshots",
+        "fetch_growth_cashflow_rows",
+        "upsert_portfolio_snapshot",
+    ]:
+        assert symbol in repository_source
 
 
 def test_create_or_refresh_today_snapshot_updates_one_kst_date(tmp_path):

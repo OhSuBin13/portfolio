@@ -25,10 +25,48 @@ class SummaryIncomeRow:
     fx_rate_to_krw: float | None
 
 
+@dataclass(frozen=True)
+class GrowthSnapshotRow:
+    id: int
+    snapshot_date: date
+    net_worth_krw: float
+    gross_assets_krw: float
+    debt_krw: float
+    monthly_income_krw: float
+    asset_mix_json: str
+    source: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class GrowthCashflowRow:
+    occurred_on: date
+    type: str
+    amount: float
+    currency: str
+    fx_rate_to_krw: float | None
+
+
 def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _growth_snapshot_from_row(row: sqlite3.Row) -> GrowthSnapshotRow:
+    return GrowthSnapshotRow(
+        id=int(row["id"]),
+        snapshot_date=date.fromisoformat(str(row["snapshot_date"])),
+        net_worth_krw=float(row["net_worth_krw"]),
+        gross_assets_krw=float(row["gross_assets_krw"]),
+        debt_krw=float(row["debt_krw"]),
+        monthly_income_krw=float(row["monthly_income_krw"]),
+        asset_mix_json=str(row["asset_mix_json"]),
+        source=str(row["source"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
 
 
 def create_account(db: sqlite3.Connection, *, name: str, type: str) -> int:
@@ -309,6 +347,111 @@ def fetch_transactions(
         f"select * from transactions {where} order by occurred_on desc, id desc",
         params,
     ).fetchall()
+
+
+def fetch_growth_snapshot_by_date(
+    db: sqlite3.Connection,
+    *,
+    snapshot_date: date,
+) -> GrowthSnapshotRow | None:
+    row = db.execute(
+        "select * from portfolio_snapshots where snapshot_date = ?",
+        (snapshot_date.isoformat(),),
+    ).fetchone()
+    if row is None:
+        return None
+    return _growth_snapshot_from_row(row)
+
+
+def upsert_portfolio_snapshot(
+    db: sqlite3.Connection,
+    *,
+    snapshot_date: date,
+    net_worth_krw: float,
+    gross_assets_krw: float,
+    debt_krw: float,
+    monthly_income_krw: float,
+    asset_mix_json: str,
+    source: str,
+) -> None:
+    db.execute(
+        """
+        insert into portfolio_snapshots(
+          snapshot_date, net_worth_krw, gross_assets_krw, debt_krw,
+          monthly_income_krw, asset_mix_json, source
+        )
+        values (?, ?, ?, ?, ?, ?, ?)
+        on conflict(snapshot_date)
+        do update set net_worth_krw = excluded.net_worth_krw,
+                      gross_assets_krw = excluded.gross_assets_krw,
+                      debt_krw = excluded.debt_krw,
+                      monthly_income_krw = excluded.monthly_income_krw,
+                      asset_mix_json = excluded.asset_mix_json,
+                      source = excluded.source,
+                      updated_at = current_timestamp
+        """,
+        (
+            snapshot_date.isoformat(),
+            net_worth_krw,
+            gross_assets_krw,
+            debt_krw,
+            monthly_income_krw,
+            asset_mix_json,
+            source,
+        ),
+    )
+
+
+def fetch_growth_snapshots(
+    db: sqlite3.Connection,
+    *,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> list[GrowthSnapshotRow]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if from_date is not None:
+        clauses.append("snapshot_date >= ?")
+        params.append(from_date.isoformat())
+    if to_date is not None:
+        clauses.append("snapshot_date <= ?")
+        params.append(to_date.isoformat())
+
+    where = f"where {' and '.join(clauses)}" if clauses else ""
+    rows = db.execute(
+        f"select * from portfolio_snapshots {where} order by snapshot_date, id",
+        params,
+    ).fetchall()
+    return [_growth_snapshot_from_row(row) for row in rows]
+
+
+def fetch_growth_cashflow_rows(
+    db: sqlite3.Connection,
+    *,
+    start: date,
+    end_exclusive: date,
+) -> list[GrowthCashflowRow]:
+    rows = db.execute(
+        """
+        select occurred_on, type, amount, currency, fx_rate_to_krw
+        from transactions
+        where occurred_on >= ?
+          and occurred_on < ?
+          and type in ('deposit', 'withdrawal', 'debt_payment', 'dividend', 'interest')
+        order by occurred_on, id
+        """,
+        (start.isoformat(), end_exclusive.isoformat()),
+    ).fetchall()
+    return [
+        GrowthCashflowRow(
+            occurred_on=date.fromisoformat(str(row["occurred_on"])),
+            type=str(row["type"]),
+            amount=float(row["amount"] or 0),
+            currency=str(row["currency"]),
+            fx_rate_to_krw=_optional_float(row["fx_rate_to_krw"]),
+        )
+        for row in rows
+    ]
 
 
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
