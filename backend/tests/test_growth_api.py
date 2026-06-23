@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
@@ -27,6 +29,18 @@ def insert_snapshot(db, snapshot_date: str, net_worth_krw: float) -> None:
         (snapshot_date, net_worth_krw, max(net_worth_krw, 0), 0, 0, "{}", "manual"),
     )
     db.commit()
+
+
+def test_growth_api_routes_delegate_to_service_layer():
+    backend_dir = Path(__file__).parents[1]
+    api_source = (backend_dir / "src/portfolio_app/api/growth.py").read_text()
+
+    assert "from portfolio_app.services import growth as growth_service" in api_source
+    assert "growth_service.create_or_refresh_today_snapshot" in api_source
+    assert "growth_service.list_snapshots" in api_source
+    assert "growth_service.build_growth_history" in api_source
+    assert "portfolio_snapshots" not in api_source
+    assert "from transactions" not in api_source
 
 
 def test_create_today_snapshot_endpoint_defaults_to_manual_source(tmp_path):
