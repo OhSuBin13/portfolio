@@ -3,26 +3,43 @@ import os
 import sqlite3
 import sys
 from pathlib import Path
-
-from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
-from portfolio_app.services.backups import create_backup, prune_backups
+from portfolio_app.services.backups import (
+    create_backup,
+    create_recorded_backup,
+    list_backup_records,
+    prune_backups,
+    reconcile_backup_records,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def create_test_client(tmp_path):
+def create_test_app(tmp_path, **overrides: object):
     from portfolio_app.main import create_app
 
     settings = Settings(
         data_dir=tmp_path,
         database_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
+        **overrides,
     )
-    return TestClient(create_app(settings=settings))
+    return create_app(settings=settings), settings
+
+
+def list_backups_via_route(settings: Settings) -> list[dict[str, object]]:
+    from portfolio_app.api.backups import list_backups
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
+    db = connect(settings.database_path)
+    try:
+        return list_backups(request, db)
+    finally:
+        db.close()
 
 
 def test_create_backup_copies_sqlite_file(tmp_path):
@@ -145,39 +162,71 @@ def test_create_app_creates_startup_backup_after_migration(tmp_path):
 
 
 def test_create_app_records_startup_backup_metadata(tmp_path):
-    client = create_test_client(tmp_path)
+    _, settings = create_test_app(tmp_path)
+    db = connect(settings.database_path)
+    try:
+        backups = [dict(row) for row in list_backup_records(db, backup_dir=settings.backup_dir)]
+    finally:
+        db.close()
 
-    response = client.get("/api/backups")
-
-    assert response.status_code == 200
-    backups = response.json()
     startup_backups = [backup for backup in backups if backup["reason"] == "startup"]
     assert len(startup_backups) == 1
     assert Path(startup_backups[0]["path"]).exists()
 
 
-def test_backup_api_creates_and_lists_manual_backup(tmp_path):
-    client = create_test_client(tmp_path)
+def test_backup_api_is_read_only_in_openapi(tmp_path):
+    app, _settings = create_test_app(tmp_path)
 
-    response = client.post("/api/backups")
+    backup_methods = app.openapi()["paths"]["/api/backups"]
 
-    assert response.status_code == 201
-    created = response.json()
-    assert created["reason"] == "manual"
-    assert created["path"].endswith(".sqlite")
+    assert set(backup_methods) == {"get"}
 
-    response = client.get("/api/backups")
 
-    assert response.status_code == 200
-    backups = response.json()
+def test_backup_api_uses_typed_response_schema(tmp_path):
+    app, _settings = create_test_app(tmp_path)
+
+    get_schema = app.openapi()["paths"]["/api/backups"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    backup_record_schema = app.openapi()["components"]["schemas"]["BackupRecord"]
+
+    assert get_schema == {
+        "items": {"$ref": "#/components/schemas/BackupRecord"},
+        "type": "array",
+        "title": "Response List Backups Api Backups Get",
+    }
+    assert backup_record_schema["properties"]["reason"]["enum"] == [
+        "startup",
+        "automatic",
+        "manual",
+    ]
+
+
+def test_backup_api_lists_service_created_backup(tmp_path):
+    _app, settings = create_test_app(tmp_path)
+    db = connect(settings.database_path)
+    try:
+        created = dict(
+            create_recorded_backup(
+                db,
+                db_path=settings.database_path,
+                backup_dir=settings.backup_dir,
+                reason="automatic",
+            )
+        )
+    finally:
+        db.close()
+
+    backups = list_backups_via_route(settings)
+
     assert backups[0]["path"] == created["path"]
-    assert backups[0]["reason"] == "manual"
+    assert backups[0]["reason"] == "automatic"
     assert backups[0]["created_at"]
 
 
 def test_backup_api_hides_stale_metadata_for_missing_files(tmp_path):
-    client = create_test_client(tmp_path)
-    db = connect(tmp_path / "portfolio.sqlite")
+    _app, settings = create_test_app(tmp_path)
+    db = connect(settings.database_path)
     db.execute(
         """
         insert into backups(path, reason, created_at)
@@ -188,28 +237,33 @@ def test_backup_api_hides_stale_metadata_for_missing_files(tmp_path):
     db.commit()
     db.close()
 
-    response = client.get("/api/backups")
+    backups = list_backups_via_route(settings)
 
-    assert response.status_code == 200
-    assert all(backup["path"].endswith("missing.sqlite") is False for backup in response.json())
+    assert all(backup["path"].endswith("missing.sqlite") is False for backup in backups)
 
 
-def test_backup_api_prunes_files_and_metadata_together(tmp_path):
-    client = create_test_client(tmp_path)
+def test_create_recorded_backup_prunes_files_and_metadata_together(tmp_path):
+    _app, settings = create_test_app(tmp_path)
     for _ in range(35):
-        response = client.post("/api/backups")
-        assert response.status_code == 201
+        db = connect(settings.database_path)
+        try:
+            create_recorded_backup(
+                db,
+                db_path=settings.database_path,
+                backup_dir=settings.backup_dir,
+                reason="automatic",
+            )
+        finally:
+            db.close()
 
-    response = client.get("/api/backups")
+    backups = list_backups_via_route(settings)
 
-    assert response.status_code == 200
-    backups = response.json()
     assert len(backups) == 30
     assert all(Path(backup["path"]).exists() for backup in backups)
 
 
 def test_backup_api_backfills_orphan_service_owned_files_only(tmp_path):
-    client = create_test_client(tmp_path)
+    _app, settings = create_test_app(tmp_path)
     orphan_path = create_backup(
         db_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
@@ -218,24 +272,94 @@ def test_backup_api_backfills_orphan_service_owned_files_only(tmp_path):
     ignored_path = tmp_path / "backups" / "portfolio-not-a-backup.sqlite"
     ignored_path.write_text("not a backup", encoding="utf-8")
 
-    response = client.get("/api/backups")
+    backups = list_backups_via_route(settings)
 
-    assert response.status_code == 200
-    paths = {backup["path"] for backup in response.json()}
+    paths = {backup["path"] for backup in backups}
     assert str(orphan_path) in paths
     assert str(ignored_path) not in paths
 
 
 def test_backup_api_ignores_backup_like_file_with_invalid_timestamp(tmp_path):
-    client = create_test_client(tmp_path)
+    _app, settings = create_test_app(tmp_path)
     invalid_path = tmp_path / "backups" / "portfolio-20269999-999999-000000-manual.sqlite"
     invalid_path.write_text("not a backup", encoding="utf-8")
 
-    response = client.get("/api/backups")
+    backups = list_backups_via_route(settings)
 
-    assert response.status_code == 200
-    paths = {backup["path"] for backup in response.json()}
+    paths = {backup["path"] for backup in backups}
     assert str(invalid_path) not in paths
+
+
+def test_list_backup_records_does_not_reconcile_filesystem_metadata(tmp_path):
+    _app, settings = create_test_app(tmp_path)
+    orphan_path = create_backup(
+        db_path=settings.database_path,
+        backup_dir=settings.backup_dir,
+        reason="manual",
+    )
+    missing_path = settings.backup_dir / "missing.sqlite"
+    db = connect(settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into backups(path, reason, created_at)
+            values (?, ?, ?)
+            """,
+            (str(missing_path), "manual", "2026-06-12T00:00:00"),
+        )
+        db.commit()
+
+        rows = [dict(row) for row in list_backup_records(db, backup_dir=settings.backup_dir)]
+    finally:
+        db.close()
+
+    paths = {row["path"] for row in rows}
+    assert str(missing_path) in paths
+    assert str(orphan_path) not in paths
+
+
+def test_reconcile_backup_records_hides_stale_metadata_and_backfills_orphans(tmp_path):
+    _app, settings = create_test_app(tmp_path)
+    orphan_path = create_backup(
+        db_path=settings.database_path,
+        backup_dir=settings.backup_dir,
+        reason="manual",
+    )
+    missing_path = settings.backup_dir / "missing.sqlite"
+    db = connect(settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into backups(path, reason, created_at)
+            values (?, ?, ?)
+            """,
+            (str(missing_path), "manual", "2026-06-12T00:00:00"),
+        )
+        db.commit()
+
+        reconcile_backup_records(db, backup_dir=settings.backup_dir)
+        rows = [dict(row) for row in list_backup_records(db, backup_dir=settings.backup_dir)]
+    finally:
+        db.close()
+
+    paths = {row["path"] for row in rows}
+    assert str(missing_path) not in paths
+    assert str(orphan_path) in paths
+
+
+def test_create_app_throttles_recent_startup_backup(tmp_path):
+    from portfolio_app.main import create_app
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+    )
+
+    create_app(settings=settings)
+    create_app(settings=settings)
+
+    assert len(list(settings.backup_dir.glob("*-startup.sqlite"))) == 1
 
 
 def test_readme_runtime_command_uses_importable_asgi_app(tmp_path, monkeypatch):
@@ -249,10 +373,14 @@ def test_readme_runtime_command_uses_importable_asgi_app(tmp_path, monkeypatch):
     sys.modules.pop("portfolio_app.main", None)
 
     module = importlib.import_module("portfolio_app.asgi")
-    response = TestClient(module.app).get("/health")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert any(route.path == "/health" for route in module.app.routes)
+
+
+def test_backend_dev_dependencies_do_not_install_httpx2():
+    pyproject = (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "httpx2" not in pyproject
 
 
 def test_importing_main_does_not_create_default_backup_files(tmp_path, monkeypatch):

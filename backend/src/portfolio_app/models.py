@@ -21,6 +21,7 @@ GoalType = Literal["net_worth", "monthly_income"]
 GOAL_TYPES = frozenset(get_args(GoalType))
 SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]
+BackupReason = Literal["startup", "automatic", "manual"]
 
 
 class HoldingValue(BaseModel):
@@ -122,3 +123,11 @@ class SummaryResponse(PortfolioSummary):
     asset_mix: dict[str, float]
     asset_allocations: list[AssetAllocation]
     goal_progress: list[GoalProgress]
+
+
+class BackupRecord(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    path: str
+    reason: BackupReason
+    created_at: str

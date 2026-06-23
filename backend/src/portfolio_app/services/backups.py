@@ -1,8 +1,10 @@
 import re
 import sqlite3
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+
+STARTUP_BACKUP_MIN_INTERVAL_SECONDS = 300
 
 BACKUP_NAME_RE = re.compile(
     r"^portfolio-"
@@ -176,7 +178,6 @@ def reconcile_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> Non
 
 
 def list_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> list[sqlite3.Row]:
-    reconcile_backup_records(db, backup_dir=backup_dir)
     return db.execute(
         """
         select path, reason, created_at
@@ -206,3 +207,38 @@ def create_recorded_backup(
     delete_backup_records(db, deleted_paths)
     reconcile_backup_records(db, backup_dir=backup_dir)
     return row
+
+
+def create_startup_backup_if_needed(
+    db: sqlite3.Connection,
+    *,
+    db_path: Path,
+    backup_dir: Path,
+    min_interval_seconds: int = STARTUP_BACKUP_MIN_INTERVAL_SECONDS,
+) -> sqlite3.Row | None:
+    reconcile_backup_records(db, backup_dir=backup_dir)
+    row = db.execute(
+        """
+        select path, created_at
+        from backups
+        where reason = 'startup'
+        order by created_at desc, id desc
+        limit 1
+        """
+    ).fetchone()
+    if row is not None and Path(row["path"]).exists():
+        try:
+            created_at = datetime.fromisoformat(str(row["created_at"]))
+        except ValueError:
+            created_at = None
+        if created_at is not None and datetime.now() - created_at <= timedelta(
+            seconds=max(0, min_interval_seconds)
+        ):
+            return None
+
+    return create_recorded_backup(
+        db,
+        db_path=db_path,
+        backup_dir=backup_dir,
+        reason="startup",
+    )

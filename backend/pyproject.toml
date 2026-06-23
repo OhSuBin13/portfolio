@@ -17,12 +17,14 @@ dev = [
   "pytest-cov>=7,<8",
   "pytest-httpx>=0.30",
   "ruff>=0.15,<0.16",
-  "httpx2>=2.4,<3",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100

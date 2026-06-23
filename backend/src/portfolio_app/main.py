@@ -19,7 +19,7 @@ from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.services.backup_scheduler import start_backup_task, stop_backup_task
-from portfolio_app.services.backups import create_recorded_backup
+from portfolio_app.services.backups import create_startup_backup_if_needed
 from portfolio_app.services.market_sync_scheduler import (
     start_market_sync_task,
     stop_market_sync_task,
@@ -67,11 +67,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if app_settings.database_path.exists():
         db = connect(app_settings.database_path)
         try:
-            create_recorded_backup(
+            create_startup_backup_if_needed(
                 db,
                 db_path=app_settings.database_path,
                 backup_dir=app_settings.backup_dir,
-                reason="startup",
             )
         finally:
             db.close()
