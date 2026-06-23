@@ -12,6 +12,7 @@ from portfolio_app.services.growth import (
     build_growth_history,
     build_growth_history_from_inputs,
     create_or_refresh_today_snapshot,
+    should_refresh_market_sync_snapshot,
 )
 
 
@@ -169,6 +170,16 @@ def test_create_or_refresh_today_snapshot_can_keep_existing_row(tmp_path):
     assert second.id == first.id
     assert second.net_worth_krw == 1_000_000
     assert second.source == "manual"
+
+
+@pytest.mark.parametrize("source", [None, "market_sync", "scheduled"])
+def test_market_sync_snapshot_policy_refreshes_automatic_sources(source):
+    assert should_refresh_market_sync_snapshot(source) is True
+
+
+@pytest.mark.parametrize("source", ["manual", "import"])
+def test_market_sync_snapshot_policy_preserves_user_owned_sources(source):
+    assert should_refresh_market_sync_snapshot(source) is False
 
 
 def test_build_growth_history_from_inputs_calculates_monthly_rows_without_db():

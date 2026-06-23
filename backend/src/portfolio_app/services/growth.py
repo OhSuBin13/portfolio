@@ -105,6 +105,10 @@ def create_or_refresh_today_snapshot(
     return snapshot
 
 
+def should_refresh_market_sync_snapshot(existing_source: SnapshotSource | None) -> bool:
+    return existing_source is None or existing_source in AUTO_REFRESH_SNAPSHOT_SOURCES
+
+
 def create_or_refresh_market_sync_snapshot(
     db: sqlite3.Connection,
     *,
@@ -112,7 +116,7 @@ def create_or_refresh_market_sync_snapshot(
 ) -> PortfolioSnapshot:
     snapshot_date = today or today_kst()
     existing = _fetch_snapshot_by_date(db, snapshot_date)
-    refresh = existing is None or existing.source in AUTO_REFRESH_SNAPSHOT_SOURCES
+    refresh = should_refresh_market_sync_snapshot(existing.source if existing else None)
     return create_or_refresh_today_snapshot(
         db,
         source="market_sync",
