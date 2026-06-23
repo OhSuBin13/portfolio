@@ -15,7 +15,7 @@ SyncOnce = Callable[..., Awaitable[object]]
 
 
 async def run_market_sync_once(*, settings: Settings, db_path: Path) -> object:
-    from portfolio_app.api.market_data import sync_market_data_for_settings
+    from portfolio_app.services.market_data import sync_market_data_for_settings
 
     db = connect(db_path)
     try:

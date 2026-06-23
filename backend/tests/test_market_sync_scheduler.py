@@ -20,6 +20,14 @@ def make_settings(tmp_path: Path, **overrides: object) -> Settings:
     )
 
 
+def test_market_sync_scheduler_imports_service_not_api():
+    backend_dir = Path(__file__).parents[1]
+    source = (backend_dir / "src/portfolio_app/services/market_sync_scheduler.py").read_text()
+
+    assert "portfolio_app.api.market_data" not in source
+    assert "portfolio_app.services.market_data" in source
+
+
 def test_market_sync_interval_defaults_to_five_minutes(tmp_path, monkeypatch):
     monkeypatch.delenv("PORTFOLIO_MARKET_SYNC_INTERVAL_SECONDS", raising=False)
 
