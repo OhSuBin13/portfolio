@@ -2,6 +2,8 @@ import json
 import math
 import sqlite3
 from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -13,6 +15,21 @@ EXTERNAL_CONTRIBUTION_TYPES = {"deposit", "debt_payment"}
 EXTERNAL_WITHDRAWAL_TYPES = {"withdrawal"}
 INCOME_TYPES = {"dividend", "interest"}
 AUTO_REFRESH_SNAPSHOT_SOURCES = {"market_sync", "scheduled"}
+
+
+@dataclass(frozen=True)
+class GrowthSnapshotInput:
+    snapshot_date: date
+    net_worth_krw: float
+
+
+@dataclass(frozen=True)
+class GrowthCashflowInput:
+    occurred_on: date
+    type: str
+    amount: float
+    currency: str
+    fx_rate_to_krw: float | None
 
 
 def today_kst(now: datetime | None = None) -> date:
@@ -169,16 +186,63 @@ def _period_key(snapshot_date: date, period: GrowthPeriod) -> str:
     return snapshot_date.strftime("%Y")
 
 
-def _amount_to_krw(row: sqlite3.Row) -> float:
-    amount = float(row["amount"] or 0)
-    currency = str(row["currency"]).upper()
+def _amount_value_to_krw(
+    *,
+    amount: float,
+    currency: str,
+    fx_rate_to_krw: float | None,
+) -> float:
+    currency = currency.upper()
     if currency == "KRW" or amount == 0:
         return amount
 
-    rate = row["fx_rate_to_krw"]
-    if rate is None or not math.isfinite(float(rate)) or float(rate) <= 0:
+    if (
+        fx_rate_to_krw is None
+        or not math.isfinite(float(fx_rate_to_krw))
+        or float(fx_rate_to_krw) <= 0
+    ):
         raise ValueError(f"{currency} 거래의 성장률 계산에 필요한 환율 정보가 없습니다.")
-    return amount * float(rate)
+    return amount * float(fx_rate_to_krw)
+
+
+def _amount_to_krw(row: sqlite3.Row) -> float:
+    return _amount_value_to_krw(
+        amount=float(row["amount"] or 0),
+        currency=str(row["currency"]),
+        fx_rate_to_krw=row["fx_rate_to_krw"],
+    )
+
+
+def _cashflow_input_to_krw(cashflow: GrowthCashflowInput) -> float:
+    return _amount_value_to_krw(
+        amount=float(cashflow.amount or 0),
+        currency=cashflow.currency,
+        fx_rate_to_krw=cashflow.fx_rate_to_krw,
+    )
+
+
+def _period_cashflow_from_inputs(
+    cashflows: Sequence[GrowthCashflowInput],
+    *,
+    start: date,
+    end_exclusive: date,
+) -> tuple[float, float]:
+    external_cash_flow = 0.0
+    dividend_interest = 0.0
+
+    for cashflow in cashflows:
+        if cashflow.occurred_on < start or cashflow.occurred_on >= end_exclusive:
+            continue
+
+        amount_krw = _cashflow_input_to_krw(cashflow)
+        if cashflow.type in EXTERNAL_CONTRIBUTION_TYPES:
+            external_cash_flow += amount_krw
+        elif cashflow.type in EXTERNAL_WITHDRAWAL_TYPES:
+            external_cash_flow -= amount_krw
+        elif cashflow.type in INCOME_TYPES:
+            dividend_interest += amount_krw
+
+    return external_cash_flow, dividend_interest
 
 
 def _period_cashflow(db: sqlite3.Connection, *, start: str, end: str) -> tuple[float, float]:
@@ -236,6 +300,71 @@ def build_growth_history(
             db,
             start=starting.snapshot_date.isoformat(),
             end=(ending.snapshot_date + timedelta(days=1)).isoformat(),
+        )
+        profit = ending.net_worth_krw - starting.net_worth_krw - external_cash_flow
+        growth_rate = profit / starting.net_worth_krw if starting.net_worth_krw > 0 else None
+
+        if not rows:
+            first_baseline = starting.net_worth_krw if starting.net_worth_krw > 0 else None
+        cumulative_profit += profit
+        cumulative_growth_rate = (
+            cumulative_profit / first_baseline
+            if first_baseline is not None and first_baseline > 0
+            else None
+        )
+
+        rows.append(
+            GrowthHistoryRow(
+                period=key,
+                start_date=starting.snapshot_date,
+                end_date=ending.snapshot_date,
+                starting_net_worth_krw=starting.net_worth_krw,
+                ending_net_worth_krw=ending.net_worth_krw,
+                external_cash_flow_krw=external_cash_flow,
+                dividend_interest_krw=dividend_interest,
+                profit_krw=profit,
+                growth_rate=growth_rate,
+                cumulative_profit_krw=cumulative_profit,
+                cumulative_growth_rate=cumulative_growth_rate,
+            )
+        )
+
+    return rows
+
+
+def build_growth_history_from_inputs(
+    *,
+    snapshots: Sequence[GrowthSnapshotInput],
+    cashflows: Sequence[GrowthCashflowInput],
+    period: GrowthPeriod,
+    from_value: str | None = None,
+    to_value: str | None = None,
+) -> list[GrowthHistoryRow]:
+    from_date = _parse_period_start(period, from_value)
+    to_date = _parse_period_end(period, to_value)
+    filtered_snapshots = [
+        snapshot
+        for snapshot in sorted(snapshots, key=lambda item: item.snapshot_date)
+        if (from_date is None or snapshot.snapshot_date >= from_date)
+        and (to_date is None or snapshot.snapshot_date <= to_date)
+    ]
+
+    grouped: dict[str, list[GrowthSnapshotInput]] = defaultdict(list)
+    for snapshot in filtered_snapshots:
+        grouped[_period_key(snapshot.snapshot_date, period)].append(snapshot)
+
+    rows: list[GrowthHistoryRow] = []
+    cumulative_profit = 0.0
+    first_baseline: float | None = None
+
+    for key in sorted(grouped):
+        period_snapshots = grouped[key]
+        starting = period_snapshots[0]
+        ending = period_snapshots[-1]
+        external_cash_flow, dividend_interest = _period_cashflow_from_inputs(
+            cashflows,
+            start=starting.snapshot_date,
+            end_exclusive=ending.snapshot_date + timedelta(days=1),
         )
         profit = ending.net_worth_krw - starting.net_worth_krw - external_cash_flow
         growth_rate = profit / starting.net_worth_krw if starting.net_worth_krw > 0 else None

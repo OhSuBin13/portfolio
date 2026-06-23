@@ -6,7 +6,10 @@ from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, upsert_holding
 from portfolio_app.services.growth import (
+    GrowthCashflowInput,
+    GrowthSnapshotInput,
     build_growth_history,
+    build_growth_history_from_inputs,
     create_or_refresh_today_snapshot,
 )
 
@@ -147,6 +150,51 @@ def test_create_or_refresh_today_snapshot_can_keep_existing_row(tmp_path):
     assert second.id == first.id
     assert second.net_worth_krw == 1_000_000
     assert second.source == "manual"
+
+
+def test_build_growth_history_from_inputs_calculates_monthly_rows_without_db():
+    rows = build_growth_history_from_inputs(
+        snapshots=[
+            GrowthSnapshotInput(snapshot_date=date(2026, 6, 1), net_worth_krw=50_000_000),
+            GrowthSnapshotInput(snapshot_date=date(2026, 6, 30), net_worth_krw=56_200_000),
+        ],
+        cashflows=[
+            GrowthCashflowInput(
+                occurred_on=date(2026, 6, 5),
+                type="deposit",
+                amount=5_000_000,
+                currency="KRW",
+                fx_rate_to_krw=None,
+            ),
+            GrowthCashflowInput(
+                occurred_on=date(2026, 6, 12),
+                type="withdrawal",
+                amount=1_000_000,
+                currency="KRW",
+                fx_rate_to_krw=None,
+            ),
+            GrowthCashflowInput(
+                occurred_on=date(2026, 6, 20),
+                type="dividend",
+                amount=200_000,
+                currency="KRW",
+                fx_rate_to_krw=None,
+            ),
+        ],
+        period="monthly",
+        from_value="2026-06",
+        to_value="2026-06",
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.period == "2026-06"
+    assert row.external_cash_flow_krw == 4_000_000
+    assert row.dividend_interest_krw == 200_000
+    assert row.profit_krw == 2_200_000
+    assert row.growth_rate == pytest.approx(0.044)
+    assert row.cumulative_profit_krw == 2_200_000
+    assert row.cumulative_growth_rate == pytest.approx(0.044)
 
 
 def test_monthly_history_excludes_external_cashflow_and_includes_income(tmp_path):
