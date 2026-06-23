@@ -8,6 +8,7 @@ from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.services import market_data as market_data_service
+from portfolio_app.services.growth import create_or_refresh_today_snapshot
 from portfolio_app.services.market_data import (
     AlphaVantageProvider,
     FallbackFxRateProvider,
@@ -42,7 +43,7 @@ def test_market_sync_implementation_lives_in_service_module():
     assert "async def sync_market_data_for_settings" not in api_source
     assert "create_or_refresh_today_snapshot" not in api_source
     assert "async def sync_market_data_for_settings" in service_source
-    assert "create_or_refresh_today_snapshot" in service_source
+    assert "create_or_refresh_market_sync_snapshot" in service_source
 
 
 def test_market_data_api_uses_typed_response_schema(tmp_path):
@@ -427,6 +428,83 @@ def test_sync_reports_snapshot_error_when_summary_cannot_be_valued(tmp_path):
     assert response.json()["results"] == []
     assert "snapshot_error" in response.json()
     assert "환율" in response.json()["snapshot_error"]
+
+
+def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 1,
+            "amount": 500,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "old market sync snapshot",
+        },
+    )
+    db = connect(client.app.state.settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into price_snapshots(
+                asset_id, source, price, currency, price_krw, fetched_at, status, error_message
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+        )
+        db.commit()
+        old_snapshot = create_or_refresh_today_snapshot(
+            db,
+            source="market_sync",
+            refresh=True,
+        )
+    finally:
+        db.close()
+    assert old_snapshot.net_worth_krw == 700_000
+    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+    httpx_mock.add_response(
+        text="""
+        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+        <p class="no_exday">
+          <em class="no_down">1.00</em>
+          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+        </p>
+        """,
+    )
+
+    response = client.post("/api/market-data/sync")
+
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["source"] == "market_sync"
+    assert response.json()["snapshot"]["net_worth_krw"] == 780_000
+    db = connect(client.app.state.settings.database_path)
+    try:
+        row = db.execute("select * from portfolio_snapshots").fetchone()
+    finally:
+        db.close()
+    assert row["net_worth_krw"] == 780_000
 
 
 def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(

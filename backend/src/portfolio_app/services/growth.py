@@ -12,6 +12,7 @@ KST = ZoneInfo("Asia/Seoul")
 EXTERNAL_CONTRIBUTION_TYPES = {"deposit", "debt_payment"}
 EXTERNAL_WITHDRAWAL_TYPES = {"withdrawal"}
 INCOME_TYPES = {"dividend", "interest"}
+AUTO_REFRESH_SNAPSHOT_SOURCES = {"market_sync", "scheduled"}
 
 
 def today_kst(now: datetime | None = None) -> date:
@@ -96,6 +97,22 @@ def create_or_refresh_today_snapshot(
     if snapshot is None:
         raise RuntimeError("오늘의 성장 기록 스냅샷을 찾을 수 없습니다.")
     return snapshot
+
+
+def create_or_refresh_market_sync_snapshot(
+    db: sqlite3.Connection,
+    *,
+    today: date | None = None,
+) -> PortfolioSnapshot:
+    snapshot_date = today or today_kst()
+    existing = _fetch_snapshot_by_date(db, snapshot_date)
+    refresh = existing is None or existing.source in AUTO_REFRESH_SNAPSHOT_SOURCES
+    return create_or_refresh_today_snapshot(
+        db,
+        source="market_sync",
+        today=snapshot_date,
+        refresh=refresh,
+    )
 
 
 def list_snapshots(
