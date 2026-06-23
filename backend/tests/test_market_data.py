@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -5,7 +6,11 @@ from fastapi.testclient import TestClient
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
+from portfolio_app.migrations import migrate
+from portfolio_app.repositories import create_account, create_asset
 from portfolio_app.services.growth import create_or_refresh_today_snapshot
+from portfolio_app.services.market_data import sync_market_data_for_settings
+from portfolio_app.services.transactions import apply_transaction
 
 
 def create_test_client(
@@ -293,37 +298,36 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
     tmp_path,
     httpx_mock,
 ):
-    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
-    account = client.post(
-        "/api/accounts",
-        json={"name": "해외 증권", "type": "brokerage"},
-    ).json()
-    asset = client.post(
-        "/api/assets",
-        json={
-            "symbol": "VOO",
-            "name": "Vanguard S&P 500 ETF",
-            "type": "stock_etf",
-            "currency": "USD",
-            "market": "US",
-        },
-    ).json()
-    client.post(
-        "/api/transactions",
-        json={
-            "occurred_on": "2026-06-12",
-            "type": "buy",
-            "account_id": account["id"],
-            "asset_id": asset["id"],
-            "quantity": 1,
-            "amount": 500,
-            "currency": "USD",
-            "fx_rate_to_krw": 1400,
-            "memo": "old market sync snapshot",
-        },
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+        alpha_vantage_api_key="demo-key",
     )
-    db = connect(client.app.state.settings.database_path)
+    db = connect(settings.database_path)
     try:
+        migrate(db)
+        account_id = create_account(db, name="해외 증권", type="brokerage")
+        asset_id = create_asset(
+            db,
+            symbol="VOO",
+            name="Vanguard S&P 500 ETF",
+            type="stock_etf",
+            currency="USD",
+            market="US",
+        )
+        apply_transaction(
+            db,
+            occurred_on="2026-06-12",
+            type="buy",
+            account_id=account_id,
+            asset_id=asset_id,
+            quantity=1,
+            amount=500,
+            currency="USD",
+            fx_rate_to_krw=1400,
+            memo="old market sync snapshot",
+        )
         db.execute(
             """
             insert into price_snapshots(
@@ -331,7 +335,7 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset_id, "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.commit()
         old_snapshot = create_or_refresh_today_snapshot(
@@ -339,27 +343,22 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
             source="market_sync",
             refresh=True,
         )
-    finally:
-        db.close()
-    assert old_snapshot.net_worth_krw == 700_000
-    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
-    httpx_mock.add_response(
-        text="""
-        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-        <p class="no_exday">
-          <em class="no_down">1.00</em>
-          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-        </p>
-        """,
-    )
+        assert old_snapshot.net_worth_krw == 700_000
+        httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+        httpx_mock.add_response(
+            text="""
+            <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+            <p class="no_exday">
+              <em class="no_down">1.00</em>
+              <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+            </p>
+            """,
+        )
 
-    response = client.post("/api/market-data/sync")
+        response = asyncio.run(sync_market_data_for_settings(settings, db))
 
-    assert response.status_code == 200
-    assert response.json()["snapshot"]["source"] == "market_sync"
-    assert response.json()["snapshot"]["net_worth_krw"] == 780_000
-    db = connect(client.app.state.settings.database_path)
-    try:
+        assert response["snapshot"].source == "market_sync"
+        assert response["snapshot"].net_worth_krw == 780_000
         row = db.execute("select * from portfolio_snapshots").fetchone()
     finally:
         db.close()
