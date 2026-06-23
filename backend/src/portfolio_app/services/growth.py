@@ -199,7 +199,7 @@ def _period_cashflow_from_inputs(
     dividend_interest = 0.0
 
     for cashflow in cashflows:
-        if cashflow.occurred_on < start or cashflow.occurred_on >= end_exclusive:
+        if cashflow.occurred_on <= start or cashflow.occurred_on >= end_exclusive:
             continue
 
         amount_krw = _cashflow_input_to_krw(cashflow)

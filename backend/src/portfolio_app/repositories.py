@@ -435,7 +435,7 @@ def fetch_growth_cashflow_rows(
         """
         select occurred_on, type, amount, currency, fx_rate_to_krw
         from transactions
-        where occurred_on >= ?
+        where occurred_on > ?
           and occurred_on < ?
           and type in ('deposit', 'withdrawal', 'debt_payment', 'dividend', 'interest')
         order by occurred_on, id

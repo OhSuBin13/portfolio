@@ -245,6 +245,27 @@ def test_monthly_history_excludes_external_cashflow_and_includes_income(tmp_path
     assert row.cumulative_growth_rate == pytest.approx(0.044)
 
 
+def test_monthly_history_excludes_starting_snapshot_date_cashflow_from_profit(tmp_path):
+    db = create_growth_db(tmp_path)
+    try:
+        insert_snapshot(db, "2026-06-01", 55_000_000)
+        insert_snapshot(db, "2026-06-30", 56_000_000)
+        insert_transaction(db, "2026-06-01", "deposit", 5_000_000)
+
+        rows = build_growth_history(
+            db,
+            period="monthly",
+            from_value="2026-06",
+            to_value="2026-06",
+        )
+    finally:
+        db.close()
+
+    assert rows[0].external_cash_flow_krw == 0
+    assert rows[0].profit_krw == 1_000_000
+    assert rows[0].growth_rate == pytest.approx(1_000_000 / 55_000_000)
+
+
 def test_monthly_history_excludes_debt_payments_from_profit(tmp_path):
     db = create_growth_db(tmp_path)
     try:
