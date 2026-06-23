@@ -1,21 +1,14 @@
 import asyncio
 import sqlite3
-from datetime import UTC, datetime
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
-from portfolio_app.config import Settings
-from portfolio_app.services.growth import create_or_refresh_today_snapshot
 from portfolio_app.services.market_data import (
-    AlphaVantageProvider,
-    FxRateProvider,
-    MarketQuote,
-    default_fx_rate_provider,
-    keep_last_good_quote,
+    insert_price_snapshot,
+    sync_market_data_for_settings,
 )
 
 router = APIRouter(prefix="/api/market-data", tags=["market-data"])
@@ -31,72 +24,6 @@ class ManualPriceCreate(BaseModel):
     error_message: str = ""
 
 
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
-
-
-def _insert_snapshot(
-    db: sqlite3.Connection,
-    *,
-    asset_id: int,
-    source: str,
-    price: float,
-    currency: str,
-    price_krw: float,
-    status: str,
-    error_message: str = "",
-    fetched_at: str | None = None,
-) -> sqlite3.Row:
-    cursor = db.execute(
-        """
-        insert into price_snapshots(
-            asset_id, source, price, currency, price_krw, fetched_at, status, error_message
-        )
-        values (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            asset_id,
-            source,
-            price,
-            currency,
-            price_krw,
-            fetched_at or _now_iso(),
-            status,
-            error_message,
-        ),
-    )
-    row = db.execute("select * from price_snapshots where id = ?", (cursor.lastrowid,)).fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="시세 스냅샷을 찾을 수 없습니다.",
-        )
-    return row
-
-
-def _latest_snapshot(db: sqlite3.Connection, asset_id: int) -> sqlite3.Row | None:
-    return db.execute(
-        """
-        select *
-        from price_snapshots
-        where asset_id = ?
-          and status in ('ok', 'manual', 'stale')
-        order by fetched_at desc, id desc
-        limit 1
-        """,
-        (asset_id,),
-    ).fetchone()
-
-
-def _previous_quote(row: sqlite3.Row, symbol: str) -> MarketQuote:
-    return MarketQuote(
-        symbol=symbol,
-        price=float(row["price"]),
-        currency=str(row["currency"]),
-        source=str(row["source"]),
-    )
-
-
 def _snapshot_response(row: sqlite3.Row) -> dict[str, object]:
     return {
         "asset_id": row["asset_id"],
@@ -106,62 +33,6 @@ def _snapshot_response(row: sqlite3.Row) -> dict[str, object]:
         "error_message": row["error_message"],
         "fetched_at": row["fetched_at"],
     }
-
-
-def _safe_error_message(exc: Exception) -> str:
-    if isinstance(exc, httpx.HTTPStatusError):
-        response = exc.response
-        reason = response.reason_phrase or "Unknown"
-        return f"시세 제공자 요청 실패: HTTP {response.status_code} {reason}"
-    if isinstance(exc, httpx.HTTPError):
-        return f"시세 제공자 요청 실패: {exc.__class__.__name__}"
-    return str(exc)
-
-
-async def _price_krw(
-    quote: MarketQuote,
-    *,
-    db: sqlite3.Connection,
-    fx_provider: FxRateProvider,
-) -> float:
-    if quote.currency.upper() == "KRW":
-        return quote.price
-
-    rate = await fx_provider.fetch_rate(quote.currency, "KRW")
-    db.execute(
-        """
-        insert or ignore into fx_rates(
-          base_currency, quote_currency, rate, source, fetched_at, change_percent
-        )
-        values (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            rate.base_currency,
-            rate.quote_currency,
-            rate.rate,
-            rate.source,
-            _now_iso(),
-            rate.change_percent,
-        ),
-    )
-    return quote.price * rate.rate
-
-
-async def _fetch_quote(
-    asset: sqlite3.Row,
-    *,
-    alpha_provider: AlphaVantageProvider,
-) -> MarketQuote:
-    asset_type = str(asset["type"])
-    symbol = str(asset["symbol"])
-
-    market = str(asset["market"]).upper()
-    currency = str(asset["currency"]).upper()
-    if asset_type == "stock_etf" and market == "US" and currency == "USD":
-        return await alpha_provider.fetch_equity_quote(symbol)
-    if asset_type == "stock_etf" and market == "KR" and currency == "KRW":
-        raise ValueError("KR 시장 시세 동기화는 아직 지원하지 않습니다.")
-    raise ValueError(f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다.")
 
 
 @router.post("/manual-price", status_code=status.HTTP_201_CREATED)
@@ -180,7 +51,7 @@ def create_manual_price(payload: ManualPriceCreate, db: Db) -> dict[str, object]
             "update assets set manual_price_krw = ?, updated_at = current_timestamp where id = ?",
             (price_krw, payload.asset_id),
         )
-        row = _insert_snapshot(
+        row = insert_price_snapshot(
             db,
             asset_id=payload.asset_id,
             source=source,
@@ -211,103 +82,6 @@ def list_market_data_status(db: Db) -> list[dict[str, object]]:
         """
     ).fetchall()
     return [_snapshot_response(row) for row in rows]
-
-
-async def sync_market_data_for_settings(
-    settings: Settings,
-    db: sqlite3.Connection,
-) -> dict[str, object]:
-    assets = db.execute(
-        """
-        select *
-        from assets
-        where symbol is not null
-          and trim(symbol) != ''
-          and type in ('stock_etf')
-        order by id
-        """
-    ).fetchall()
-    alpha_provider = AlphaVantageProvider(settings.alpha_vantage_api_key)
-    fx_provider = default_fx_rate_provider()
-    results: list[dict[str, object]] = []
-
-    for asset in assets:
-        asset_id = int(asset["id"])
-        symbol = str(asset["symbol"])
-        try:
-            quote = await _fetch_quote(
-                asset,
-                alpha_provider=alpha_provider,
-            )
-            price_krw = await _price_krw(quote, db=db, fx_provider=fx_provider)
-            with db:
-                _insert_snapshot(
-                    db,
-                    asset_id=asset_id,
-                    source=quote.source,
-                    price=quote.price,
-                    currency=quote.currency,
-                    price_krw=price_krw,
-                    status=quote.status,
-                    error_message=quote.error_message,
-                )
-            results.append(
-                {
-                    "asset_id": asset_id,
-                    "symbol": symbol,
-                    "status": quote.status,
-                    "error_message": quote.error_message,
-                }
-            )
-        except (ValueError, sqlite3.Error, httpx.HTTPError) as exc:
-            error_message = _safe_error_message(exc)
-            previous = _latest_snapshot(db, asset_id)
-            with db:
-                if previous is None:
-                    _insert_snapshot(
-                        db,
-                        asset_id=asset_id,
-                        source="market_data",
-                        price=0,
-                        currency=str(asset["currency"]),
-                        price_krw=0,
-                        status="failed",
-                        error_message=error_message,
-                    )
-                    result_status = "failed"
-                else:
-                    stale_quote = keep_last_good_quote(
-                        previous=_previous_quote(previous, symbol),
-                        error_message=error_message,
-                    )
-                    _insert_snapshot(
-                        db,
-                        asset_id=asset_id,
-                        source=stale_quote.source,
-                        price=stale_quote.price,
-                        currency=stale_quote.currency,
-                        price_krw=float(previous["price_krw"]),
-                        status=stale_quote.status,
-                        error_message=stale_quote.error_message,
-                    )
-                    result_status = stale_quote.status
-            results.append(
-                {
-                    "asset_id": asset_id,
-                    "symbol": symbol,
-                    "status": result_status,
-                    "error_message": error_message,
-                }
-            )
-
-    response: dict[str, object] = {"results": results}
-    try:
-        snapshot = create_or_refresh_today_snapshot(db, source="market_sync", refresh=False)
-        response["snapshot"] = snapshot.model_dump(mode="json")
-    except (HTTPException, ValueError, sqlite3.Error) as exc:
-        response["snapshot_error"] = str(exc.detail if isinstance(exc, HTTPException) else exc)
-
-    return response
 
 
 @router.post("/sync")

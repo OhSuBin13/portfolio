@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,6 +31,17 @@ def create_test_client(
     )
     app = create_app(settings=settings)
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
+
+
+def test_market_sync_implementation_lives_in_service_module():
+    backend_dir = Path(__file__).parents[1]
+    api_source = (backend_dir / "src/portfolio_app/api/market_data.py").read_text()
+    service_source = (backend_dir / "src/portfolio_app/services/market_data.py").read_text()
+
+    assert "async def sync_market_data_for_settings" not in api_source
+    assert "create_or_refresh_today_snapshot" not in api_source
+    assert "async def sync_market_data_for_settings" in service_source
+    assert "create_or_refresh_today_snapshot" in service_source
 
 
 def test_keep_last_good_quote_uses_previous_value_on_error():
