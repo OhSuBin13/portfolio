@@ -93,6 +93,14 @@ def test_growth_persistence_queries_live_in_repositories():
         assert symbol in repository_source
 
 
+def test_db_backed_growth_history_reuses_db_free_assembly():
+    backend_dir = Path(__file__).parents[1]
+    service_source = (backend_dir / "src/portfolio_app/services/growth.py").read_text()
+
+    assert "def _assemble_growth_history_rows" in service_source
+    assert service_source.count("_assemble_growth_history_rows(") >= 3
+
+
 def test_create_or_refresh_today_snapshot_updates_one_kst_date(tmp_path):
     db = create_growth_db(tmp_path)
     try:

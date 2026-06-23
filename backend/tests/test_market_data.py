@@ -1,4 +1,4 @@
-import asyncio
+import inspect
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -6,10 +6,8 @@ from fastapi.testclient import TestClient
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.main import create_app
-from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, create_asset
 from portfolio_app.services.growth import create_or_refresh_today_snapshot
-from portfolio_app.services.market_data import sync_market_data_for_settings
 from portfolio_app.services.transactions import apply_transaction
 
 
@@ -24,6 +22,8 @@ def create_test_client(
         database_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
         alpha_vantage_api_key=alpha_vantage_api_key,
+        market_sync_enabled=False,
+        backup_enabled=False,
     )
     app = create_app(settings=settings)
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
@@ -38,6 +38,15 @@ def test_market_sync_implementation_lives_in_service_module():
     assert "create_or_refresh_today_snapshot" not in api_source
     assert "async def sync_market_data_for_settings" in service_source
     assert "create_or_refresh_market_sync_snapshot" in service_source
+
+
+def test_market_sync_snapshot_refresh_regression_uses_http_endpoint():
+    function_body = inspect.getsource(
+        test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update
+    )
+
+    assert 'client.post("/api/market-data/sync")' in function_body
+    assert "sync_market_data_for_settings" not in function_body
 
 
 def test_market_data_api_uses_typed_response_schema(tmp_path):
@@ -298,15 +307,9 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
     tmp_path,
     httpx_mock,
 ):
-    settings = Settings(
-        data_dir=tmp_path,
-        database_path=tmp_path / "portfolio.sqlite",
-        backup_dir=tmp_path / "backups",
-        alpha_vantage_api_key="demo-key",
-    )
-    db = connect(settings.database_path)
+    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
+    db = connect(client.app.state.settings.database_path)
     try:
-        migrate(db)
         account_id = create_account(db, name="해외 증권", type="brokerage")
         asset_id = create_asset(
             db,
@@ -344,21 +347,27 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
             refresh=True,
         )
         assert old_snapshot.net_worth_krw == 700_000
-        httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
-        httpx_mock.add_response(
-            text="""
-            <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-            <p class="no_exday">
-              <em class="no_down">1.00</em>
-              <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-            </p>
-            """,
-        )
+    finally:
+        db.close()
 
-        response = asyncio.run(sync_market_data_for_settings(settings, db))
+    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+    httpx_mock.add_response(
+        text="""
+        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+        <p class="no_exday">
+          <em class="no_down">1.00</em>
+          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+        </p>
+        """,
+    )
 
-        assert response["snapshot"].source == "market_sync"
-        assert response["snapshot"].net_worth_krw == 780_000
+    response = client.post("/api/market-data/sync")
+
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["source"] == "market_sync"
+    assert response.json()["snapshot"]["net_worth_krw"] == 780_000
+    db = connect(client.app.state.settings.database_path)
+    try:
         row = db.execute("select * from portfolio_snapshots").fetchone()
     finally:
         db.close()

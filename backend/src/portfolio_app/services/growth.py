@@ -227,80 +227,7 @@ def _cashflow_row_to_input(row: GrowthCashflowRow) -> GrowthCashflowInput:
     )
 
 
-def _period_cashflow(
-    db: sqlite3.Connection,
-    *,
-    start: date,
-    end_exclusive: date,
-) -> tuple[float, float]:
-    rows = fetch_growth_cashflow_rows(db, start=start, end_exclusive=end_exclusive)
-    return _period_cashflow_from_inputs(
-        [_cashflow_row_to_input(row) for row in rows],
-        start=start,
-        end_exclusive=end_exclusive,
-    )
-
-
-def build_growth_history(
-    db: sqlite3.Connection,
-    *,
-    period: GrowthPeriod,
-    from_value: str | None = None,
-    to_value: str | None = None,
-) -> list[GrowthHistoryRow]:
-    from_date = _parse_period_start(period, from_value)
-    to_date = _parse_period_end(period, to_value)
-    snapshots = list_snapshots(db, from_date=from_date, to_date=to_date)
-
-    grouped: dict[str, list[PortfolioSnapshot]] = defaultdict(list)
-    for snapshot in snapshots:
-        grouped[_period_key(snapshot.snapshot_date, period)].append(snapshot)
-
-    rows: list[GrowthHistoryRow] = []
-    cumulative_profit = 0.0
-    first_baseline: float | None = None
-
-    for key in sorted(grouped):
-        period_snapshots = grouped[key]
-        starting = period_snapshots[0]
-        ending = period_snapshots[-1]
-        external_cash_flow, dividend_interest = _period_cashflow(
-            db,
-            start=starting.snapshot_date,
-            end_exclusive=ending.snapshot_date + timedelta(days=1),
-        )
-        profit = ending.net_worth_krw - starting.net_worth_krw - external_cash_flow
-        growth_rate = profit / starting.net_worth_krw if starting.net_worth_krw > 0 else None
-
-        if not rows:
-            first_baseline = starting.net_worth_krw if starting.net_worth_krw > 0 else None
-        cumulative_profit += profit
-        cumulative_growth_rate = (
-            cumulative_profit / first_baseline
-            if first_baseline is not None and first_baseline > 0
-            else None
-        )
-
-        rows.append(
-            GrowthHistoryRow(
-                period=key,
-                start_date=starting.snapshot_date,
-                end_date=ending.snapshot_date,
-                starting_net_worth_krw=starting.net_worth_krw,
-                ending_net_worth_krw=ending.net_worth_krw,
-                external_cash_flow_krw=external_cash_flow,
-                dividend_interest_krw=dividend_interest,
-                profit_krw=profit,
-                growth_rate=growth_rate,
-                cumulative_profit_krw=cumulative_profit,
-                cumulative_growth_rate=cumulative_growth_rate,
-            )
-        )
-
-    return rows
-
-
-def build_growth_history_from_inputs(
+def _assemble_growth_history_rows(
     *,
     snapshots: Sequence[GrowthSnapshotInput],
     cashflows: Sequence[GrowthCashflowInput],
@@ -363,3 +290,65 @@ def build_growth_history_from_inputs(
         )
 
     return rows
+
+
+def _snapshot_to_input(snapshot: PortfolioSnapshot) -> GrowthSnapshotInput:
+    return GrowthSnapshotInput(
+        snapshot_date=snapshot.snapshot_date,
+        net_worth_krw=snapshot.net_worth_krw,
+    )
+
+
+def _fetch_growth_cashflow_inputs(
+    db: sqlite3.Connection,
+    *,
+    start: date,
+    end_exclusive: date,
+) -> list[GrowthCashflowInput]:
+    rows = fetch_growth_cashflow_rows(db, start=start, end_exclusive=end_exclusive)
+    return [_cashflow_row_to_input(row) for row in rows]
+
+
+def build_growth_history(
+    db: sqlite3.Connection,
+    *,
+    period: GrowthPeriod,
+    from_value: str | None = None,
+    to_value: str | None = None,
+) -> list[GrowthHistoryRow]:
+    from_date = _parse_period_start(period, from_value)
+    to_date = _parse_period_end(period, to_value)
+    snapshots = list_snapshots(db, from_date=from_date, to_date=to_date)
+    snapshot_inputs = [_snapshot_to_input(snapshot) for snapshot in snapshots]
+    if not snapshot_inputs:
+        return []
+
+    cashflow_inputs = _fetch_growth_cashflow_inputs(
+        db,
+        start=snapshot_inputs[0].snapshot_date,
+        end_exclusive=snapshot_inputs[-1].snapshot_date + timedelta(days=1),
+    )
+    return _assemble_growth_history_rows(
+        snapshots=snapshot_inputs,
+        cashflows=cashflow_inputs,
+        period=period,
+        from_value=from_value,
+        to_value=to_value,
+    )
+
+
+def build_growth_history_from_inputs(
+    *,
+    snapshots: Sequence[GrowthSnapshotInput],
+    cashflows: Sequence[GrowthCashflowInput],
+    period: GrowthPeriod,
+    from_value: str | None = None,
+    to_value: str | None = None,
+) -> list[GrowthHistoryRow]:
+    return _assemble_growth_history_rows(
+        snapshots=snapshots,
+        cashflows=cashflows,
+        period=period,
+        from_value=from_value,
+        to_value=to_value,
+    )
