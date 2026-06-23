@@ -23,6 +23,7 @@ SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]
 BackupReason = Literal["startup", "automatic", "manual"]
 BACKUP_REASONS = frozenset(get_args(BackupReason))
+PriceSnapshotStatus = Literal["ok", "stale", "failed", "manual"]
 
 
 class HoldingValue(BaseModel):
@@ -132,3 +133,45 @@ class BackupRecord(BaseModel):
     path: str
     reason: BackupReason
     created_at: str
+
+
+class MarketPriceSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    asset_id: int
+    source: str
+    price: float = Field(allow_inf_nan=False)
+    currency: Currency
+    price_krw: float = Field(allow_inf_nan=False)
+    fetched_at: str
+    status: PriceSnapshotStatus
+    error_message: str
+
+
+class MarketDataStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: int
+    source: str
+    price_krw: float = Field(allow_inf_nan=False)
+    status: PriceSnapshotStatus
+    error_message: str
+    fetched_at: str
+
+
+class MarketSyncRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: int
+    symbol: str
+    status: PriceSnapshotStatus
+    error_message: str
+
+
+class MarketSyncResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    results: list[MarketSyncRow]
+    snapshot: PortfolioSnapshot | None = None
+    snapshot_error: str | None = None

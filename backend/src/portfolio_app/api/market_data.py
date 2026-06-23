@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app.api import get_db, require_non_empty, require_positive_number, row_to_dict
+from portfolio_app.models import MarketDataStatus, MarketPriceSnapshot, MarketSyncResponse
 from portfolio_app.services.market_data import (
     insert_price_snapshot,
     sync_market_data_for_settings,
@@ -35,7 +36,11 @@ def _snapshot_response(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
-@router.post("/manual-price", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/manual-price",
+    status_code=status.HTTP_201_CREATED,
+    response_model=MarketPriceSnapshot,
+)
 def create_manual_price(payload: ManualPriceCreate, db: Db) -> dict[str, object]:
     price_krw = require_positive_number(payload.price_krw, "가격은 0보다 커야 합니다.")
     source = require_non_empty(payload.source, "시세 출처를 입력해 주세요.")
@@ -65,7 +70,7 @@ def create_manual_price(payload: ManualPriceCreate, db: Db) -> dict[str, object]
     return row_to_dict(row)
 
 
-@router.get("/status")
+@router.get("/status", response_model=list[MarketDataStatus])
 def list_market_data_status(db: Db) -> list[dict[str, object]]:
     rows = db.execute(
         """
@@ -84,6 +89,6 @@ def list_market_data_status(db: Db) -> list[dict[str, object]]:
     return [_snapshot_response(row) for row in rows]
 
 
-@router.post("/sync")
+@router.post("/sync", response_model=MarketSyncResponse, response_model_exclude_none=True)
 def sync_market_data(request: Request, db: Db) -> dict[str, object]:
     return asyncio.run(sync_market_data_for_settings(request.app.state.settings, db))

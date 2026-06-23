@@ -529,8 +529,11 @@ async def sync_market_data_for_settings(
     try:
         from portfolio_app.services.growth import create_or_refresh_today_snapshot
 
-        snapshot = create_or_refresh_today_snapshot(db, source="market_sync", refresh=False)
-        response["snapshot"] = snapshot.model_dump(mode="json")
+        response["snapshot"] = create_or_refresh_today_snapshot(
+            db,
+            source="market_sync",
+            refresh=False,
+        )
     except (ValueError, sqlite3.Error) as exc:
         response["snapshot_error"] = str(exc)
 

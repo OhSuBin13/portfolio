@@ -44,6 +44,30 @@ def test_market_sync_implementation_lives_in_service_module():
     assert "create_or_refresh_today_snapshot" in service_source
 
 
+def test_market_data_api_uses_typed_response_schema(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+    )
+    schema = create_app(settings=settings).openapi()
+
+    manual_schema = schema["paths"]["/api/market-data/manual-price"]["post"]["responses"]["201"][
+        "content"
+    ]["application/json"]["schema"]
+    status_schema = schema["paths"]["/api/market-data/status"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    sync_schema = schema["paths"]["/api/market-data/sync"]["post"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert manual_schema == {"$ref": "#/components/schemas/MarketPriceSnapshot"}
+    assert status_schema["items"] == {"$ref": "#/components/schemas/MarketDataStatus"}
+    assert sync_schema == {"$ref": "#/components/schemas/MarketSyncResponse"}
+    assert "MarketSyncRow" in schema["components"]["schemas"]
+
+
 def test_keep_last_good_quote_uses_previous_value_on_error():
     previous = MarketQuote(symbol="VOO", price=500.0, currency="USD", source="alpha_vantage")
 
