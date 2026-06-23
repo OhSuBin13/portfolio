@@ -161,8 +161,12 @@ def delete_backup_records(db: sqlite3.Connection, paths: list[Path]) -> None:
 
 
 def reconcile_backup_records(db: sqlite3.Connection, *, backup_dir: Path) -> None:
-    rows = db.execute("select id, path from backups").fetchall()
-    stale_ids = [(row["id"],) for row in rows if not Path(row["path"]).exists()]
+    rows = db.execute("select id, path, reason from backups").fetchall()
+    stale_ids = [
+        (row["id"],)
+        for row in rows
+        if not Path(row["path"]).exists() or row["reason"] not in BACKUP_REASONS
+    ]
     if stale_ids:
         db.executemany("delete from backups where id = ?", stale_ids)
 

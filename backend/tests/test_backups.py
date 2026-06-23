@@ -379,6 +379,30 @@ def test_reconcile_backup_records_hides_stale_metadata_and_backfills_orphans(tmp
     assert str(orphan_path) in paths
 
 
+def test_reconcile_backup_records_deletes_unknown_reason_metadata(tmp_path):
+    _app, settings = create_test_app(tmp_path)
+    legacy_path = settings.backup_dir / "legacy.sqlite"
+    legacy_path.write_text("legacy", encoding="utf-8")
+    db = connect(settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into backups(path, reason, created_at)
+            values (?, ?, ?)
+            """,
+            (str(legacy_path), "legacy", "2026-06-12T00:00:00"),
+        )
+        db.commit()
+
+        reconcile_backup_records(db, backup_dir=settings.backup_dir)
+        rows = [dict(row) for row in list_backup_records(db, backup_dir=settings.backup_dir)]
+    finally:
+        db.close()
+
+    paths = {row["path"] for row in rows}
+    assert str(legacy_path) not in paths
+
+
 def test_create_app_throttles_recent_startup_backup(tmp_path):
     from portfolio_app.main import create_app
 
