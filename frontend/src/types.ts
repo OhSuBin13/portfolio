@@ -95,22 +95,13 @@ export type BackupRecord = {
   created_at: string
 }
 
-export type MarketSyncRow = {
-  asset_id: number
-  symbol: string
-  status: string
-  error_message: string
-}
-
-export type MarketSyncResult = {
-  results: MarketSyncRow[]
-}
+export type MarketSnapshotStatus = "ok" | "stale" | "failed" | "manual"
 
 export type MarketDataStatus = {
   asset_id: number
   source: string
   price_krw: number | null
-  status: string
+  status: MarketSnapshotStatus
   error_message: string | null
   fetched_at: string | null
 }

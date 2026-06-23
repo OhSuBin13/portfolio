@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/SettingsPage.tsx", import.meta.url), "utf8")
+const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
 
 assert.ok(source.includes("자동 시세 갱신"), "Settings page should describe backend automatic market sync")
 assert.ok(source.includes("5분마다"), "Settings page should surface the default polling interval")
@@ -24,3 +25,14 @@ assert.ok(!source.includes("isBackingUp"), "Settings page should not keep manual
 assert.ok(!source.includes("상태 새로고침"), "Settings page should not show a manual status refresh button")
 assert.ok(!source.includes("수동 백업 만들기"), "Settings page should not show a manual backup button")
 assert.ok(!source.includes("시세 동기화를 완료했습니다"), "Settings page should not show manual sync results")
+
+assert.ok(
+  typesSource.includes('export type MarketSnapshotStatus = "ok" | "stale" | "failed" | "manual"'),
+  "Frontend should constrain market snapshot statuses",
+)
+assert.ok(
+  typesSource.includes("status: MarketSnapshotStatus"),
+  "MarketDataStatus should use the constrained status union",
+)
+assert.ok(!typesSource.includes("MarketSyncRow"), "Unused manual sync row type should be removed")
+assert.ok(!typesSource.includes("MarketSyncResult"), "Unused manual sync result type should be removed")
