@@ -4,6 +4,8 @@ from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from portfolio_app.models import BACKUP_REASONS
+
 STARTUP_BACKUP_MIN_INTERVAL_SECONDS = 300
 
 BACKUP_NAME_RE = re.compile(
@@ -17,13 +19,15 @@ BACKUP_NAME_RE = re.compile(
 )
 
 
-def _safe_reason(reason: str) -> str:
-    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", reason.strip()).strip("-")
-    return normalized or "backup"
+def _backup_reason(reason: str) -> str:
+    normalized = reason.strip()
+    if normalized not in BACKUP_REASONS:
+        raise ValueError("지원하지 않는 백업 사유입니다.")
+    return normalized
 
 
 def _backup_target(*, backup_dir: Path, reason: str) -> Path:
-    safe_reason = _safe_reason(reason)
+    safe_reason = _backup_reason(reason)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     target = backup_dir / f"portfolio-{timestamp}-{safe_reason}.sqlite"
     suffix = 1
@@ -51,7 +55,11 @@ def _metadata_from_filename(path: Path) -> tuple[str, str] | None:
     except ValueError:
         return None
 
-    return match["reason"], timestamp.isoformat(timespec="seconds")
+    reason = match["reason"]
+    if reason not in BACKUP_REASONS:
+        return None
+
+    return reason, timestamp.isoformat(timespec="seconds")
 
 
 def _is_service_owned_backup(path: Path) -> bool:
@@ -65,11 +73,12 @@ def _backup_files(backup_dir: Path) -> list[Path]:
 
 
 def create_backup(*, db_path: Path, backup_dir: Path, reason: str) -> Path:
+    normalized_reason = _backup_reason(reason)
     if not db_path.exists():
         raise FileNotFoundError("데이터베이스 파일을 찾을 수 없습니다.")
 
     backup_dir.mkdir(parents=True, exist_ok=True)
-    target = _backup_target(backup_dir=backup_dir, reason=reason)
+    target = _backup_target(backup_dir=backup_dir, reason=normalized_reason)
     temp_target = target.with_name(f".{target.name}.tmp")
     source: sqlite3.Connection | None = None
     destination: sqlite3.Connection | None = None
@@ -120,13 +129,14 @@ def record_backup(
     reason: str,
     created_at: str | None = None,
 ) -> sqlite3.Row:
+    normalized_reason = _backup_reason(reason)
     created = created_at or datetime.now().isoformat(timespec="seconds")
     cursor = db.execute(
         """
         insert into backups(path, reason, created_at)
         values (?, ?, ?)
         """,
-        (str(backup_path), reason, created),
+        (str(backup_path), normalized_reason, created),
     )
     row = db.execute(
         """

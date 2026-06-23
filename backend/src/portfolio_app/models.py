@@ -22,6 +22,7 @@ GOAL_TYPES = frozenset(get_args(GoalType))
 SnapshotSource = Literal["scheduled", "manual", "market_sync", "import"]
 GrowthPeriod = Literal["monthly", "annual"]
 BackupReason = Literal["startup", "automatic", "manual"]
+BACKUP_REASONS = frozenset(get_args(BackupReason))
 
 
 class HoldingValue(BaseModel):

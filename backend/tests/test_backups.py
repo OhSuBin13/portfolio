@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+from fastapi.testclient import TestClient
+
 from portfolio_app.config import Settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
@@ -49,10 +52,21 @@ def test_create_backup_copies_sqlite_file(tmp_path):
     migrate(db)
     db.close()
 
-    backup_path = create_backup(db_path=db_path, backup_dir=backup_dir, reason="test")
+    backup_path = create_backup(db_path=db_path, backup_dir=backup_dir, reason="manual")
 
     assert backup_path.exists()
     assert backup_path.name.endswith(".sqlite")
+
+
+def test_create_backup_rejects_unknown_reason(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    backup_dir = tmp_path / "backups"
+    db = connect(db_path)
+    migrate(db)
+    db.close()
+
+    with pytest.raises(ValueError, match="지원하지 않는 백업 사유입니다"):
+        create_backup(db_path=db_path, backup_dir=backup_dir, reason="test")
 
 
 def test_create_backup_uses_consistent_sqlite_snapshot_with_open_wal_connection(tmp_path):
@@ -71,7 +85,7 @@ def test_create_backup_uses_consistent_sqlite_snapshot_with_open_wal_connection(
     )
     db.commit()
 
-    backup_path = create_backup(db_path=db_path, backup_dir=backup_dir, reason="test")
+    backup_path = create_backup(db_path=db_path, backup_dir=backup_dir, reason="manual")
 
     backup = sqlite3.connect(backup_path)
     row = backup.execute("select path, reason from backups").fetchone()
@@ -85,13 +99,13 @@ def test_prune_backups_keeps_newest_files(tmp_path):
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
     for index in range(35):
-        path = backup_dir / f"portfolio-20260612-120000-{index + 1:06d}-test.sqlite"
+        path = backup_dir / f"portfolio-20260612-120000-{index + 1:06d}-manual.sqlite"
         path.write_text(str(index), encoding="utf-8")
 
     prune_backups(backup_dir=backup_dir, keep=30)
 
     assert len(list(backup_dir.glob("*.sqlite"))) == 30
-    assert (backup_dir / "portfolio-20260612-120000-000035-test.sqlite").exists()
+    assert (backup_dir / "portfolio-20260612-120000-000035-manual.sqlite").exists()
 
 
 def test_prune_backups_only_deletes_service_owned_files(tmp_path):
@@ -288,6 +302,24 @@ def test_backup_api_ignores_backup_like_file_with_invalid_timestamp(tmp_path):
 
     paths = {backup["path"] for backup in backups}
     assert str(invalid_path) not in paths
+
+
+def test_backup_api_ignores_unknown_reason_file_over_http(tmp_path):
+    app, settings = create_test_app(
+        tmp_path,
+        backup_enabled=False,
+        market_sync_enabled=False,
+    )
+    unknown_reason_path = (
+        settings.backup_dir / "portfolio-20260612-120000-000000-test.sqlite"
+    )
+    unknown_reason_path.write_text("not a service backup", encoding="utf-8")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/api/backups")
+
+    assert response.status_code == 200
+    paths = {backup["path"] for backup in response.json()}
+    assert str(unknown_reason_path) not in paths
 
 
 def test_list_backup_records_does_not_reconcile_filesystem_metadata(tmp_path):
