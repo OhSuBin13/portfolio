@@ -1,7 +1,7 @@
 # Toss Securities Open API Integration Review
 
 Date: 2026-06-19
-Status: Investigation note
+Status: Phase 1 market price and USD/KRW FX provider implemented
 
 ## 1. Purpose
 
@@ -85,9 +85,9 @@ an account sequence from `GET /api/v1/accounts`.
 
 | Priority | Current feature | Toss API replacement | Assessment |
 | --- | --- | --- | --- |
-| 1 | US stock price sync through Alpha Vantage | `GET /api/v1/prices` | Strong replacement candidate. It supports KR and US stock symbols and removes the current US-only provider dependency. |
-| 1 | Missing KR stock/ETF market sync | `GET /api/v1/prices` | Strong new coverage. The current app explicitly rejects KR market sync. |
-| 1 | USD/KRW FX provider | `GET /api/v1/exchange-rate` | Strong replacement candidate for the provider layer. Store into `fx_rates` before summary reads it. |
+| 1 | US stock price sync through Alpha Vantage | `GET /api/v1/prices` | Implemented. Toss now handles US stock/ETF price sync and Alpha Vantage dependency has been removed. |
+| 1 | Missing KR stock/ETF market sync | `GET /api/v1/prices` | Implemented for Toss-supported KR stock/ETF symbols. |
+| 1 | USD/KRW FX provider | `GET /api/v1/exchange-rate` | Implemented. Toss is now the only automatic USD/KRW provider and stores snapshots into `fx_rates` before summary reads them. |
 | 2 | Manual stock asset metadata input | `GET /api/v1/stocks` | Good augmentation. Can auto-fill name, market, currency, listed status, and instrument metadata. |
 | 2 | No stock warning visibility | `GET /api/v1/stocks/{symbol}/warnings` | Good augmentation for holdings or transaction screens. |
 | 2 | Manual brokerage holding setup | `GET /api/v1/accounts`, `GET /api/v1/holdings` | Good read-only sync candidate for stock/ETF holdings. It should not erase local cash, savings, debt, or manual holdings. |
@@ -100,11 +100,10 @@ an account sequence from `GET /api/v1/accounts`.
 
 Best first integration target.
 
-Current behavior:
+Implemented behavior:
 
 - Backend market sync runs periodically.
-- US `stock_etf` assets use Alpha Vantage.
-- KR `stock_etf` assets currently fail with "KR market sync is not supported".
+- US and KR `stock_etf` assets use Toss `GET /api/v1/prices`.
 - Successful or stale results are stored in `price_snapshots`.
 - Summary reads the latest usable snapshot.
 
@@ -119,22 +118,29 @@ Recommended Toss mapping:
 | `PriceResponse.timestamp` or request time | `price_snapshots.fetched_at`. |
 | provider name | `price_snapshots.source = 'toss'`. |
 
-Implementation direction:
+Implementation status:
 
-- Add a Toss market-data provider behind the existing quote provider boundary.
-- Keep the existing "last known good price" behavior.
-- Batch up to the official endpoint limit where practical.
-- Persist results first, then let summary use the same local query path.
+- Toss market-data provider is implemented behind the existing quote provider
+  boundary.
+- Existing "last known good price" behavior is retained.
+- Price requests are batched up to the official endpoint limit.
+- Results are persisted first, then summary uses the same local query path.
 
 ### 6.2 FX Rate Sync
 
 Good first integration target together with market prices.
 
-Current behavior:
+Implemented behavior:
 
 - The app stores USD/KRW snapshots in `fx_rates`.
 - Summary uses the latest local FX snapshot or falls back to transaction FX.
 - `/api/summary` can refresh FX with a short TTL.
+- Toss `GET /api/v1/exchange-rate` is the only automatic USD/KRW refresh
+  provider. Previous Naver Finance and Frankfurter fallback providers were
+  removed.
+- If Toss credentials are not configured or the Toss request fails, the app does
+  not call another public FX provider. Summary remains usable with an existing
+  local FX snapshot or transaction FX, and otherwise returns no display FX rate.
 
 Recommended Toss mapping:
 
@@ -143,7 +149,7 @@ Recommended Toss mapping:
 | `baseCurrency` | `fx_rates.base_currency`. |
 | `quoteCurrency` | `fx_rates.quote_currency`. |
 | `rate` | `fx_rates.rate`. |
-| request time or `validFrom` | `fx_rates.fetched_at`. |
+| `validFrom` | `fx_rates.fetched_at`. |
 | source | `fx_rates.source = 'toss'`. |
 | `rateChangeType`, `basisPoint` | Optional future fields if the schema is expanded. |
 
@@ -279,7 +285,7 @@ These features should remain local:
 
 ### Phase 1: Read-Only Market Data Provider
 
-Add Toss as a backend-only market-data and FX provider.
+Implemented. Toss is now the backend-only market-data and USD/KRW FX provider.
 
 Deliverables:
 
