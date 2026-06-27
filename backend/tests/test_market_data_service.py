@@ -1,20 +1,18 @@
-import logging
-
 import pytest
 
 from portfolio_app.services import market_data as market_data_service
 from portfolio_app.services.market_data import (
-    AlphaVantageProvider,
     FallbackFxRateProvider,
     FrankfurterProvider,
     MarketQuote,
     NaverFinanceProvider,
+    TossMarketDataProvider,
     keep_last_good_quote,
 )
 
 
 def test_keep_last_good_quote_uses_previous_value_on_error():
-    previous = MarketQuote(symbol="VOO", price=500.0, currency="USD", source="alpha_vantage")
+    previous = MarketQuote(symbol="VOO", price=500.0, currency="USD", source="toss")
 
     result = keep_last_good_quote(previous=previous, error_message="rate limit")
 
@@ -23,60 +21,86 @@ def test_keep_last_good_quote_uses_previous_value_on_error():
     assert result.error_message == "rate limit"
 
 
-def test_market_data_provider_resolver_selects_alpha_for_us_stock():
-    alpha_provider = AlphaVantageProvider("demo-key")
+def test_market_data_provider_resolver_selects_toss_for_us_stock():
+    toss_provider = TossMarketDataProvider(client_id="toss-client", client_secret="toss-secret")
     asset = {"type": "stock_etf", "market": "US", "currency": "USD"}
 
     provider = market_data_service.market_data_provider_for_asset(
         asset,
-        alpha_provider=alpha_provider,
+        toss_provider=toss_provider,
     )
 
-    assert provider is alpha_provider
+    assert provider is toss_provider
 
 
-@pytest.mark.asyncio
-async def test_market_data_provider_resolver_rejects_kr_stock():
-    alpha_provider = AlphaVantageProvider("demo-key")
+def test_market_data_provider_resolver_selects_toss_for_kr_stock():
+    toss_provider = TossMarketDataProvider(client_id="toss-client", client_secret="toss-secret")
     asset = {"type": "stock_etf", "market": "KR", "currency": "KRW"}
 
     provider = market_data_service.market_data_provider_for_asset(
         asset,
-        alpha_provider=alpha_provider,
+        toss_provider=toss_provider,
     )
 
-    with pytest.raises(ValueError, match="KR 시장 시세 동기화는 아직 지원하지 않습니다."):
-        await provider.fetch_equity_quote("005930")
+    assert provider is toss_provider
 
 
 @pytest.mark.asyncio
-async def test_alpha_vantage_logs_unexpected_payload_without_api_key(httpx_mock, caplog):
-    secret_key = "secret-alpha-key-123"
-    httpx_mock.add_response(json={"Information": "rate limit reached"})
-    provider = AlphaVantageProvider(secret_key)
+async def test_market_data_provider_resolver_rejects_non_stock_etf_market():
+    toss_provider = TossMarketDataProvider(client_id="toss-client", client_secret="toss-secret")
+    asset = {"type": "stock_etf", "market": "JP", "currency": "JPY"}
 
-    with (
-        caplog.at_level(logging.WARNING, logger="portfolio_app.services.market_data"),
-        pytest.raises(ValueError, match="시세 정보를 찾을 수 없습니다"),
-    ):
-        await provider.fetch_equity_quote("mu")
+    provider = market_data_service.market_data_provider_for_asset(
+        asset,
+        toss_provider=toss_provider,
+    )
 
-    records = [
-        record
-        for record in caplog.records
-        if record.message.startswith("Alpha Vantage quote response missing Global Quote")
-    ]
-    assert len(records) == 1
-    assert records[0].symbol == "MU"
-    assert records[0].payload_summary == {
-        "keys": ["Information"],
-        "messages": {"Information": "rate limit reached"},
-    }
-    assert "symbol=MU" in records[0].message
-    assert "rate limit reached" in records[0].message
-    logged = "\n".join(str(record.__dict__) for record in caplog.records)
-    assert secret_key not in logged
-    assert "apikey" not in logged.lower()
+    with pytest.raises(ValueError, match="JP/JPY 시세 동기화는 아직 지원하지 않습니다."):
+        await provider.fetch_equity_quote("7203")
+
+
+@pytest.mark.asyncio
+async def test_toss_market_data_provider_fetches_token_and_parses_price(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        json={
+            "result": [
+                {
+                    "symbol": "005930",
+                    "timestamp": "2026-06-27T10:00:00+09:00",
+                    "lastPrice": "75000",
+                    "currency": "KRW",
+                }
+            ]
+        },
+    )
+    provider = TossMarketDataProvider(client_id="toss-client", client_secret="toss-secret")
+
+    quote = await provider.fetch_equity_quote("005930")
+
+    assert quote == MarketQuote(symbol="005930", price=75_000, currency="KRW", source="toss")
+    requests = httpx_mock.get_requests()
+    token_request = requests[0]
+    assert token_request.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert token_request.content == (
+        b"grant_type=client_credentials&client_id=toss-client&client_secret=toss-secret"
+    )
+    price_request = requests[1]
+    assert price_request.headers["authorization"] == "Bearer token-123"
+
+
+@pytest.mark.asyncio
+async def test_toss_market_data_provider_requires_credentials():
+    provider = TossMarketDataProvider(client_id=" ", client_secret="toss-secret")
+
+    with pytest.raises(ValueError, match="Toss API 인증 정보가 필요합니다."):
+        await provider.fetch_equity_quote("005930")
 
 
 @pytest.mark.asyncio

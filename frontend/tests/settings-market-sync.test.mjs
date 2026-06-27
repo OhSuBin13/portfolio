@@ -13,6 +13,8 @@ assert.ok(source.includes("window.clearInterval"), "Settings page should clean u
 assert.ok(source.includes("자동 백업"), "Settings page should describe backend automatic backups")
 assert.ok(source.includes('"/api/backups"'), "Settings page should still read backup records")
 
+assert.ok(!source.includes("Alpha Vantage"), "Settings page should not show removed Alpha Vantage settings")
+assert.ok(!source.includes("alphaVantage"), "Settings page should not keep Alpha Vantage state")
 assert.ok(!source.includes("apiPost"), "Settings page should not post manual actions")
 assert.ok(!source.includes('"/api/market-data/sync"'), "Settings page should not call manual market sync")
 assert.ok(!source.includes("handleSync"), "Settings page should not keep the manual sync handler")

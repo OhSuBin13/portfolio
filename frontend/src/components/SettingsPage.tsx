@@ -16,7 +16,6 @@ const latestBackupFrom = (records: BackupRecord[]) =>
 const MARKET_STATUS_POLL_INTERVAL_MS = 60_000
 
 export function SettingsPage() {
-  const [alphaVantageKey, setAlphaVantageKey] = useState("")
   const [backups, setBackups] = useState<BackupRecord[]>([])
   const [marketStatuses, setMarketStatuses] = useState<MarketDataStatus[]>([])
   const [loadError, setLoadError] = useState("")
@@ -70,28 +69,6 @@ export function SettingsPage() {
       </header>
 
       {loadError && <div className="error">{loadError}</div>}
-
-      <section className="panel form-panel narrow-form">
-        <div className="section-heading">
-          <h3>Alpha Vantage</h3>
-          <span>로컬 입력</span>
-        </div>
-        <label>
-          Alpha Vantage API 키
-          <input
-            autoComplete="off"
-            onChange={(event) => setAlphaVantageKey(event.target.value)}
-            placeholder="서버 저장 미지원"
-            type="password"
-            value={alphaVantageKey}
-          />
-        </label>
-        <p className="form-message">
-          {alphaVantageKey
-            ? "입력한 키는 현재 화면 상태에만 보관되며 서버로 전송하거나 저장하지 않습니다."
-            : "백엔드는 서버 설정 또는 환경 변수의 키를 사용합니다. 이 입력값은 아직 저장되지 않습니다."}
-        </p>
-      </section>
 
       <div className="form-grid">
         <section className="panel form-panel">

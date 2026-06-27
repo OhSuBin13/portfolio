@@ -7,7 +7,6 @@ def test_market_data_api_tests_do_not_import_provider_implementations():
 
     assert service_test_path.exists()
     for name in (
-        "AlphaVantageProvider",
         "FallbackFxRateProvider",
         "FrankfurterProvider",
         "NaverFinanceProvider",

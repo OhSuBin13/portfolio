@@ -1,4 +1,4 @@
-import inspect
+import asyncio
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,25 +8,36 @@ from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.repositories import create_account, create_asset
 from portfolio_app.services.growth import create_or_refresh_today_snapshot
+from portfolio_app.services.market_data import insert_price_snapshot, sync_market_data_for_settings
 from portfolio_app.services.transactions import apply_transaction
 
 
 def create_test_client(
     tmp_path,
     *,
-    alpha_vantage_api_key: str = "",
+    toss_api_key: str = "",
+    toss_secret_key: str = "",
     raise_server_exceptions: bool = True,
 ):
     settings = Settings(
         data_dir=tmp_path,
         database_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
-        alpha_vantage_api_key=alpha_vantage_api_key,
+        toss_api_key=toss_api_key,
+        toss_secret_key=toss_secret_key,
         market_sync_enabled=False,
         backup_enabled=False,
     )
     app = create_app(settings=settings)
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
+
+
+def run_market_sync(client: TestClient) -> dict[str, object]:
+    db = connect(client.app.state.settings.database_path)
+    try:
+        return asyncio.run(sync_market_data_for_settings(client.app.state.settings, db))
+    finally:
+        db.close()
 
 
 def test_market_sync_implementation_lives_in_service_module():
@@ -40,40 +51,44 @@ def test_market_sync_implementation_lives_in_service_module():
     assert "create_or_refresh_market_sync_snapshot" in service_source
 
 
-def test_market_sync_snapshot_refresh_regression_uses_http_endpoint():
-    function_body = inspect.getsource(
-        test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update
-    )
+def test_alpha_vantage_provider_code_is_removed():
+    backend_dir = Path(__file__).parents[1]
+    service_source = (backend_dir / "src/portfolio_app/services/market_data.py").read_text()
+    config_source = (backend_dir / "src/portfolio_app/config.py").read_text()
+    settings_source = (
+        backend_dir.parent / "frontend/src/components/SettingsPage.tsx"
+    ).read_text()
 
-    assert 'client.post("/api/market-data/sync")' in function_body
-    assert "sync_market_data_for_settings" not in function_body
+    combined_source = "\n".join([service_source, config_source, settings_source])
+
+    assert "AlphaVantageProvider" not in combined_source
+    assert "alpha_vantage" not in combined_source
+    assert "alphavantage.co" not in combined_source
+    assert "Alpha Vantage" not in combined_source
 
 
-def test_market_data_api_uses_typed_response_schema(tmp_path):
+def test_market_data_api_exposes_status_only(tmp_path):
     settings = Settings(
         data_dir=tmp_path,
         database_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
     )
     schema = create_app(settings=settings).openapi()
+    backend_dir = Path(__file__).parents[1]
+    api_source = (backend_dir / "src/portfolio_app/api/market_data.py").read_text()
 
-    manual_schema = schema["paths"]["/api/market-data/manual-price"]["post"]["responses"]["201"][
-        "content"
-    ]["application/json"]["schema"]
     status_schema = schema["paths"]["/api/market-data/status"]["get"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"]
-    sync_schema = schema["paths"]["/api/market-data/sync"]["post"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]
 
-    assert manual_schema == {"$ref": "#/components/schemas/MarketPriceSnapshot"}
+    assert "/api/market-data/manual-price" not in schema["paths"]
+    assert "/api/market-data/sync" not in schema["paths"]
     assert status_schema["items"] == {"$ref": "#/components/schemas/MarketDataStatus"}
-    assert sync_schema == {"$ref": "#/components/schemas/MarketSyncResponse"}
-    assert "MarketSyncRow" in schema["components"]["schemas"]
+    assert "def create_manual_price" not in api_source
+    assert "def sync_market_data" not in api_source
 
 
-def test_manual_price_endpoint_validates_stores_snapshot_and_updates_summary(tmp_path):
+def test_manual_price_snapshot_updates_summary(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
@@ -102,24 +117,25 @@ def test_manual_price_endpoint_validates_stores_snapshot_and_updates_summary(tmp
             "memo": "초기 수량",
         },
     )
+    db = connect(client.app.state.settings.database_path)
+    try:
+        row = insert_price_snapshot(
+            db,
+            asset_id=asset["id"],
+            source="user",
+            price=75_000,
+            currency="KRW",
+            price_krw=75_000,
+            status="manual",
+        )
+        db.commit()
+    finally:
+        db.close()
 
-    invalid = client.post(
-        "/api/market-data/manual-price",
-        json={"asset_id": asset["id"], "price_krw": 0},
-    )
-    response = client.post(
-        "/api/market-data/manual-price",
-        json={"asset_id": asset["id"], "price_krw": 75_000, "source": "user"},
-    )
-
-    assert invalid.status_code == 400
-    assert "가격" in invalid.json()["detail"]
-    assert response.status_code == 201
-    snapshot = response.json()
-    assert snapshot["asset_id"] == asset["id"]
-    assert snapshot["source"] == "user"
-    assert snapshot["price_krw"] == 75_000
-    assert snapshot["status"] == "manual"
+    assert row["asset_id"] == asset["id"]
+    assert row["source"] == "user"
+    assert row["price_krw"] == 75_000
+    assert row["status"] == "manual"
     assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 150_000
 
 
@@ -144,7 +160,7 @@ def test_status_endpoint_returns_latest_snapshot_and_failure_info(tmp_path):
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset["id"], "toss", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.execute(
             """
@@ -155,7 +171,7 @@ def test_status_endpoint_returns_latest_snapshot_and_failure_info(tmp_path):
             """,
             (
                 asset["id"],
-                "alpha_vantage",
+                "toss",
                 500,
                 "USD",
                 700_000,
@@ -174,7 +190,7 @@ def test_status_endpoint_returns_latest_snapshot_and_failure_info(tmp_path):
     assert response.json() == [
         {
             "asset_id": asset["id"],
-            "source": "alpha_vantage",
+            "source": "toss",
             "price_krw": 700_000,
             "status": "stale",
             "error_message": "rate limit",
@@ -183,7 +199,7 @@ def test_status_endpoint_returns_latest_snapshot_and_failure_info(tmp_path):
     ]
 
 
-def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
+def test_sync_records_stale_status_when_toss_credentials_missing(tmp_path):
     client = create_test_client(tmp_path)
     account = client.post(
         "/api/accounts",
@@ -222,33 +238,31 @@ def test_sync_records_stale_status_when_alpha_vantage_key_missing(tmp_path):
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset["id"], "toss", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.commit()
     finally:
         db.close()
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     status_response = client.get("/api/market-data/status")
 
-    assert response.status_code == 200
-    assert response.json()["results"] == [
+    assert payload["results"] == [
         {
             "asset_id": asset["id"],
             "symbol": "VOO",
             "status": "stale",
-            "error_message": "Alpha Vantage API 키가 필요합니다.",
+            "error_message": "Toss API 인증 정보가 필요합니다.",
         }
     ]
     latest = status_response.json()[0]
     assert latest["asset_id"] == asset["id"]
     assert latest["status"] == "stale"
     assert latest["price_krw"] == 700_000
-    assert "Alpha Vantage API 키" in latest["error_message"]
+    assert "Toss API 인증 정보" in latest["error_message"]
     assert client.get("/api/summary?refresh=false").json()["net_worth_krw"] == 700_000
-    payload = response.json()
-    assert payload["snapshot"]["source"] == "market_sync"
-    assert payload["snapshot"]["net_worth_krw"] == 700_000
+    assert payload["snapshot"].source == "market_sync"
+    assert payload["snapshot"].net_worth_krw == 700_000
 
     db = connect(client.app.state.settings.database_path)
     try:
@@ -295,19 +309,22 @@ def test_sync_reports_snapshot_error_when_summary_cannot_be_valued(tmp_path):
     db.commit()
     db.close()
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
 
-    assert response.status_code == 200
-    assert response.json()["results"] == []
-    assert "snapshot_error" in response.json()
-    assert "환율" in response.json()["snapshot_error"]
+    assert payload["results"] == []
+    assert "snapshot_error" in payload
+    assert "환율" in str(payload["snapshot_error"])
 
 
 def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
     tmp_path,
     httpx_mock,
 ):
-    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
     db = connect(client.app.state.settings.database_path)
     try:
         account_id = create_account(db, name="해외 증권", type="brokerage")
@@ -338,7 +355,7 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset_id, "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset_id, "toss", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.commit()
         old_snapshot = create_or_refresh_today_snapshot(
@@ -350,7 +367,16 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
     finally:
         db.close()
 
-    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
+        json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
+    )
     httpx_mock.add_response(
         text="""
         <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
@@ -361,11 +387,10 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
         """,
     )
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
 
-    assert response.status_code == 200
-    assert response.json()["snapshot"]["source"] == "market_sync"
-    assert response.json()["snapshot"]["net_worth_krw"] == 780_000
+    assert payload["snapshot"].source == "market_sync"
+    assert payload["snapshot"].net_worth_krw == 780_000
     db = connect(client.app.state.settings.database_path)
     try:
         row = db.execute("select * from portfolio_snapshots").fetchone()
@@ -380,7 +405,8 @@ def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
 ):
     client = create_test_client(
         tmp_path,
-        alpha_vantage_api_key="demo-key",
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
         raise_server_exceptions=False,
     )
     asset = client.post(
@@ -402,33 +428,38 @@ def test_sync_records_stale_status_when_http_provider_fails_with_previous_price(
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset["id"], "toss", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.commit()
     finally:
         db.close()
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
     httpx_mock.add_response(status_code=500, json={"message": "provider down"})
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
 
-    assert response.status_code == 200
-    assert response.json()["results"][0]["status"] == "stale"
-    assert "500 Internal Server Error" in response.json()["results"][0]["error_message"]
+    assert payload["results"][0]["status"] == "stale"
+    assert "500 Internal Server Error" in payload["results"][0]["error_message"]
     assert latest["asset_id"] == asset["id"]
     assert latest["status"] == "stale"
     assert latest["price_krw"] == 700_000
     assert "500 Internal Server Error" in latest["error_message"]
 
 
-def test_sync_sanitizes_http_provider_error_without_leaking_alpha_vantage_key(
+def test_sync_sanitizes_http_provider_error_without_leaking_toss_secret(
     tmp_path,
     httpx_mock,
 ):
-    secret_key = "secret-alpha-key-123"
+    secret_key = "secret-toss-key-123"
     client = create_test_client(
         tmp_path,
-        alpha_vantage_api_key=secret_key,
+        toss_api_key="toss-client",
+        toss_secret_key=secret_key,
         raise_server_exceptions=False,
     )
     asset = client.post(
@@ -450,24 +481,28 @@ def test_sync_sanitizes_http_provider_error_without_leaking_alpha_vantage_key(
             )
             values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset["id"], "alpha_vantage", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
+            (asset["id"], "toss", 500, "USD", 700_000, "2026-06-12T09:00:00", "ok", ""),
         )
         db.commit()
     finally:
         db.close()
-    httpx_mock.add_response(status_code=500, json={"message": "provider down"})
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        status_code=500,
+        json={"message": "provider down"},
+    )
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
 
-    assert response.status_code == 200
-    error_message = response.json()["results"][0]["error_message"]
+    error_message = payload["results"][0]["error_message"]
     assert error_message == "시세 제공자 요청 실패: HTTP 500 Internal Server Error"
     assert latest["error_message"] == error_message
-    assert secret_key not in str(response.json())
+    assert secret_key not in str(payload)
     assert secret_key not in str(latest)
-    assert "apikey=" not in str(response.json()).lower()
-    assert "apikey=" not in str(latest).lower()
+    assert "client_secret" not in str(payload).lower()
+    assert "client_secret" not in str(latest).lower()
 
 
 def test_sync_records_failed_status_without_previous_price_and_preserves_fallback_summary(
@@ -476,7 +511,8 @@ def test_sync_records_failed_status_without_previous_price_and_preserves_fallbac
 ):
     client = create_test_client(
         tmp_path,
-        alpha_vantage_api_key="demo-key",
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
         raise_server_exceptions=False,
     )
     account = client.post(
@@ -507,15 +543,19 @@ def test_sync_records_failed_status_without_previous_price_and_preserves_fallbac
             "memo": "fallback valuation",
         },
     )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
     httpx_mock.add_response(status_code=500, json={"message": "provider down"})
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
     summary = client.get("/api/summary?refresh=false").json()
 
-    assert response.status_code == 200
-    assert response.json()["results"][0]["status"] == "failed"
-    assert "500 Internal Server Error" in response.json()["results"][0]["error_message"]
+    assert payload["results"][0]["status"] == "failed"
+    assert "500 Internal Server Error" in payload["results"][0]["error_message"]
     assert latest["asset_id"] == asset["id"]
     assert latest["status"] == "failed"
     assert latest["price_krw"] == 0
@@ -552,12 +592,17 @@ def test_summary_uses_manual_price_when_later_failed_snapshot_exists(tmp_path):
             "memo": "manual fallback",
         },
     )
-    client.post(
-        "/api/market-data/manual-price",
-        json={"asset_id": asset["id"], "price_krw": 75_000},
-    )
     db = connect(client.app.state.settings.database_path)
     try:
+        insert_price_snapshot(
+            db,
+            asset_id=asset["id"],
+            source="user",
+            price=75_000,
+            currency="KRW",
+            price_krw=75_000,
+            status="manual",
+        )
         db.execute(
             "update price_snapshots set fetched_at = ? where asset_id = ? and status = ?",
             ("2026-06-12T09:00:00", asset["id"], "manual"),
@@ -592,13 +637,11 @@ def test_summary_uses_manual_price_when_later_failed_snapshot_exists(tmp_path):
     assert summary["net_worth_krw"] == 150_000
 
 
-def test_kr_stock_sync_records_unsupported_provider_and_preserves_summary(
+def test_kr_stock_sync_records_missing_toss_credentials_and_preserves_summary(
     tmp_path,
-    httpx_mock,
 ):
     client = create_test_client(
         tmp_path,
-        alpha_vantage_api_key="demo-key",
         raise_server_exceptions=False,
     )
     account = client.post(
@@ -629,21 +672,96 @@ def test_kr_stock_sync_records_unsupported_provider_and_preserves_summary(
         },
     )
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
     summary = client.get("/api/summary?refresh=false").json()
 
-    assert response.status_code == 200
-    assert response.json()["results"][0]["status"] == "failed"
-    assert "KR 시장 시세 동기화" in response.json()["results"][0]["error_message"]
+    assert payload["results"][0]["status"] == "failed"
+    assert "Toss API 인증 정보" in payload["results"][0]["error_message"]
     assert latest["asset_id"] == asset["id"]
     assert latest["status"] == "failed"
-    assert "KR 시장 시세 동기화" in latest["error_message"]
+    assert "Toss API 인증 정보" in latest["error_message"]
     assert summary["net_worth_krw"] == 100_000
 
 
-def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_mock):
-    client = create_test_client(tmp_path, alpha_vantage_api_key="demo-key")
+def test_kr_stock_sync_uses_toss_quote_for_summary(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    account = client.post(
+        "/api/accounts",
+        json={"name": "국내 증권", "type": "brokerage"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "005930",
+            "name": "삼성전자",
+            "type": "stock_etf",
+            "currency": "KRW",
+            "market": "KR",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 2,
+            "amount": 100_000,
+            "currency": "KRW",
+            "memo": "KR stock",
+        },
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        json={
+            "result": [
+                {
+                    "symbol": "005930",
+                    "timestamp": "2026-06-27T10:00:00+09:00",
+                    "lastPrice": "75000",
+                    "currency": "KRW",
+                }
+            ]
+        },
+    )
+
+    payload = run_market_sync(client)
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary?refresh=false").json()
+
+    assert payload["results"] == [
+        {
+            "asset_id": asset["id"],
+            "symbol": "005930",
+            "status": "ok",
+            "error_message": "",
+        }
+    ]
+    assert latest["asset_id"] == asset["id"]
+    assert latest["source"] == "toss"
+    assert latest["status"] == "ok"
+    assert latest["price_krw"] == 75_000
+    assert summary["net_worth_krw"] == 150_000
+
+
+def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
     account = client.post(
         "/api/accounts",
         json={"name": "해외 증권", "type": "brokerage"},
@@ -672,7 +790,16 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
             "memo": "US stock",
         },
     )
-    httpx_mock.add_response(json={"Global Quote": {"05. price": "600.00"}})
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
+        json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
+    )
     httpx_mock.add_response(
         text="""
         <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
@@ -683,13 +810,86 @@ def test_us_stock_sync_uses_alpha_quote_and_fx_rate_for_summary(tmp_path, httpx_
         """,
     )
 
-    response = client.post("/api/market-data/sync")
+    payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
     summary = client.get("/api/summary?refresh=false").json()
 
-    assert response.status_code == 200
-    assert response.json()["results"][0]["status"] == "ok"
+    assert payload["results"][0]["status"] == "ok"
     assert latest["status"] == "ok"
-    assert latest["source"] == "alpha_vantage"
+    assert latest["source"] == "toss"
+    assert latest["price_krw"] == 780_000
+    assert summary["net_worth_krw"] == 1_560_000
+
+
+def test_us_stock_sync_uses_toss_quote_when_credentials_exist(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage"},
+    ).json()
+    asset = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    client.post(
+        "/api/transactions",
+        json={
+            "occurred_on": "2026-06-12",
+            "type": "buy",
+            "account_id": account["id"],
+            "asset_id": asset["id"],
+            "quantity": 2,
+            "amount": 1000,
+            "currency": "USD",
+            "fx_rate_to_krw": 1400,
+            "memo": "US stock",
+        },
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
+        json={
+            "result": [
+                {
+                    "symbol": "VOO",
+                    "timestamp": "2026-06-27T10:00:00+09:00",
+                    "lastPrice": "600.00",
+                    "currency": "USD",
+                }
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        text="""
+        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+        <p class="no_exday">
+          <em class="no_down">1.00</em>
+          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+        </p>
+        """,
+    )
+
+    payload = run_market_sync(client)
+    latest = client.get("/api/market-data/status").json()[0]
+    summary = client.get("/api/summary?refresh=false").json()
+
+    assert payload["results"][0]["status"] == "ok"
+    assert latest["status"] == "ok"
+    assert latest["source"] == "toss"
     assert latest["price_krw"] == 780_000
     assert summary["net_worth_krw"] == 1_560_000

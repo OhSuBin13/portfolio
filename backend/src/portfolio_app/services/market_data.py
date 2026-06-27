@@ -1,4 +1,3 @@
-import logging
 import math
 import re
 import sqlite3
@@ -15,8 +14,6 @@ NAVER_USD_KRW_URL = (
     "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
 )
 NUMBER_PATTERN = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?")
-ALPHA_VANTAGE_MESSAGE_KEYS = ("Note", "Information", "Error Message")
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -82,21 +79,6 @@ def _number_from_text(text: str, message: str) -> float:
     if match is None:
         raise ValueError(message)
     return _finite_number(match.group(0).replace(",", ""), message)
-
-
-def _alpha_vantage_payload_summary(payload: Any) -> dict[str, object]:
-    if not isinstance(payload, dict):
-        return {"payload_type": type(payload).__name__}
-
-    summary: dict[str, object] = {"keys": sorted(str(key) for key in payload)}
-    messages = {
-        key: str(payload[key])
-        for key in ALPHA_VANTAGE_MESSAGE_KEYS
-        if isinstance(payload.get(key), str | int | float | bool)
-    }
-    if messages:
-        summary["messages"] = messages
-    return summary
 
 
 class _NaverExchangeParser(HTMLParser):
@@ -273,61 +255,84 @@ def default_fx_rate_provider() -> FxRateProvider:
     return FallbackFxRateProvider(NaverFinanceProvider(), FrankfurterProvider())
 
 
-class AlphaVantageProvider:
-    source = "alpha_vantage"
+class TossMarketDataProvider:
+    source = "toss"
 
-    def __init__(self, api_key: str) -> None:
-        self.api_key = api_key.strip()
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        *,
+        base_url: str = "https://openapi.tossinvest.com",
+    ) -> None:
+        self.client_id = client_id.strip()
+        self.client_secret = client_secret.strip()
+        self.base_url = base_url.rstrip("/")
+        self._access_token: str | None = None
 
-    async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
-        normalized_symbol = symbol.strip().upper()
-        if not self.api_key:
-            raise ValueError("Alpha Vantage API 키가 필요합니다.")
+    async def _token(self) -> str:
+        if self._access_token:
+            return self._access_token
+
+        if not self.client_id or not self.client_secret:
+            raise ValueError("Toss API 인증 정보가 필요합니다.")
 
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                "https://www.alphavantage.co/query",
-                params={
-                    "function": "GLOBAL_QUOTE",
-                    "symbol": normalized_symbol,
-                    "apikey": self.api_key,
+            response = await client.post(
+                f"{self.base_url}/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
                 },
             )
             response.raise_for_status()
             payload = response.json()
 
-        payload_summary = _alpha_vantage_payload_summary(payload)
-        quote = payload.get("Global Quote") if isinstance(payload, dict) else None
-        if not isinstance(quote, dict):
-            logger.warning(
-                "Alpha Vantage quote response missing Global Quote: symbol=%s payload_summary=%s",
-                normalized_symbol,
-                payload_summary,
-                extra={
-                    "symbol": normalized_symbol,
-                    "payload_summary": payload_summary,
-                },
-            )
-            raise ValueError("Alpha Vantage 응답에서 시세 정보를 찾을 수 없습니다.")
+        access_token = payload.get("access_token") if isinstance(payload, dict) else None
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
 
-        price = quote.get("05. price")
-        if price is None:
-            quote_summary = _alpha_vantage_payload_summary(quote)
-            logger.warning(
-                "Alpha Vantage quote response missing price: symbol=%s payload_summary=%s",
-                normalized_symbol,
-                quote_summary,
-                extra={
-                    "symbol": normalized_symbol,
-                    "payload_summary": quote_summary,
-                },
+        self._access_token = access_token.strip()
+        return self._access_token
+
+    async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
+        normalized_symbol = symbol.strip().upper()
+        token = await self._token()
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/prices",
+                params={"symbols": normalized_symbol},
+                headers={"Authorization": f"Bearer {token}"},
             )
-            raise ValueError("Alpha Vantage 응답에서 가격을 찾을 수 없습니다.")
+            response.raise_for_status()
+            payload = response.json()
+
+        prices = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(prices, list):
+            raise ValueError("Toss 응답에서 시세 정보를 찾을 수 없습니다.")
+
+        quote = next(
+            (
+                item
+                for item in prices
+                if isinstance(item, dict)
+                and str(item.get("symbol", "")).strip().upper() == normalized_symbol
+            ),
+            None,
+        )
+        if quote is None:
+            raise ValueError("Toss 응답에서 요청 종목의 시세 정보를 찾을 수 없습니다.")
+
+        currency = str(quote.get("currency", "")).strip().upper()
+        if currency not in {"KRW", "USD"}:
+            raise ValueError("Toss 응답 통화는 KRW 또는 USD여야 합니다.")
 
         return MarketQuote(
             symbol=normalized_symbol,
-            price=_positive_number(price, "Alpha Vantage 가격은 0보다 큰 숫자여야 합니다."),
-            currency="USD",
+            price=_positive_number(quote.get("lastPrice"), "Toss 가격은 0보다 큰 숫자여야 합니다."),
+            currency=currency,
             source=self.source,
         )
 
@@ -335,16 +340,14 @@ class AlphaVantageProvider:
 def market_data_provider_for_asset(
     asset: Any,
     *,
-    alpha_provider: MarketDataProvider,
+    toss_provider: MarketDataProvider,
 ) -> MarketDataProvider:
     asset_type = str(asset["type"])
     market = str(asset["market"]).upper()
     currency = str(asset["currency"]).upper()
 
-    if asset_type == "stock_etf" and market == "US" and currency == "USD":
-        return alpha_provider
-    if asset_type == "stock_etf" and market == "KR" and currency == "KRW":
-        return UnsupportedMarketDataProvider("KR 시장 시세 동기화는 아직 지원하지 않습니다.")
+    if asset_type == "stock_etf" and (market, currency) in {("US", "USD"), ("KR", "KRW")}:
+        return toss_provider
     return UnsupportedMarketDataProvider(
         f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다."
     )
@@ -455,10 +458,13 @@ async def _price_krw(
 async def _fetch_quote(
     asset: sqlite3.Row,
     *,
-    alpha_provider: AlphaVantageProvider,
+    toss_provider: TossMarketDataProvider,
 ) -> MarketQuote:
     symbol = str(asset["symbol"])
-    provider = market_data_provider_for_asset(asset, alpha_provider=alpha_provider)
+    provider = market_data_provider_for_asset(
+        asset,
+        toss_provider=toss_provider,
+    )
     return await provider.fetch_equity_quote(symbol)
 
 
@@ -476,7 +482,7 @@ async def sync_market_data_for_settings(
         order by id
         """
     ).fetchall()
-    alpha_provider = AlphaVantageProvider(settings.alpha_vantage_api_key)
+    toss_provider = TossMarketDataProvider(settings.toss_api_key, settings.toss_secret_key)
     fx_provider = default_fx_rate_provider()
     results: list[dict[str, object]] = []
 
@@ -486,7 +492,7 @@ async def sync_market_data_for_settings(
         try:
             quote = await _fetch_quote(
                 asset,
-                alpha_provider=alpha_provider,
+                toss_provider=toss_provider,
             )
             price_krw = await _price_krw(quote, db=db, fx_provider=fx_provider)
             with db:

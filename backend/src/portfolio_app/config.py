@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     database_path: Path = Path("data/portfolio.sqlite")
     backup_dir: Path = Path("data/backups")
-    alpha_vantage_api_key: str = ""
     market_sync_enabled: bool = True
     market_sync_interval_seconds: int = Field(default=300, gt=0)
     toss_api_key: str = ""
@@ -16,7 +15,7 @@ class Settings(BaseSettings):
     backup_enabled: bool = True
     backup_interval_seconds: int = Field(default=3600, gt=0)
 
-    model_config = SettingsConfigDict(env_prefix="PORTFOLIO_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="PORTFOLIO_", env_file=".env", extra="ignore")
 
 
 def get_settings() -> Settings:
