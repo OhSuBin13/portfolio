@@ -143,7 +143,7 @@ def test_migrate_adds_optional_fx_rate_change_percent(tmp_path):
         )
         values (?, ?, ?, ?, ?, ?)
         """,
-        ("USD", "KRW", 1513.2, "naver_finance", "2026-06-16T06:30:00+00:00", -0.15),
+        ("USD", "KRW", 1513.2, "toss", "2026-06-16T06:30:00+00:00", -0.15),
     )
 
 

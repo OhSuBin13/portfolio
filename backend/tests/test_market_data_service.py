@@ -1,11 +1,10 @@
+from pathlib import Path
+
 import pytest
 
 from portfolio_app.services import market_data as market_data_service
 from portfolio_app.services.market_data import (
-    FallbackFxRateProvider,
-    FrankfurterProvider,
     MarketQuote,
-    NaverFinanceProvider,
     TossFxRateProvider,
     TossMarketDataProvider,
     keep_last_good_quote,
@@ -20,6 +19,24 @@ def test_keep_last_good_quote_uses_previous_value_on_error():
     assert result.price == 500.0
     assert result.status == "stale"
     assert result.error_message == "rate limit"
+
+
+def test_legacy_fx_provider_code_is_removed():
+    source = (
+        Path(__file__).parents[1] / "src/portfolio_app/services/market_data.py"
+    ).read_text()
+
+    for legacy_name in (
+        "NaverFinanceProvider",
+        "FrankfurterProvider",
+        "FallbackFxRateProvider",
+        "NAVER_USD_KRW_URL",
+        "finance.naver.com",
+        "api.frankfurter.dev",
+        "naver_finance",
+        "frankfurter",
+    ):
+        assert legacy_name not in source
 
 
 def test_market_data_provider_resolver_selects_toss_for_us_stock():
@@ -193,8 +210,7 @@ def test_default_fx_rate_provider_uses_toss_when_credentials_are_configured(monk
 
     provider = market_data_service.default_fx_rate_provider()
 
-    first_provider = provider.providers[0]
-    assert isinstance(first_provider, TossFxRateProvider)
+    assert isinstance(provider, TossFxRateProvider)
 
 
 @pytest.mark.asyncio
@@ -203,67 +219,3 @@ async def test_toss_fx_rate_provider_requires_credentials():
 
     with pytest.raises(ValueError, match="Toss API 인증 정보가 필요합니다."):
         await provider.fetch_rate("USD", "KRW")
-
-
-@pytest.mark.asyncio
-async def test_frankfurter_provider_parses_pair_rate(httpx_mock):
-    httpx_mock.add_response(json={"base": "USD", "quote": "KRW", "rate": 1375.5})
-    provider = FrankfurterProvider()
-
-    rate = await provider.fetch_rate("USD", "KRW")
-
-    assert rate.base_currency == "USD"
-    assert rate.quote_currency == "KRW"
-    assert rate.rate == 1375.5
-
-
-@pytest.mark.asyncio
-async def test_naver_finance_provider_parses_usd_krw_rate_and_change_percent(httpx_mock):
-    httpx_mock.add_response(
-        text="""
-        <div class="spot">
-          <div class="today">
-            <p class="no_today">
-              <em class="no_down"><em class="no_down">
-                <span class="no1">1</span><span class="shim">,</span><span class="no5">5</span>
-                <span class="no1">1</span><span class="no3">3</span><span class="jum">.</span>
-                <span class="no2">2</span><span class="no0">0</span>
-              </em></em>
-            </p>
-            <p class="no_exday">
-              <span class="txt_comparison">전일대비</span>
-              <em class="no_down"><span class="ico down"></span><span class="no2">2</span></em>
-              <em class="no_down">
-                <span class="parenthesis1">(</span>
-                <span class="ico minus">-</span><span class="no0">0</span><span class="jum">.</span>
-                <span class="no1">1</span><span class="no5">5</span><span class="per">%</span>
-                <span class="parenthesis2">)</span>
-              </em>
-            </p>
-          </div>
-        </div>
-        """,
-        headers={"content-type": "text/html;charset=EUC-KR"},
-    )
-    provider = NaverFinanceProvider()
-
-    rate = await provider.fetch_rate("USD", "KRW")
-
-    assert rate.base_currency == "USD"
-    assert rate.quote_currency == "KRW"
-    assert rate.rate == 1513.2
-    assert rate.change_percent == -0.15
-    assert rate.source == "naver_finance"
-
-
-@pytest.mark.asyncio
-async def test_fallback_fx_rate_provider_uses_frankfurter_when_naver_fails(httpx_mock):
-    httpx_mock.add_response(status_code=500)
-    httpx_mock.add_response(json={"base": "USD", "quote": "KRW", "rate": 1375.5})
-    provider = FallbackFxRateProvider(NaverFinanceProvider(), FrankfurterProvider())
-
-    rate = await provider.fetch_rate("USD", "KRW")
-
-    assert rate.rate == 1375.5
-    assert rate.change_percent is None
-    assert rate.source == "frankfurter"
