@@ -859,7 +859,7 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
         "quote_currency": "KRW",
         "rate": 1300,
         "source": "toss",
-        "fetched_at": "2026-03-25T09:30:00+09:00",
+        "fetched_at": "2026-03-25T00:30:00+00:00",
     }
 
 

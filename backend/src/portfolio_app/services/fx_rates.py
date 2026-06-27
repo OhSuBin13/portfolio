@@ -2,7 +2,11 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from portfolio_app.services.market_data import FxRateProvider, default_fx_rate_provider
+from portfolio_app.services.market_data import (
+    FxRateProvider,
+    default_fx_rate_provider,
+    normalize_fetched_at_to_utc,
+)
 
 FX_REFRESH_TTL_SECONDS = 300
 
@@ -14,10 +18,6 @@ class FxRefreshResult:
     fetched_at: str | None
     change_percent: float | None = None
     error_message: str = ""
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _parse_fetched_at(value: str) -> datetime:
@@ -76,7 +76,7 @@ def insert_fx_rate(
             quote_currency.upper(),
             rate,
             source,
-            fetched_at or _now_iso(),
+            normalize_fetched_at_to_utc(fetched_at),
             change_percent,
         ),
     )
@@ -120,7 +120,7 @@ async def refresh_fx_rate_if_stale(
             error_message=str(exc),
         )
 
-    fetched_at = fetched.fetched_at or _now_iso()
+    fetched_at = normalize_fetched_at_to_utc(fetched.fetched_at)
     with db:
         insert_fx_rate(
             db,

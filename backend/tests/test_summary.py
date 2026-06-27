@@ -284,7 +284,7 @@ def test_summary_refreshes_missing_usd_krw_rate_with_toss_credentials(
             "quote_currency": "KRW",
             "rate": 1380.5,
             "source": "toss",
-            "fetched_at": "2026-03-25T09:30:00+09:00",
+            "fetched_at": "2026-03-25T00:30:00+00:00",
             "change_percent": None,
         }
     ]

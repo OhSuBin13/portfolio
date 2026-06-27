@@ -312,6 +312,16 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def normalize_fetched_at_to_utc(value: str | None = None) -> str:
+    if value is None or not value.strip():
+        return _now_iso()
+
+    parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat(timespec="seconds")
+
+
 def insert_price_snapshot(
     db: sqlite3.Connection,
     *,
@@ -413,7 +423,7 @@ async def _price_krw(
             rate.quote_currency,
             rate.rate,
             rate.source,
-            rate.fetched_at or _now_iso(),
+            normalize_fetched_at_to_utc(rate.fetched_at),
             rate.change_percent,
         ),
     )
