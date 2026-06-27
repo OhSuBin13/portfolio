@@ -200,6 +200,7 @@ async def test_toss_fx_rate_provider_fetches_token_and_parses_exchange_rate(http
     assert rate.rate == 1380.5
     assert rate.source == "toss"
     assert rate.change_percent is None
+    assert rate.fetched_at == "2026-03-25T09:30:00+09:00"
     exchange_rate_request = httpx_mock.get_requests()[1]
     assert exchange_rate_request.headers["authorization"] == "Bearer token-123"
 

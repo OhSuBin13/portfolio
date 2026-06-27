@@ -212,7 +212,7 @@ def test_summary_without_toss_credentials_keeps_missing_usd_krw_rate(tmp_path):
     try:
         rows = db.execute(
             """
-            select base_currency, quote_currency, rate, source, change_percent
+            select base_currency, quote_currency, rate, source, fetched_at, change_percent
             from fx_rates
             order by id
             """
@@ -270,7 +270,7 @@ def test_summary_refreshes_missing_usd_krw_rate_with_toss_credentials(
     try:
         rows = db.execute(
             """
-            select base_currency, quote_currency, rate, source, change_percent
+            select base_currency, quote_currency, rate, source, fetched_at, change_percent
             from fx_rates
             order by id
             """
@@ -284,6 +284,7 @@ def test_summary_refreshes_missing_usd_krw_rate_with_toss_credentials(
             "quote_currency": "KRW",
             "rate": 1380.5,
             "source": "toss",
+            "fetched_at": "2026-03-25T09:30:00+09:00",
             "change_percent": None,
         }
     ]

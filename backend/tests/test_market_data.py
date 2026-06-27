@@ -824,12 +824,31 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
     payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
     summary = client.get("/api/summary?refresh=false").json()
+    db = connect(client.app.state.settings.database_path)
+    try:
+        fx_row = db.execute(
+            """
+            select base_currency, quote_currency, rate, source, fetched_at
+            from fx_rates
+            order by id
+            limit 1
+            """
+        ).fetchone()
+    finally:
+        db.close()
 
     assert payload["results"][0]["status"] == "ok"
     assert latest["status"] == "ok"
     assert latest["source"] == "toss"
     assert latest["price_krw"] == 780_000
     assert summary["net_worth_krw"] == 1_560_000
+    assert dict(fx_row) == {
+        "base_currency": "USD",
+        "quote_currency": "KRW",
+        "rate": 1300,
+        "source": "toss",
+        "fetched_at": "2026-03-25T09:30:00+09:00",
+    }
 
 
 def test_us_stock_sync_batches_toss_quotes_and_reuses_fx_rate(tmp_path, httpx_mock):

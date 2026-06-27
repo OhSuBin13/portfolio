@@ -28,6 +28,7 @@ class FxRate:
     rate: float
     source: str
     change_percent: float | None = None
+    fetched_at: str | None = None
 
 
 class FxRateProvider(Protocol):
@@ -156,6 +157,7 @@ class TossFxRateProvider:
         response_quote = str(result.get("quoteCurrency", "")).strip().upper()
         if (response_base, response_quote) != (base, quote):
             raise ValueError("Toss 응답 환율 통화가 요청과 일치하지 않습니다.")
+        fetched_at = result.get("validFrom")
 
         return FxRate(
             base_currency=response_base,
@@ -165,6 +167,11 @@ class TossFxRateProvider:
                 "Toss 환율은 0보다 큰 숫자여야 합니다.",
             ),
             source=self.source,
+            fetched_at=(
+                fetched_at.strip()
+                if isinstance(fetched_at, str) and fetched_at.strip()
+                else None
+            ),
         )
 
 
@@ -401,7 +408,7 @@ async def _price_krw(
             rate.quote_currency,
             rate.rate,
             rate.source,
-            _now_iso(),
+            rate.fetched_at or _now_iso(),
             rate.change_percent,
         ),
     )

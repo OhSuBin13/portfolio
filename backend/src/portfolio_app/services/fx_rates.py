@@ -120,7 +120,7 @@ async def refresh_fx_rate_if_stale(
             error_message=str(exc),
         )
 
-    fetched_at = _now_iso()
+    fetched_at = fetched.fetched_at or _now_iso()
     with db:
         insert_fx_rate(
             db,
