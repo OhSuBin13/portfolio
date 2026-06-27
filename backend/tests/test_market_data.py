@@ -40,6 +40,33 @@ def run_market_sync(client: TestClient) -> dict[str, object]:
         db.close()
 
 
+def add_toss_fx_rate_response(httpx_mock, *, rate: str = "1300.00") -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "fx-token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": rate,
+                "midRate": rate,
+                "basisPoint": "0",
+                "rateChangeType": "EQUAL",
+                "validFrom": "2026-03-25T09:30:00+09:00",
+                "validUntil": "2026-03-25T09:31:00+09:00",
+            }
+        },
+    )
+
+
 def test_market_sync_implementation_lives_in_service_module():
     backend_dir = Path(__file__).parents[1]
     api_source = (backend_dir / "src/portfolio_app/api/market_data.py").read_text()
@@ -377,15 +404,7 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
         url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
         json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
     )
-    httpx_mock.add_response(
-        text="""
-        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-        <p class="no_exday">
-          <em class="no_down">1.00</em>
-          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-        </p>
-        """,
-    )
+    add_toss_fx_rate_response(httpx_mock)
 
     payload = run_market_sync(client)
 
@@ -800,15 +819,7 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
         url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
         json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
     )
-    httpx_mock.add_response(
-        text="""
-        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-        <p class="no_exday">
-          <em class="no_down">1.00</em>
-          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-        </p>
-        """,
-    )
+    add_toss_fx_rate_response(httpx_mock)
 
     payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
@@ -881,15 +892,7 @@ def test_us_stock_sync_batches_toss_quotes_and_reuses_fx_rate(tmp_path, httpx_mo
             ]
         },
     )
-    httpx_mock.add_response(
-        text="""
-        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-        <p class="no_exday">
-          <em class="no_down">1.00</em>
-          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-        </p>
-        """,
-    )
+    add_toss_fx_rate_response(httpx_mock)
 
     payload = run_market_sync(client)
     summary = client.get("/api/summary?refresh=false").json()
@@ -902,7 +905,7 @@ def test_us_stock_sync_batches_toss_quotes_and_reuses_fx_rate(tmp_path, httpx_mo
     fx_requests = [
         request
         for request in requests
-        if request.method == "GET" and "finance.naver.com" in str(request.url)
+        if request.method == "GET" and request.url.path == "/api/v1/exchange-rate"
     ]
 
     assert [result["status"] for result in payload["results"]] == ["ok", "ok"]
@@ -964,15 +967,7 @@ def test_us_stock_sync_uses_toss_quote_when_credentials_exist(tmp_path, httpx_mo
             ]
         },
     )
-    httpx_mock.add_response(
-        text="""
-        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
-        <p class="no_exday">
-          <em class="no_down">1.00</em>
-          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
-        </p>
-        """,
-    )
+    add_toss_fx_rate_response(httpx_mock)
 
     payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]

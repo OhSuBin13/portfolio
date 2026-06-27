@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from portfolio_app.config import Settings
+from portfolio_app.config import Settings, get_settings
 
 NAVER_USD_KRW_URL = (
     "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
@@ -274,8 +274,95 @@ class FallbackFxRateProvider:
         raise ValueError(f"환율 제공자 요청이 모두 실패했습니다: {'; '.join(errors)}")
 
 
-def default_fx_rate_provider() -> FxRateProvider:
-    return FallbackFxRateProvider(NaverFinanceProvider(), FrankfurterProvider())
+class TossFxRateProvider:
+    source = "toss"
+
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        *,
+        base_url: str = "https://openapi.tossinvest.com",
+    ) -> None:
+        self.client_id = client_id.strip()
+        self.client_secret = client_secret.strip()
+        self.base_url = base_url.rstrip("/")
+        self._access_token: str | None = None
+
+    async def _token(self) -> str:
+        if self._access_token:
+            return self._access_token
+
+        if not self.client_id or not self.client_secret:
+            raise ValueError("Toss API 인증 정보가 필요합니다.")
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{self.base_url}/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        access_token = payload.get("access_token") if isinstance(payload, dict) else None
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
+
+        self._access_token = access_token.strip()
+        return self._access_token
+
+    async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
+        base = base_currency.strip().upper()
+        quote = quote_currency.strip().upper()
+        if base == quote or {base, quote} != {"USD", "KRW"}:
+            raise ValueError("Toss 환율은 USD/KRW 또는 KRW/USD만 지원합니다.")
+
+        token = await self._token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/exchange-rate",
+                params={"baseCurrency": base, "quoteCurrency": quote},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(result, dict):
+            raise ValueError("Toss 응답에서 환율 정보를 찾을 수 없습니다.")
+
+        response_base = str(result.get("baseCurrency", "")).strip().upper()
+        response_quote = str(result.get("quoteCurrency", "")).strip().upper()
+        if (response_base, response_quote) != (base, quote):
+            raise ValueError("Toss 응답 환율 통화가 요청과 일치하지 않습니다.")
+
+        return FxRate(
+            base_currency=response_base,
+            quote_currency=response_quote,
+            rate=_positive_number(
+                result.get("rate"),
+                "Toss 환율은 0보다 큰 숫자여야 합니다.",
+            ),
+            source=self.source,
+        )
+
+
+def default_fx_rate_provider(settings: Settings | None = None) -> FxRateProvider:
+    resolved_settings = settings or get_settings()
+    providers: list[FxRateProvider] = []
+    if resolved_settings.toss_api_key.strip() and resolved_settings.toss_secret_key.strip():
+        providers.append(
+            TossFxRateProvider(
+                resolved_settings.toss_api_key,
+                resolved_settings.toss_secret_key,
+            )
+        )
+    providers.extend([NaverFinanceProvider(), FrankfurterProvider()])
+    return FallbackFxRateProvider(*providers)
 
 
 class TossMarketDataProvider:
@@ -609,7 +696,7 @@ async def sync_market_data_for_settings(
         """
     ).fetchall()
     toss_provider = TossMarketDataProvider(settings.toss_api_key, settings.toss_secret_key)
-    fx_provider = default_fx_rate_provider()
+    fx_provider = default_fx_rate_provider(settings)
     fx_rate_cache: dict[tuple[str, str], FxRate] = {}
     toss_quotes, toss_error_message = await _fetch_supported_toss_quotes(
         assets,

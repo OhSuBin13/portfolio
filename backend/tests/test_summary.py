@@ -5,6 +5,7 @@ from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.migrations import migrate
 from portfolio_app.repositories import create_account, create_asset, upsert_holding
+from portfolio_app.services import market_data as market_data_service
 from portfolio_app.services import summary as summary_service
 from portfolio_app.services.summary import build_summary
 
@@ -15,12 +16,16 @@ def create_summary_db(tmp_path):
     return db
 
 
-def create_test_client(tmp_path):
-    settings = Settings(
-        data_dir=tmp_path,
-        database_path=tmp_path / "portfolio.sqlite",
-        backup_dir=tmp_path / "backups",
-    )
+def create_test_client(tmp_path, **settings_overrides):
+    settings_values = {
+        "data_dir": tmp_path,
+        "database_path": tmp_path / "portfolio.sqlite",
+        "backup_dir": tmp_path / "backups",
+        "toss_api_key": "",
+        "toss_secret_key": "",
+    }
+    settings_values.update(settings_overrides)
+    settings = Settings(**settings_values)
     app = create_app(settings=settings)
     return TestClient(app)
 
@@ -233,6 +238,72 @@ def test_summary_refreshes_missing_usd_krw_rate_by_default(tmp_path, httpx_mock)
             "rate": 1410.5,
             "source": "naver_finance",
             "change_percent": 0.23,
+        }
+    ]
+
+
+def test_summary_refreshes_missing_usd_krw_rate_with_toss_credentials(
+    tmp_path,
+    httpx_mock,
+    monkeypatch,
+):
+    def fail_get_settings():
+        raise AssertionError("summary refresh should use app settings")
+
+    monkeypatch.setattr(market_data_service, "get_settings", fail_get_settings)
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": "1380.5",
+                "midRate": "1375",
+                "basisPoint": "40",
+                "rateChangeType": "UP",
+                "validFrom": "2026-03-25T09:30:00+09:00",
+                "validUntil": "2026-03-25T09:31:00+09:00",
+            }
+        },
+    )
+
+    response = client.get("/api/summary")
+
+    assert response.status_code == 200
+    assert response.json()["usd_krw_rate"] == 1380.5
+    db = connect(client.app.state.settings.database_path)
+    try:
+        rows = db.execute(
+            """
+            select base_currency, quote_currency, rate, source, change_percent
+            from fx_rates
+            order by id
+            """
+        ).fetchall()
+    finally:
+        db.close()
+
+    assert [dict(row) for row in rows] == [
+        {
+            "base_currency": "USD",
+            "quote_currency": "KRW",
+            "rate": 1380.5,
+            "source": "toss",
+            "change_percent": None,
         }
     ]
 

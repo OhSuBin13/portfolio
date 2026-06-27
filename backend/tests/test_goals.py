@@ -154,7 +154,7 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
         fake_list_goal_progress_for_summary,
     )
 
-    response = await summary_api.get_summary(db, refresh=False)
+    response = await summary_api.get_summary(object(), db, refresh=False)
 
     assert response.goal_progress == progress
     assert calls == [(db, portfolio_summary)]

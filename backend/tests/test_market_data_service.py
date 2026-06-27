@@ -6,6 +6,7 @@ from portfolio_app.services.market_data import (
     FrankfurterProvider,
     MarketQuote,
     NaverFinanceProvider,
+    TossFxRateProvider,
     TossMarketDataProvider,
     keep_last_good_quote,
 )
@@ -145,6 +146,63 @@ async def test_toss_market_data_provider_requires_credentials():
 
     with pytest.raises(ValueError, match="Toss API 인증 정보가 필요합니다."):
         await provider.fetch_equity_quote("005930")
+
+
+@pytest.mark.asyncio
+async def test_toss_fx_rate_provider_fetches_token_and_parses_exchange_rate(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": "1380.5",
+                "midRate": "1375",
+                "basisPoint": "40",
+                "rateChangeType": "UP",
+                "validFrom": "2026-03-25T09:30:00+09:00",
+                "validUntil": "2026-03-25T09:31:00+09:00",
+            }
+        },
+    )
+    provider = TossFxRateProvider(client_id="toss-client", client_secret="toss-secret")
+
+    rate = await provider.fetch_rate("usd", "krw")
+
+    assert rate.base_currency == "USD"
+    assert rate.quote_currency == "KRW"
+    assert rate.rate == 1380.5
+    assert rate.source == "toss"
+    assert rate.change_percent is None
+    exchange_rate_request = httpx_mock.get_requests()[1]
+    assert exchange_rate_request.headers["authorization"] == "Bearer token-123"
+
+
+def test_default_fx_rate_provider_uses_toss_when_credentials_are_configured(monkeypatch):
+    monkeypatch.setenv("PORTFOLIO_TOSS_API_KEY", "toss-client")
+    monkeypatch.setenv("PORTFOLIO_TOSS_SECRET_KEY", "toss-secret")
+
+    provider = market_data_service.default_fx_rate_provider()
+
+    first_provider = provider.providers[0]
+    assert isinstance(first_provider, TossFxRateProvider)
+
+
+@pytest.mark.asyncio
+async def test_toss_fx_rate_provider_requires_credentials():
+    provider = TossFxRateProvider(client_id="toss-client", client_secret=" ")
+
+    with pytest.raises(ValueError, match="Toss API 인증 정보가 필요합니다."):
+        await provider.fetch_rate("USD", "KRW")
 
 
 @pytest.mark.asyncio
