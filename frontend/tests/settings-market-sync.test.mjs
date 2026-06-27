@@ -6,6 +6,7 @@ const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "u
 
 assert.ok(source.includes("자동 시세 갱신"), "Settings page should describe backend automatic market sync")
 assert.ok(source.includes("5분마다"), "Settings page should surface the default polling interval")
+assert.ok(source.includes("Toss API 인증 정보"), "Settings page should explain Toss credentials are required")
 assert.ok(source.includes('"/api/market-data/status"'), "Settings page should still read market data status")
 assert.ok(source.includes("MARKET_STATUS_POLL_INTERVAL_MS = 60_000"), "Settings page should poll status every 60 seconds")
 assert.ok(source.includes("window.setInterval"), "Settings page should automatically poll market status")

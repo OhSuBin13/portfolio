@@ -78,7 +78,7 @@ export function SettingsPage() {
           </div>
           <p className="form-message">
             백엔드가 앱 실행 중 5분마다 시세를 자동으로 갱신합니다. 이 화면은 60초마다 최신 상태를
-            다시 확인합니다.
+            다시 확인합니다. USD/KRW 환율 갱신에는 Toss API 인증 정보가 필요합니다.
           </p>
         </section>
 

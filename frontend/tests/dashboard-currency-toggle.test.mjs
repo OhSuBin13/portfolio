@@ -41,7 +41,7 @@ assert.ok(source.includes("<ArrowDown"), "Dashboard should show a down arrow for
 assert.ok(source.includes("<ArrowUp"), "Dashboard should show an up arrow for positive FX movement")
 assert.ok(source.includes("changePercent < 0"), "Negative FX movement should choose the down state")
 assert.ok(source.includes("changePercent > 0"), "Positive FX movement should choose the up state")
-assert.ok(source.includes("자동 시세 갱신 후"), "Missing FX message should refer to automatic sync")
+assert.ok(source.includes("Toss API 인증 정보를 설정"), "Missing FX message should mention Toss credentials")
 assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should not refer to manual sync")
 assert.ok(source.includes("getAllocationSegments"), "Dashboard should derive allocation segments from asset mix")
 assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
