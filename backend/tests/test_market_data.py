@@ -821,6 +821,96 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
     assert summary["net_worth_krw"] == 1_560_000
 
 
+def test_us_stock_sync_batches_toss_quotes_and_reuses_fx_rate(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    account = client.post(
+        "/api/accounts",
+        json={"name": "해외 증권", "type": "brokerage"},
+    ).json()
+    voo = client.post(
+        "/api/assets",
+        json={
+            "symbol": "VOO",
+            "name": "Vanguard S&P 500 ETF",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    qqq = client.post(
+        "/api/assets",
+        json={
+            "symbol": "QQQ",
+            "name": "Invesco QQQ Trust",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "US",
+        },
+    ).json()
+    for asset in [voo, qqq]:
+        client.post(
+            "/api/transactions",
+            json={
+                "occurred_on": "2026-06-12",
+                "type": "buy",
+                "account_id": account["id"],
+                "asset_id": asset["id"],
+                "quantity": 1,
+                "amount": 500,
+                "currency": "USD",
+                "fx_rate_to_krw": 1400,
+                "memo": "US stock batch",
+            },
+        )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO%2CQQQ",
+        json={
+            "result": [
+                {"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"},
+                {"symbol": "QQQ", "lastPrice": "400.00", "currency": "USD"},
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        text="""
+        <p class="no_today"><em class="no_down"><em class="no_down">1,300.00</em></em></p>
+        <p class="no_exday">
+          <em class="no_down">1.00</em>
+          <em class="no_down"><span class="ico minus">-</span>0.08%</em>
+        </p>
+        """,
+    )
+
+    payload = run_market_sync(client)
+    summary = client.get("/api/summary?refresh=false").json()
+    requests = httpx_mock.get_requests()
+    price_requests = [
+        request
+        for request in requests
+        if request.method == "GET" and request.url.path == "/api/v1/prices"
+    ]
+    fx_requests = [
+        request
+        for request in requests
+        if request.method == "GET" and "finance.naver.com" in str(request.url)
+    ]
+
+    assert [result["status"] for result in payload["results"]] == ["ok", "ok"]
+    assert summary["net_worth_krw"] == 1_300_000
+    assert [request.url.params["symbols"] for request in price_requests] == ["VOO,QQQ"]
+    assert len(fx_requests) == 1
+
+
 def test_us_stock_sync_uses_toss_quote_when_credentials_exist(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,

@@ -96,6 +96,50 @@ async def test_toss_market_data_provider_fetches_token_and_parses_price(httpx_mo
 
 
 @pytest.mark.asyncio
+async def test_toss_market_data_provider_batches_symbols_in_chunks_of_200(httpx_mock):
+    symbols = [f"SYM{i:03d}" for i in range(201)] + ["sym000", " "]
+    first_chunk = [f"SYM{i:03d}" for i in range(200)]
+    second_chunk = ["SYM200"]
+    httpx_mock.add_response(
+        method="POST",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "result": [
+                {"symbol": symbol, "lastPrice": "100.00", "currency": "USD"}
+                for symbol in first_chunk
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "result": [
+                {"symbol": symbol, "lastPrice": "200.00", "currency": "USD"}
+                for symbol in second_chunk
+            ]
+        },
+    )
+    provider = TossMarketDataProvider(client_id="toss-client", client_secret="toss-secret")
+
+    quotes = await provider.fetch_equity_quotes(symbols)
+
+    assert [quote.symbol for quote in quotes] == first_chunk + second_chunk
+    assert quotes[-1].price == 200
+    price_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/prices"
+    ]
+    assert [request.url.params["symbols"] for request in price_requests] == [
+        ",".join(first_chunk),
+        ",".join(second_chunk),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_toss_market_data_provider_requires_credentials():
     provider = TossMarketDataProvider(client_id=" ", client_secret="toss-secret")
 

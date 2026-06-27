@@ -14,6 +14,7 @@ NAVER_USD_KRW_URL = (
     "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
 )
 NUMBER_PATTERN = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?")
+TOSS_PRICE_SYMBOL_LIMIT = 200
 
 
 @dataclass
@@ -44,12 +45,18 @@ class MarketDataProvider(Protocol):
     async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
         pass
 
+    async def fetch_equity_quotes(self, symbols: list[str]) -> list[MarketQuote]:
+        pass
+
 
 class UnsupportedMarketDataProvider:
     def __init__(self, message: str) -> None:
         self.message = message
 
     async def fetch_equity_quote(self, _symbol: str) -> MarketQuote:
+        raise ValueError(self.message)
+
+    async def fetch_equity_quotes(self, _symbols: list[str]) -> list[MarketQuote]:
         raise ValueError(self.message)
 
 
@@ -71,6 +78,22 @@ def _finite_number(value: Any, message: str) -> float:
     if not math.isfinite(number):
         raise ValueError(message)
     return number
+
+
+def _normalized_symbols(symbols: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        normalized_symbol = symbol.strip().upper()
+        if not normalized_symbol or normalized_symbol in seen:
+            continue
+        normalized.append(normalized_symbol)
+        seen.add(normalized_symbol)
+    return normalized
+
+
+def _chunks(values: list[str], size: int) -> list[list[str]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 def _number_from_text(text: str, message: str) -> float:
@@ -298,43 +321,59 @@ class TossMarketDataProvider:
 
     async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
         normalized_symbol = symbol.strip().upper()
-        token = await self._token()
-
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{self.base_url}/api/v1/prices",
-                params={"symbols": normalized_symbol},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            response.raise_for_status()
-            payload = response.json()
-
-        prices = payload.get("result") if isinstance(payload, dict) else None
-        if not isinstance(prices, list):
-            raise ValueError("Toss 응답에서 시세 정보를 찾을 수 없습니다.")
-
-        quote = next(
-            (
-                item
-                for item in prices
-                if isinstance(item, dict)
-                and str(item.get("symbol", "")).strip().upper() == normalized_symbol
-            ),
-            None,
-        )
+        quotes = await self.fetch_equity_quotes([normalized_symbol])
+        quote = next((quote for quote in quotes if quote.symbol == normalized_symbol), None)
         if quote is None:
             raise ValueError("Toss 응답에서 요청 종목의 시세 정보를 찾을 수 없습니다.")
+        return quote
 
-        currency = str(quote.get("currency", "")).strip().upper()
-        if currency not in {"KRW", "USD"}:
-            raise ValueError("Toss 응답 통화는 KRW 또는 USD여야 합니다.")
+    async def fetch_equity_quotes(self, symbols: list[str]) -> list[MarketQuote]:
+        normalized_symbols = _normalized_symbols(symbols)
+        if not normalized_symbols:
+            return []
 
-        return MarketQuote(
-            symbol=normalized_symbol,
-            price=_positive_number(quote.get("lastPrice"), "Toss 가격은 0보다 큰 숫자여야 합니다."),
-            currency=currency,
-            source=self.source,
-        )
+        token = await self._token()
+        quotes_by_symbol: dict[str, MarketQuote] = {}
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            for chunk in _chunks(normalized_symbols, TOSS_PRICE_SYMBOL_LIMIT):
+                response = await client.get(
+                    f"{self.base_url}/api/v1/prices",
+                    params={"symbols": ",".join(chunk)},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+
+                prices = payload.get("result") if isinstance(payload, dict) else None
+                if not isinstance(prices, list):
+                    raise ValueError("Toss 응답에서 시세 정보를 찾을 수 없습니다.")
+
+                chunk_symbols = set(chunk)
+                for item in prices:
+                    if not isinstance(item, dict):
+                        continue
+                    symbol = str(item.get("symbol", "")).strip().upper()
+                    if symbol not in chunk_symbols:
+                        continue
+                    currency = str(item.get("currency", "")).strip().upper()
+                    if currency not in {"KRW", "USD"}:
+                        raise ValueError("Toss 응답 통화는 KRW 또는 USD여야 합니다.")
+                    quotes_by_symbol[symbol] = MarketQuote(
+                        symbol=symbol,
+                        price=_positive_number(
+                            item.get("lastPrice"),
+                            "Toss 가격은 0보다 큰 숫자여야 합니다.",
+                        ),
+                        currency=currency,
+                        source=self.source,
+                    )
+
+        return [
+            quotes_by_symbol[symbol]
+            for symbol in normalized_symbols
+            if symbol in quotes_by_symbol
+        ]
 
 
 def market_data_provider_for_asset(
@@ -342,15 +381,21 @@ def market_data_provider_for_asset(
     *,
     toss_provider: MarketDataProvider,
 ) -> MarketDataProvider:
+    if _is_toss_supported_asset(asset):
+        return toss_provider
+    market = str(asset["market"]).upper()
+    currency = str(asset["currency"]).upper()
+    return UnsupportedMarketDataProvider(
+        f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다."
+    )
+
+
+def _is_toss_supported_asset(asset: Any) -> bool:
     asset_type = str(asset["type"])
     market = str(asset["market"]).upper()
     currency = str(asset["currency"]).upper()
 
-    if asset_type == "stock_etf" and (market, currency) in {("US", "USD"), ("KR", "KRW")}:
-        return toss_provider
-    return UnsupportedMarketDataProvider(
-        f"{market}/{currency} 시세 동기화는 아직 지원하지 않습니다."
-    )
+    return asset_type == "stock_etf" and (market, currency) in {("US", "USD"), ("KR", "KRW")}
 
 
 def _now_iso() -> str:
@@ -431,11 +476,21 @@ async def _price_krw(
     *,
     db: sqlite3.Connection,
     fx_provider: FxRateProvider,
+    fx_rate_cache: dict[tuple[str, str], FxRate] | None = None,
 ) -> float:
-    if quote.currency.upper() == "KRW":
+    base_currency = quote.currency.upper()
+    quote_currency = "KRW"
+    if base_currency == quote_currency:
         return quote.price
 
-    rate = await fx_provider.fetch_rate(quote.currency, "KRW")
+    cache_key = (base_currency, quote_currency)
+    if fx_rate_cache is not None and cache_key in fx_rate_cache:
+        rate = fx_rate_cache[cache_key]
+        return quote.price * rate.rate
+
+    rate = await fx_provider.fetch_rate(base_currency, quote_currency)
+    if fx_rate_cache is not None:
+        fx_rate_cache[cache_key] = rate
     db.execute(
         """
         insert or ignore into fx_rates(
@@ -455,17 +510,88 @@ async def _price_krw(
     return quote.price * rate.rate
 
 
-async def _fetch_quote(
+def _record_quote_failure(
+    db: sqlite3.Connection,
+    asset: sqlite3.Row,
+    *,
+    error_message: str,
+) -> str:
+    asset_id = int(asset["id"])
+    symbol = str(asset["symbol"])
+    previous = latest_usable_price_snapshot(db, asset_id)
+    with db:
+        if previous is None:
+            insert_price_snapshot(
+                db,
+                asset_id=asset_id,
+                source="market_data",
+                price=0,
+                currency=str(asset["currency"]),
+                price_krw=0,
+                status="failed",
+                error_message=error_message,
+            )
+            return "failed"
+
+        stale_quote = keep_last_good_quote(
+            previous=_previous_quote(previous, symbol),
+            error_message=error_message,
+        )
+        insert_price_snapshot(
+            db,
+            asset_id=asset_id,
+            source=stale_quote.source,
+            price=stale_quote.price,
+            currency=stale_quote.currency,
+            price_krw=float(previous["price_krw"]),
+            status=stale_quote.status,
+            error_message=stale_quote.error_message,
+        )
+        return stale_quote.status
+
+
+async def _fetch_supported_toss_quotes(
+    assets: list[sqlite3.Row],
+    *,
+    toss_provider: TossMarketDataProvider,
+) -> tuple[dict[str, MarketQuote], str | None]:
+    supported_symbols = [
+        str(asset["symbol"])
+        for asset in assets
+        if _is_toss_supported_asset(asset)
+    ]
+    if not supported_symbols:
+        return {}, None
+
+    try:
+        quotes = await toss_provider.fetch_equity_quotes(supported_symbols)
+    except (ValueError, httpx.HTTPError) as exc:
+        return {}, _safe_error_message(exc)
+
+    return {quote.symbol: quote for quote in quotes}, None
+
+
+async def _quote_for_asset(
     asset: sqlite3.Row,
     *,
     toss_provider: TossMarketDataProvider,
+    toss_quotes: dict[str, MarketQuote],
+    toss_error_message: str | None,
 ) -> MarketQuote:
-    symbol = str(asset["symbol"])
+    if _is_toss_supported_asset(asset):
+        if toss_error_message is not None:
+            raise ValueError(toss_error_message)
+        normalized_symbol = str(asset["symbol"]).strip().upper()
+        quote = toss_quotes.get(normalized_symbol)
+        if quote is None:
+            raise ValueError("Toss 응답에서 요청 종목의 시세 정보를 찾을 수 없습니다.")
+        return quote
+
     provider = market_data_provider_for_asset(
         asset,
         toss_provider=toss_provider,
     )
-    return await provider.fetch_equity_quote(symbol)
+    return await provider.fetch_equity_quote(str(asset["symbol"]))
 
 
 async def sync_market_data_for_settings(
@@ -484,17 +610,29 @@ async def sync_market_data_for_settings(
     ).fetchall()
     toss_provider = TossMarketDataProvider(settings.toss_api_key, settings.toss_secret_key)
     fx_provider = default_fx_rate_provider()
+    fx_rate_cache: dict[tuple[str, str], FxRate] = {}
+    toss_quotes, toss_error_message = await _fetch_supported_toss_quotes(
+        assets,
+        toss_provider=toss_provider,
+    )
     results: list[dict[str, object]] = []
 
     for asset in assets:
         asset_id = int(asset["id"])
         symbol = str(asset["symbol"])
         try:
-            quote = await _fetch_quote(
+            quote = await _quote_for_asset(
                 asset,
                 toss_provider=toss_provider,
+                toss_quotes=toss_quotes,
+                toss_error_message=toss_error_message,
             )
-            price_krw = await _price_krw(quote, db=db, fx_provider=fx_provider)
+            price_krw = await _price_krw(
+                quote,
+                db=db,
+                fx_provider=fx_provider,
+                fx_rate_cache=fx_rate_cache,
+            )
             with db:
                 insert_price_snapshot(
                     db,
@@ -516,36 +654,11 @@ async def sync_market_data_for_settings(
             )
         except (ValueError, sqlite3.Error, httpx.HTTPError) as exc:
             error_message = _safe_error_message(exc)
-            previous = latest_usable_price_snapshot(db, asset_id)
-            with db:
-                if previous is None:
-                    insert_price_snapshot(
-                        db,
-                        asset_id=asset_id,
-                        source="market_data",
-                        price=0,
-                        currency=str(asset["currency"]),
-                        price_krw=0,
-                        status="failed",
-                        error_message=error_message,
-                    )
-                    result_status = "failed"
-                else:
-                    stale_quote = keep_last_good_quote(
-                        previous=_previous_quote(previous, symbol),
-                        error_message=error_message,
-                    )
-                    insert_price_snapshot(
-                        db,
-                        asset_id=asset_id,
-                        source=stale_quote.source,
-                        price=stale_quote.price,
-                        currency=stale_quote.currency,
-                        price_krw=float(previous["price_krw"]),
-                        status=stale_quote.status,
-                        error_message=stale_quote.error_message,
-                    )
-                    result_status = stale_quote.status
+            result_status = _record_quote_failure(
+                db,
+                asset,
+                error_message=error_message,
+            )
             results.append(
                 {
                     "asset_id": asset_id,
