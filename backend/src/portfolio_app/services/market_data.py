@@ -55,6 +55,46 @@ class UnsupportedMarketDataProvider:
         raise ValueError(self.message)
 
 
+class TossAuthClient:
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        *,
+        base_url: str = "https://openapi.tossinvest.com",
+    ) -> None:
+        self.client_id = client_id.strip()
+        self.client_secret = client_secret.strip()
+        self.base_url = base_url.rstrip("/")
+        self._access_token: str | None = None
+
+    async def token(self) -> str:
+        if self._access_token:
+            return self._access_token
+
+        if not self.client_id or not self.client_secret:
+            raise ValueError("Toss API 인증 정보가 필요합니다.")
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{self.base_url}/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        access_token = payload.get("access_token") if isinstance(payload, dict) else None
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
+
+        self._access_token = access_token.strip()
+        return self._access_token
+
+
 def _positive_number(value: Any, message: str) -> float:
     try:
         number = float(value)
@@ -101,37 +141,17 @@ class TossFxRateProvider:
         client_secret: str,
         *,
         base_url: str = "https://openapi.tossinvest.com",
+        auth_client: TossAuthClient | None = None,
     ) -> None:
-        self.client_id = client_id.strip()
-        self.client_secret = client_secret.strip()
         self.base_url = base_url.rstrip("/")
-        self._access_token: str | None = None
+        self._auth_client = auth_client or TossAuthClient(
+            client_id,
+            client_secret,
+            base_url=self.base_url,
+        )
 
     async def _token(self) -> str:
-        if self._access_token:
-            return self._access_token
-
-        if not self.client_id or not self.client_secret:
-            raise ValueError("Toss API 인증 정보가 필요합니다.")
-
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(
-                f"{self.base_url}/oauth2/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-
-        access_token = payload.get("access_token") if isinstance(payload, dict) else None
-        if not isinstance(access_token, str) or not access_token.strip():
-            raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
-
-        self._access_token = access_token.strip()
-        return self._access_token
+        return await self._auth_client.token()
 
     async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
         base = base_currency.strip().upper()
@@ -175,11 +195,16 @@ class TossFxRateProvider:
         )
 
 
-def default_fx_rate_provider(settings: Settings | None = None) -> FxRateProvider:
+def default_fx_rate_provider(
+    settings: Settings | None = None,
+    *,
+    auth_client: TossAuthClient | None = None,
+) -> FxRateProvider:
     resolved_settings = settings or get_settings()
     return TossFxRateProvider(
         resolved_settings.toss_api_key,
         resolved_settings.toss_secret_key,
+        auth_client=auth_client,
     )
 
 
@@ -192,37 +217,17 @@ class TossMarketDataProvider:
         client_secret: str,
         *,
         base_url: str = "https://openapi.tossinvest.com",
+        auth_client: TossAuthClient | None = None,
     ) -> None:
-        self.client_id = client_id.strip()
-        self.client_secret = client_secret.strip()
         self.base_url = base_url.rstrip("/")
-        self._access_token: str | None = None
+        self._auth_client = auth_client or TossAuthClient(
+            client_id,
+            client_secret,
+            base_url=self.base_url,
+        )
 
     async def _token(self) -> str:
-        if self._access_token:
-            return self._access_token
-
-        if not self.client_id or not self.client_secret:
-            raise ValueError("Toss API 인증 정보가 필요합니다.")
-
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(
-                f"{self.base_url}/oauth2/token",
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-
-        access_token = payload.get("access_token") if isinstance(payload, dict) else None
-        if not isinstance(access_token, str) or not access_token.strip():
-            raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
-
-        self._access_token = access_token.strip()
-        return self._access_token
+        return await self._auth_client.token()
 
     async def fetch_equity_quote(self, symbol: str) -> MarketQuote:
         normalized_symbol = symbol.strip().upper()
@@ -513,8 +518,13 @@ async def sync_market_data_for_settings(
         order by id
         """
     ).fetchall()
-    toss_provider = TossMarketDataProvider(settings.toss_api_key, settings.toss_secret_key)
-    fx_provider = default_fx_rate_provider(settings)
+    toss_auth_client = TossAuthClient(settings.toss_api_key, settings.toss_secret_key)
+    toss_provider = TossMarketDataProvider(
+        settings.toss_api_key,
+        settings.toss_secret_key,
+        auth_client=toss_auth_client,
+    )
+    fx_provider = default_fx_rate_provider(settings, auth_client=toss_auth_client)
     fx_rate_cache: dict[tuple[str, str], FxRate] = {}
     toss_quotes, toss_error_message = await _fetch_supported_toss_quotes(
         assets,

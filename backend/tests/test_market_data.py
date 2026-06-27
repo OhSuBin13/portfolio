@@ -40,12 +40,18 @@ def run_market_sync(client: TestClient) -> dict[str, object]:
         db.close()
 
 
-def add_toss_fx_rate_response(httpx_mock, *, rate: str = "1300.00") -> None:
-    httpx_mock.add_response(
-        method="POST",
-        url="https://openapi.tossinvest.com/oauth2/token",
-        json={"access_token": "fx-token-123", "token_type": "Bearer", "expires_in": 3600},
-    )
+def add_toss_fx_rate_response(
+    httpx_mock,
+    *,
+    rate: str = "1300.00",
+    include_token: bool = True,
+) -> None:
+    if include_token:
+        httpx_mock.add_response(
+            method="POST",
+            url="https://openapi.tossinvest.com/oauth2/token",
+            json={"access_token": "fx-token-123", "token_type": "Bearer", "expires_in": 3600},
+        )
     httpx_mock.add_response(
         method="GET",
         url=(
@@ -404,7 +410,7 @@ def test_market_sync_refreshes_existing_market_sync_snapshot_after_price_update(
         url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
         json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
     )
-    add_toss_fx_rate_response(httpx_mock)
+    add_toss_fx_rate_response(httpx_mock, include_token=False)
 
     payload = run_market_sync(client)
 
@@ -819,7 +825,7 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
         url="https://openapi.tossinvest.com/api/v1/prices?symbols=VOO",
         json={"result": [{"symbol": "VOO", "lastPrice": "600.00", "currency": "USD"}]},
     )
-    add_toss_fx_rate_response(httpx_mock)
+    add_toss_fx_rate_response(httpx_mock, include_token=False)
 
     payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
@@ -836,12 +842,18 @@ def test_us_stock_sync_uses_toss_quote_and_fx_rate_for_summary(tmp_path, httpx_m
         ).fetchone()
     finally:
         db.close()
+    token_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "POST" and request.url.path == "/oauth2/token"
+    ]
 
     assert payload["results"][0]["status"] == "ok"
     assert latest["status"] == "ok"
     assert latest["source"] == "toss"
     assert latest["price_krw"] == 780_000
     assert summary["net_worth_krw"] == 1_560_000
+    assert len(token_requests) == 1
     assert dict(fx_row) == {
         "base_currency": "USD",
         "quote_currency": "KRW",
@@ -911,7 +923,7 @@ def test_us_stock_sync_batches_toss_quotes_and_reuses_fx_rate(tmp_path, httpx_mo
             ]
         },
     )
-    add_toss_fx_rate_response(httpx_mock)
+    add_toss_fx_rate_response(httpx_mock, include_token=False)
 
     payload = run_market_sync(client)
     summary = client.get("/api/summary?refresh=false").json()
@@ -986,7 +998,7 @@ def test_us_stock_sync_uses_toss_quote_when_credentials_exist(tmp_path, httpx_mo
             ]
         },
     )
-    add_toss_fx_rate_response(httpx_mock)
+    add_toss_fx_rate_response(httpx_mock, include_token=False)
 
     payload = run_market_sync(client)
     latest = client.get("/api/market-data/status").json()[0]
