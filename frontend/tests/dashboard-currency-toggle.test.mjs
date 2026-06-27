@@ -31,16 +31,13 @@ assert.ok(
 assert.ok(source.includes('aria-label="표시 통화 선택"'), "Dashboard should expose an accessible currency toggle")
 assert.ok(source.includes('aria-pressed={displayCurrency === currency}'), "Currency buttons should expose pressed state")
 assert.ok(source.includes("summary.usd_krw_rate"), "Dashboard should use the summary USD/KRW rate")
-assert.ok(
-  source.includes("summary.usd_krw_change_percent"),
-  "Dashboard should show the USD/KRW daily change percent",
-)
-assert.ok(source.includes("전일대비"), "Dashboard should label the daily FX movement")
-assert.match(source, /import \{ ArrowDown, ArrowUp \} from "lucide-react"/, "Dashboard should use lucide arrows")
-assert.ok(source.includes("<ArrowDown"), "Dashboard should show a down arrow for negative FX movement")
-assert.ok(source.includes("<ArrowUp"), "Dashboard should show an up arrow for positive FX movement")
-assert.ok(source.includes("changePercent < 0"), "Negative FX movement should choose the down state")
-assert.ok(source.includes("changePercent > 0"), "Positive FX movement should choose the up state")
+assert.ok(!source.includes("summary.usd_krw_change_percent"), "Dashboard should not render USD/KRW daily movement")
+assert.ok(!source.includes("전일대비"), "Dashboard should hide daily FX movement")
+assert.doesNotMatch(source, /import \{ ArrowDown, ArrowUp \} from "lucide-react"/, "Dashboard should not import FX arrows")
+assert.ok(!source.includes("<ArrowDown"), "Dashboard should not show a down arrow for FX movement")
+assert.ok(!source.includes("<ArrowUp"), "Dashboard should not show an up arrow for FX movement")
+assert.ok(!source.includes("formatFxChange"), "Dashboard should not format hidden FX movement")
+assert.ok(!source.includes("getFxChangeDirection"), "Dashboard should not calculate hidden FX direction")
 assert.ok(source.includes("Toss API 인증 정보를 설정"), "Missing FX message should mention Toss credentials")
 assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should not refer to manual sync")
 assert.ok(source.includes("getAllocationSegments"), "Dashboard should derive allocation segments from asset mix")

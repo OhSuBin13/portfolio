@@ -1,4 +1,3 @@
-import { ArrowDown, ArrowUp } from "lucide-react"
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
 import type { AssetAllocation, PortfolioSummary } from "../types"
@@ -74,21 +73,6 @@ const assetTypeLabel = (type: string) =>
       stock_etf: "주식/ETF",
     } as Record<string, string>
   )[type] ?? type
-const formatFxChange = (changePercent: number | null) => {
-  if (changePercent === null || !Number.isFinite(changePercent)) {
-    return null
-  }
-
-  const sign = changePercent > 0 ? "+" : ""
-  return `${sign}${changePercent.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`
-}
-const getFxChangeDirection = (changePercent: number | null) => {
-  if (changePercent === null || !Number.isFinite(changePercent) || changePercent === 0) {
-    return null
-  }
-
-  return changePercent < 0 ? "down" : changePercent > 0 ? "up" : null
-}
 const positivePercent = (value: number | undefined) => {
   if (value === undefined || !Number.isFinite(value) || value <= 0) {
     return 0
@@ -288,8 +272,6 @@ export function Dashboard() {
   const allocationSegments = getAllocationSegments(summary.asset_mix, summary.asset_allocations)
   const visibleAllocationSegments = allocationSegments.filter((segment) => segment.value > 0)
   const allocationCallouts = getAllocationCallouts(visibleAllocationSegments)
-  const fxChange = formatFxChange(summary.usd_krw_change_percent)
-  const fxDirection = getFxChangeDirection(summary.usd_krw_change_percent)
 
   return (
     <section className="screen-stack">
@@ -300,13 +282,6 @@ export function Dashboard() {
           {summary.usd_krw_rate !== null && (
             <p className="fx-rate-line">
               <span>USD/KRW {summary.usd_krw_rate.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} 원</span>
-              {fxChange !== null && (
-                <span className={fxDirection ?? "flat"}>
-                  {fxDirection === "down" && <ArrowDown aria-hidden="true" className="fx-change-icon" size={14} />}
-                  {fxDirection === "up" && <ArrowUp aria-hidden="true" className="fx-change-icon" size={14} />}
-                  전일대비 {fxChange}
-                </span>
-              )}
             </p>
           )}
         </div>
