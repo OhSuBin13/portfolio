@@ -56,7 +56,11 @@ def normalize_account_seq(account_seq: str) -> str:
 
 def _provider(request: Request) -> TossBrokerageProvider:
     settings = request.app.state.settings
-    return TossBrokerageProvider(settings.toss_api_key, settings.toss_secret_key)
+    return TossBrokerageProvider(
+        settings.toss_api_key,
+        settings.toss_secret_key,
+        auth_client=request.app.state.toss_auth_client,
+    )
 
 
 def _account_response(account: TossAccount) -> TossAccountResponse:

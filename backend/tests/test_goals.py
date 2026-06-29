@@ -113,7 +113,15 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
 
     db = object()
     settings = SimpleNamespace(toss_api_key="toss-client", toss_secret_key="toss-secret")
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
+    fake_auth_client = object()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                settings=settings,
+                toss_auth_client=fake_auth_client,
+            )
+        )
+    )
     portfolio_summary = PortfolioSummary(
         net_worth_krw=1_000_000,
         gross_assets_krw=1_000_000,
@@ -136,12 +144,14 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
     calls = []
 
     class FakeTossBrokerageProvider:
-        def __init__(self, client_id, client_secret):
+        def __init__(self, client_id, client_secret, *, auth_client=None):
             assert client_id == "toss-client"
             assert client_secret == "toss-secret"
+            assert auth_client is fake_auth_client
 
-    def fake_default_fx_rate_provider(received_settings):
+    def fake_default_fx_rate_provider(received_settings, *, auth_client=None):
         assert received_settings is settings
+        assert auth_client is fake_auth_client
         return object()
 
     async def fake_fetch_toss_summary(account_seq, provider, fx_provider=None):

@@ -24,12 +24,17 @@ async def get_summary(
 ) -> SummaryResponse:
     normalized_account_seq = normalize_account_seq(account_seq)
     settings = request.app.state.settings
-    provider = TossBrokerageProvider(settings.toss_api_key, settings.toss_secret_key)
+    auth_client = request.app.state.toss_auth_client
+    provider = TossBrokerageProvider(
+        settings.toss_api_key,
+        settings.toss_secret_key,
+        auth_client=auth_client,
+    )
     try:
         result = await fetch_toss_summary(
             normalized_account_seq,
             provider,
-            fx_provider=default_fx_rate_provider(settings),
+            fx_provider=default_fx_rate_provider(settings, auth_client=auth_client),
         )
     except ValueError as exc:
         raise HTTPException(

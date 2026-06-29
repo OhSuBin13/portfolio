@@ -302,6 +302,80 @@ def test_summary_endpoint_uses_toss_account_seq(tmp_path, httpx_mock):
     assert httpx_mock.get_requests()[1].headers["x-tossinvest-account"] == "acct-1"
 
 
+def test_toss_endpoints_share_app_auth_client(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        json={
+            "result": [
+                {
+                    "accountNo": "123-45-67890",
+                    "accountSeq": "acct-1",
+                    "accountType": "BROKERAGE",
+                }
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        json={
+            "result": {
+                "items": [
+                    {
+                        "symbol": "VOO",
+                        "name": "Vanguard S&P 500 ETF",
+                        "marketCountry": "US",
+                        "currency": "USD",
+                        "quantity": "3",
+                        "lastPrice": "500",
+                        "averagePurchasePrice": "450",
+                        "marketValue": {"amount": "1500"},
+                    }
+                ]
+            }
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": "1400",
+                "validFrom": "2026-06-29T09:00:00+09:00",
+            }
+        },
+    )
+
+    accounts_response = client.get("/api/toss/accounts")
+    summary_response = client.get("/api/summary?account_seq=acct-1")
+
+    assert accounts_response.status_code == 200
+    assert summary_response.status_code == 200
+    assert summary_response.json()["usd_krw_rate"] == 1400.0
+    token_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "POST" and request.url.path == "/oauth2/token"
+    ]
+    assert len(token_requests) == 1
+
+
 def test_summary_endpoint_rejects_blank_account_seq(tmp_path):
     client = create_test_client(tmp_path)
 
