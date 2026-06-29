@@ -4,6 +4,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
+from urllib.parse import quote
 
 import httpx
 
@@ -35,6 +36,42 @@ class TossHolding:
     average_purchase_price: float
     last_price: float | None
     market_value: float
+
+
+@dataclass(frozen=True)
+class TossOrderExecution:
+    filled_quantity: str
+    average_filled_price: str | None
+    filled_amount: str | None
+    commission: str | None
+    tax: str | None
+    filled_at: str | None
+    settlement_date: str | None
+
+
+@dataclass(frozen=True)
+class TossOrder:
+    order_id: str
+    symbol: str
+    side: str
+    order_type: str
+    time_in_force: str
+    status: str
+    price: str | None
+    quantity: str
+    order_amount: str | None
+    currency: str
+    ordered_at: str
+    canceled_at: str | None
+    execution: TossOrderExecution
+    raw: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TossOrderPage:
+    orders: list[TossOrder]
+    next_cursor: str | None
+    has_next: bool
 
 
 @dataclass(frozen=True)
@@ -192,6 +229,80 @@ class TossBrokerageProvider:
             holdings.append(_parse_holding(item))
         return holdings
 
+    async def fetch_orders(
+        self,
+        account_seq: str,
+        *,
+        status: str,
+        symbol: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> TossOrderPage:
+        token = await self._token()
+        params: dict[str, object] = {"status": status, "limit": limit}
+        if symbol:
+            params["symbol"] = symbol
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        if cursor:
+            params["cursor"] = cursor
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await request_with_toss_retry(
+                client,
+                "GET",
+                f"{self.base_url}/api/v1/orders",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-tossinvest-account": account_seq,
+                },
+                params=params,
+                sleep=self._sleep,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(result, dict):
+            raise ValueError("Toss 응답에서 주문 목록을 찾을 수 없습니다.")
+        orders = result.get("orders")
+        if not isinstance(orders, list):
+            raise ValueError("Toss 주문 목록은 배열이어야 합니다.")
+        has_next = result.get("hasNext")
+        if not isinstance(has_next, bool):
+            raise ValueError("Toss 주문 목록 hasNext 값은 참/거짓이어야 합니다.")
+        return TossOrderPage(
+            orders=[_parse_order(item) for item in orders],
+            next_cursor=_optional_text(result.get("nextCursor")),
+            has_next=has_next,
+        )
+
+    async def fetch_order(self, account_seq: str, order_id: str) -> TossOrder:
+        token = await self._token()
+        encoded_order_id = quote(order_id, safe="")
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await request_with_toss_retry(
+                client,
+                "GET",
+                f"{self.base_url}/api/v1/orders/{encoded_order_id}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-tossinvest-account": account_seq,
+                },
+                sleep=self._sleep,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(result, dict):
+            raise ValueError("Toss 응답에서 주문 상세를 찾을 수 없습니다.")
+        return _parse_order(result)
+
 
 def build_toss_summary(
     holdings: list[TossHolding],
@@ -255,6 +366,41 @@ async def fetch_toss_summary(
     return build_toss_summary(holdings, usd_krw_rate=usd_krw_rate)
 
 
+def _parse_order(item: dict[str, Any]) -> TossOrder:
+    if not isinstance(item, dict):
+        raise ValueError("Toss 주문 항목은 객체여야 합니다.")
+    execution = item.get("execution")
+    if not isinstance(execution, dict):
+        raise ValueError("Toss 주문 체결 정보가 필요합니다.")
+    return TossOrder(
+        order_id=_required_text(item.get("orderId"), "Toss 주문 식별자가 필요합니다."),
+        symbol=_required_text(item.get("symbol"), "Toss 주문 종목 심볼이 필요합니다.").upper(),
+        side=_required_text(item.get("side"), "Toss 주문 방향이 필요합니다."),
+        order_type=_required_text(item.get("orderType"), "Toss 주문 유형이 필요합니다."),
+        time_in_force=_required_text(item.get("timeInForce"), "Toss 주문 유효 조건이 필요합니다."),
+        status=_required_text(item.get("status"), "Toss 주문 상태가 필요합니다."),
+        price=_optional_text(item.get("price")),
+        quantity=_required_text(item.get("quantity"), "Toss 주문 수량이 필요합니다."),
+        order_amount=_optional_text(item.get("orderAmount")),
+        currency=_required_text(item.get("currency"), "Toss 주문 통화가 필요합니다."),
+        ordered_at=_required_text(item.get("orderedAt"), "Toss 주문 시간이 필요합니다."),
+        canceled_at=_optional_text(item.get("canceledAt")),
+        execution=TossOrderExecution(
+            filled_quantity=_required_text(
+                execution.get("filledQuantity"),
+                "Toss 체결 수량이 필요합니다.",
+            ),
+            average_filled_price=_optional_text(execution.get("averageFilledPrice")),
+            filled_amount=_optional_text(execution.get("filledAmount")),
+            commission=_optional_text(execution.get("commission")),
+            tax=_optional_text(execution.get("tax")),
+            filled_at=_optional_text(execution.get("filledAt")),
+            settlement_date=_optional_text(execution.get("settlementDate")),
+        ),
+        raw=dict(item),
+    )
+
+
 def _parse_holding(item: dict[str, Any]) -> TossHolding:
     market, currency = _market_currency_pair(item)
 
@@ -297,6 +443,13 @@ def _market_currency_pair(item: dict[str, Any]) -> tuple[TossMarket, Currency]:
     if currency not in {"KRW", "USD"}:
         raise ValueError("Toss 보유자산 통화는 KRW 또는 USD여야 합니다.")
     raise ValueError("Toss 보유자산 시장과 통화 조합이 일치하지 않습니다.")
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _required_text(value: Any, message: str) -> str:

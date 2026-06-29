@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 import httpx
 import pytest
@@ -18,6 +19,61 @@ from portfolio_app.services.toss_portfolio import (
     build_toss_summary,
     fetch_toss_summary,
 )
+
+
+def _toss_order_item(
+    *,
+    order_id: str = "order-1",
+    symbol: str = "005930",
+    side: str = "BUY",
+    order_type: str = "LIMIT",
+    status: str = "FILLED",
+    currency: str = "KRW",
+) -> dict[str, object]:
+    return {
+        "orderId": order_id,
+        "symbol": symbol,
+        "side": side,
+        "orderType": order_type,
+        "timeInForce": "DAY",
+        "status": status,
+        "price": "70000",
+        "quantity": "1",
+        "orderAmount": None,
+        "currency": currency,
+        "orderedAt": "2026-06-29T09:30:00+09:00",
+        "canceledAt": None,
+        "execution": {
+            "filledQuantity": "1",
+            "averageFilledPrice": "70100",
+            "filledAmount": "70100",
+            "commission": "100",
+            "tax": "0",
+            "filledAt": "2026-06-29T09:31:15+09:00",
+            "settlementDate": "2026-07-01",
+        },
+    }
+
+
+def _requests_by_method_path(
+    httpx_mock,
+    method: str,
+    path: str,
+) -> list[httpx.Request]:
+    return [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == method and request.url.path == path
+    ]
+
+
+def _assert_order_request_headers(
+    request: httpx.Request,
+    *,
+    account_seq: str = "acct-1",
+) -> None:
+    assert request.headers["authorization"] == "Bearer token-123"
+    assert request.headers["x-tossinvest-account"] == account_seq
 
 
 @pytest.mark.asyncio
@@ -384,6 +440,282 @@ async def test_toss_brokerage_provider_retries_accounts_once_after_429(httpx_moc
         if request.method == "GET" and request.url.path == "/api/v1/accounts"
     ]
     assert len(account_requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_fetches_order_page(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/orders"
+            "?status=OPEN&symbol=005930&from=2026-06-01&to=2026-06-29&limit=100"
+        ),
+        json={
+            "result": {
+                "orders": [
+                    {
+                        "orderId": "order-1",
+                        "symbol": "005930",
+                        "side": "BUY",
+                        "orderType": "LIMIT",
+                        "timeInForce": "DAY",
+                        "status": "PARTIAL_FILLED",
+                        "price": "70000",
+                        "quantity": "10",
+                        "orderAmount": None,
+                        "currency": "KRW",
+                        "orderedAt": "2026-06-29T09:30:00+09:00",
+                        "canceledAt": None,
+                        "execution": {
+                            "filledQuantity": "3",
+                            "averageFilledPrice": "70100",
+                            "filledAmount": "210300",
+                            "commission": "100",
+                            "tax": "0",
+                            "filledAt": "2026-06-29T09:31:15+09:00",
+                            "settlementDate": "2026-07-01",
+                        },
+                    }
+                ],
+                "nextCursor": "cursor-2",
+                "hasNext": True,
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    page = await provider.fetch_orders(
+        "acct-1",
+        status="OPEN",
+        symbol="005930",
+        from_date="2026-06-01",
+        to_date="2026-06-29",
+        limit=100,
+    )
+
+    assert page.next_cursor == "cursor-2"
+    assert page.has_next is True
+    assert page.orders[0].order_id == "order-1"
+    assert page.orders[0].execution.filled_quantity == "3"
+    order_requests = _requests_by_method_path(httpx_mock, "GET", "/api/v1/orders")
+    assert len(order_requests) == 1
+    _assert_order_request_headers(order_requests[0])
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_fetches_order_page_with_cursor(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders",
+        match_params={"status": "OPEN", "limit": "100", "cursor": "cursor-2"},
+        json={
+            "result": {
+                "orders": [],
+                "nextCursor": None,
+                "hasNext": False,
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    page = await provider.fetch_orders("acct-1", status="OPEN", cursor="cursor-2")
+
+    assert page.orders == []
+    assert page.has_next is False
+    order_requests = _requests_by_method_path(httpx_mock, "GET", "/api/v1/orders")
+    assert len(order_requests) == 1
+    assert order_requests[0].url.params["cursor"] == "cursor-2"
+    _assert_order_request_headers(order_requests[0])
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_retries_order_page_after_429(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders",
+        match_params={"status": "OPEN", "limit": "100"},
+        status_code=429,
+        headers={"Retry-After": "0.5", "X-RateLimit-Remaining": "0"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders",
+        match_params={"status": "OPEN", "limit": "100"},
+        json={
+            "result": {
+                "orders": [],
+                "nextCursor": None,
+                "hasNext": False,
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    page = await provider.fetch_orders("acct-1", status="OPEN")
+
+    assert page.orders == []
+    assert sleeps == [0.5]
+    order_requests = _requests_by_method_path(httpx_mock, "GET", "/api/v1/orders")
+    assert len(order_requests) == 2
+    for request in order_requests:
+        _assert_order_request_headers(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"orders": []},
+        {"orders": [], "hasNext": "true"},
+    ],
+)
+async def test_toss_brokerage_provider_rejects_malformed_order_page_has_next(
+    httpx_mock,
+    result,
+):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders",
+        match_params={"status": "OPEN", "limit": "100"},
+        json={"result": result},
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    with pytest.raises(ValueError, match="hasNext"):
+        await provider.fetch_orders("acct-1", status="OPEN")
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_fetches_order_detail(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders/order-1",
+        json={
+            "result": {
+                "orderId": "order-1",
+                "symbol": "VOO",
+                "side": "SELL",
+                "orderType": "MARKET",
+                "timeInForce": "DAY",
+                "status": "FILLED",
+                "price": None,
+                "quantity": "1.25",
+                "orderAmount": None,
+                "currency": "USD",
+                "orderedAt": "2026-06-29T09:30:00+09:00",
+                "canceledAt": None,
+                "execution": {
+                    "filledQuantity": "1.25",
+                    "averageFilledPrice": "500.12",
+                    "filledAmount": "625.15",
+                    "commission": "0.25",
+                    "tax": None,
+                    "filledAt": "2026-06-29T09:31:15+09:00",
+                    "settlementDate": "2026-07-01",
+                },
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    order = await provider.fetch_order("acct-1", "order-1")
+
+    assert order.order_id == "order-1"
+    assert order.symbol == "VOO"
+    assert order.currency == "USD"
+    assert order.execution.filled_amount == "625.15"
+    order_requests = _requests_by_method_path(
+        httpx_mock,
+        "GET",
+        "/api/v1/orders/order-1",
+    )
+    assert len(order_requests) == 1
+    _assert_order_request_headers(order_requests[0])
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_fetches_order_detail_with_encoded_id(
+    httpx_mock,
+):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=re.compile(r"https://openapi\.tossinvest\.com/api/v1/orders/.+"),
+        json={"result": _toss_order_item(order_id="order/with space")},
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    order = await provider.fetch_order("acct-1", "order/with space")
+
+    assert order.order_id == "order/with space"
+    order_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET"
+        and request.url.raw_path == b"/api/v1/orders/order%2Fwith%20space"
+    ]
+    assert len(order_requests) == 1
+    _assert_order_request_headers(order_requests[0])
 
 
 @pytest.mark.asyncio
