@@ -6,6 +6,7 @@ import pytest
 
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
+from portfolio_app.repositories import fetch_toss_orders
 from portfolio_app.services.toss_order_imports import import_toss_orders
 from portfolio_app.services.toss_portfolio import TossOrder, TossOrderExecution, TossOrderPage
 
@@ -71,6 +72,7 @@ def _order(
     order_id: str = "order-1",
     symbol: str = "005930",
     status: str = "FILLED",
+    ordered_at: str = "2026-06-29T09:30:00+09:00",
     raw: dict[str, object] | None = None,
     execution: TossOrderExecution | None = None,
 ) -> TossOrder:
@@ -85,7 +87,7 @@ def _order(
         quantity="1",
         order_amount=None,
         currency="KRW",
-        ordered_at="2026-06-29T09:30:00+09:00",
+        ordered_at=ordered_at,
         canceled_at=None,
         execution=execution or _execution(),
         raw=raw or {"orderId": order_id, "status": status},
@@ -269,3 +271,31 @@ async def test_import_toss_orders_rejects_has_next_without_cursor(tmp_path):
     assert run["run_status"] == "failed"
     assert run["imported_count"] == 0
     assert "nextCursor" in run["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_toss_orders_filters_by_original_ordered_at_calendar_date(tmp_path):
+    db = _db(tmp_path)
+    provider = RecordingOrderProvider(
+        pages=[
+            TossOrderPage(
+                orders=[
+                    _order(
+                        order_id="early-kst",
+                        ordered_at="2026-06-29T00:30:00+09:00",
+                    ),
+                    _order(
+                        order_id="previous-day",
+                        ordered_at="2026-06-28T23:30:00+09:00",
+                    ),
+                ],
+                next_cursor=None,
+                has_next=False,
+            )
+        ]
+    )
+    await import_toss_orders(db, provider=provider, account_seq="account-1", status="OPEN")
+
+    rows = fetch_toss_orders(db, account_seq="account-1", from_date="2026-06-29")
+
+    assert [row["order_id"] for row in rows] == ["early-kst"]

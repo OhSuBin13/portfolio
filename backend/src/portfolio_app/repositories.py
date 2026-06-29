@@ -762,10 +762,10 @@ def fetch_toss_orders(
         conditions.append("order_status = ?")
         params.append(order_status)
     if from_date is not None:
-        conditions.append("date(ordered_at) >= date(?)")
+        conditions.append("substr(ordered_at, 1, 10) >= ?")
         params.append(from_date)
     if to_date is not None:
-        conditions.append("date(ordered_at) <= date(?)")
+        conditions.append("substr(ordered_at, 1, 10) <= ?")
         params.append(to_date)
 
     return db.execute(
