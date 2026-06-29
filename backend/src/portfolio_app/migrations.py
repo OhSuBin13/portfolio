@@ -1,8 +1,18 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+TOSS_ONLY_REMOVED_TABLES = (
+    "import_rows",
+    "import_runs",
+    "portfolio_snapshots",
+    "price_snapshots",
+    "transactions",
+    "holdings",
+    "assets",
+    "accounts",
+)
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
     ("달러 현금", "cash", "USD"),
@@ -92,6 +102,21 @@ def _create_goals_table_sql(table_name: str) -> str:
           target_amount_krw real not null check (target_amount_krw > 0),
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
+        )
+        """
+
+
+def _create_fx_rates_table_sql(table_name: str) -> str:
+    return f"""
+        create table {table_name} (
+          id integer primary key,
+          base_currency text not null check (base_currency in ('USD','KRW')),
+          quote_currency text not null check (quote_currency in ('USD','KRW')) default 'KRW',
+          rate real not null,
+          source text not null,
+          fetched_at text not null,
+          change_percent real,
+          unique(base_currency, quote_currency, fetched_at)
         )
         """
 
@@ -334,6 +359,52 @@ def _migrate_from_8_to_9(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (9)")
 
 
+def _rebuild_fx_rates_for_toss_only_schema(db: sqlite3.Connection) -> None:
+    if not _table_exists(db, "fx_rates"):
+        return
+
+    columns = _pragma_column_names(db.execute("pragma table_info(fx_rates)").fetchall())
+    quote_currency_expr = "quote_currency" if "quote_currency" in columns else "'KRW'"
+    change_percent_expr = "change_percent" if "change_percent" in columns else "null"
+
+    db.execute("drop index if exists idx_fx_rates_summary_pair_latest")
+    db.execute("alter table fx_rates rename to fx_rates_v10_legacy")
+    db.execute(_create_fx_rates_table_sql("fx_rates"))
+    db.execute(
+        f"""
+        insert into fx_rates(
+          id, base_currency, quote_currency, rate, source, fetched_at, change_percent
+        )
+        select
+          id,
+          base_currency,
+          {quote_currency_expr},
+          rate,
+          source,
+          fetched_at,
+          {change_percent_expr}
+        from fx_rates_v10_legacy
+        """
+    )
+    db.execute("drop table fx_rates_v10_legacy")
+
+
+def _migrate_from_9_to_10(db: sqlite3.Connection) -> None:
+    db.execute("pragma foreign_keys = off")
+    try:
+        with db:
+            db.execute("begin")
+            for statement in _schema_statements(SCHEMA_PATH.read_text(encoding="utf-8")):
+                db.execute(statement)
+            _rebuild_fx_rates_for_toss_only_schema(db)
+            for table_name in TOSS_ONLY_REMOVED_TABLES:
+                db.execute(f"drop table if exists {table_name}")
+            _create_summary_indexes(db)
+            db.execute("insert or ignore into schema_migrations(version) values (10)")
+    finally:
+        db.execute("pragma foreign_keys = on")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -346,7 +417,6 @@ def migrate(db: sqlite3.Connection) -> None:
             db.execute("begin")
             for statement in _schema_statements(SCHEMA_PATH.read_text(encoding="utf-8")):
                 db.execute(statement)
-            _seed_builtin_initial_assets(db)
             db.execute(
                 "insert or ignore into schema_migrations(version) values (?)",
                 (SCHEMA_VERSION,),
@@ -384,6 +454,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 8:
         _migrate_from_8_to_9(db)
         version = 9
+
+    if version == 9:
+        _migrate_from_9_to_10(db)
+        version = 10
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

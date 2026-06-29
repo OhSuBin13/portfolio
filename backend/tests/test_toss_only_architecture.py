@@ -1,17 +1,21 @@
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).parents[1]
 BACKEND_SRC = ROOT / "src/portfolio_app"
 FRONTEND_SRC = ROOT.parents[0] / "frontend/src"
 
 
-@pytest.mark.xfail(strict=True, reason="Task 4 drops local ledger tables")
 def test_fresh_schema_no_longer_defines_local_ledger_tables():
     schema_sql = (BACKEND_SRC / "schema.sql").read_text(encoding="utf-8")
 
-    removed_tables = ("accounts", "assets", "holdings", "transactions")
+    removed_tables = (
+        "accounts",
+        "assets",
+        "holdings",
+        "transactions",
+        "price_snapshots",
+        "portfolio_snapshots",
+    )
     for table_name in removed_tables:
         assert f"create table if not exists {table_name}" not in schema_sql
 
