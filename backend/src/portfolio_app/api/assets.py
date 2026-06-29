@@ -15,6 +15,7 @@ from portfolio_app.services.stock_metadata import (
 
 ASSET_TYPES = {"cash", "savings", "stock_etf", "debt"}
 METADATA_SOURCES = {"manual", "toss"}
+STOCK_MARKET_CURRENCIES = {("US", "USD"), ("KR", "KRW")}
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
@@ -73,6 +74,11 @@ def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
 
     if asset_type == "stock_etf":
         market = require_non_empty(payload.market or "", "시장을 입력해 주세요.").upper()
+        if (market, currency) not in STOCK_MARKET_CURRENCIES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="지원하지 않는 주식/ETF 시장과 통화 조합입니다.",
+            )
         if is_listed is None:
             is_listed = True
     elif asset_type in {"cash", "savings", "debt"}:

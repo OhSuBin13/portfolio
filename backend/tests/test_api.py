@@ -552,6 +552,36 @@ def test_asset_payload_validation_rejects_missing_stock_etf_market():
     assert exc_info.value.detail == "시장을 입력해 주세요."
 
 
+@pytest.mark.parametrize(
+    ("market", "currency"),
+    [
+        ("KR", "USD"),
+        ("US", "KRW"),
+        ("JP", "JPY"),
+    ],
+)
+def test_asset_payload_validation_rejects_unsupported_stock_market_currency_pair(
+    market, currency
+):
+    from fastapi import HTTPException
+
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol="TEST",
+        name="Unsupported Stock",
+        type="stock_etf",
+        currency=currency,
+        market=market,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        assets.validate_asset_payload(payload)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "지원하지 않는 주식/ETF 시장과 통화 조합입니다."
+
+
 def test_account_create_rejects_currency_field(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -605,6 +635,25 @@ def test_can_create_stock_asset_with_manual_metadata(tmp_path):
     assert created["is_listed"] == 1
     assert created["instrument_type"] == "STOCK"
     assert created["metadata_source"] == "manual"
+
+
+def test_asset_create_rejects_unsupported_stock_market_currency_pair(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/assets",
+        json={
+            "symbol": "005930",
+            "name": "삼성전자",
+            "type": "stock_etf",
+            "currency": "USD",
+            "market": "KR",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "지원하지 않는 주식/ETF 시장과 통화 조합입니다."
+    assert all(asset["symbol"] != "005930" for asset in client.get("/api/assets").json())
 
 
 def test_stock_metadata_lookup_endpoint_is_documented(tmp_path):
