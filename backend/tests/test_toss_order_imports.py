@@ -28,6 +28,21 @@ class FailingOrderProvider:
         raise self.error
 
 
+@dataclass
+class FailingSecondPageProvider:
+    calls: list[dict[str, object]] = field(default_factory=list)
+
+    async def fetch_orders(self, account_seq: str, **kwargs: object) -> TossOrderPage:
+        self.calls.append({"account_seq": account_seq, **kwargs})
+        if len(self.calls) == 1:
+            return TossOrderPage(
+                orders=[_order(order_id="order-1")],
+                next_cursor="cursor-2",
+                has_next=True,
+            )
+        raise RuntimeError("second page unavailable")
+
+
 def _db(tmp_path) -> sqlite3.Connection:
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
@@ -213,3 +228,44 @@ async def test_import_toss_orders_marks_run_failed_and_reraises_provider_error(t
     assert run["imported_count"] == 0
     assert run["error_message"] == "provider unavailable"
     assert run["completed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_import_toss_orders_failed_later_page_reports_only_committed_rows(
+    tmp_path,
+):
+    db = _db(tmp_path)
+    provider = FailingSecondPageProvider()
+
+    with pytest.raises(RuntimeError, match="second page"):
+        await import_toss_orders(db, provider=provider, account_seq="account-1", status="OPEN")
+
+    assert [call["cursor"] for call in provider.calls] == [None, "cursor-2"]
+    assert db.execute("select count(*) from toss_orders").fetchone()[0] == 0
+    run = _import_run(db)
+    assert run["run_status"] == "failed"
+    assert run["imported_count"] == 0
+    assert run["error_message"] == "second page unavailable"
+
+
+@pytest.mark.asyncio
+async def test_import_toss_orders_rejects_has_next_without_cursor(tmp_path):
+    db = _db(tmp_path)
+    provider = RecordingOrderProvider(
+        pages=[
+            TossOrderPage(
+                orders=[_order(order_id="order-1")],
+                next_cursor=None,
+                has_next=True,
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="nextCursor"):
+        await import_toss_orders(db, provider=provider, account_seq="account-1", status="OPEN")
+
+    assert db.execute("select count(*) from toss_orders").fetchone()[0] == 0
+    run = _import_run(db)
+    assert run["run_status"] == "failed"
+    assert run["imported_count"] == 0
+    assert "nextCursor" in run["error_message"]

@@ -41,3 +41,7 @@ assert.ok(
   source.includes("loadedOrderQueryKey === currentOrderQueryKey"),
   "Order history table should only render rows for the current visible query",
 )
+assert.ok(
+  source.includes("refreshImportRunsForSnapshot(submittedSnapshot, importRequestId)"),
+  "Failed imports should refresh import-run history for the submitted account",
+)

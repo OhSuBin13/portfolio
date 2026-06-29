@@ -67,6 +67,9 @@ const orderQueryKeyFrom = (snapshot: OrderQuerySnapshot) =>
 const buildOrderQueryFromSnapshot = (snapshot: OrderQuerySnapshot) =>
   buildOrderQuery(snapshot.accountSeq, snapshot.symbolFilter, snapshot.fromDate, snapshot.toDate)
 
+const buildImportRunsQuery = (accountSeq: string) =>
+  `/api/toss/order-imports?account_seq=${encodeURIComponent(accountSeq)}`
+
 export function OrderHistoryPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
   const [selectedAccountSeq, setSelectedAccountSeq] = useState("")
@@ -204,9 +207,7 @@ export function OrderHistoryPage() {
     let ignore = false
 
     if (selectedAccountSeq) {
-      apiGet<TossOrderImportRun[]>(
-        `/api/toss/order-imports?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
-      )
+      apiGet<TossOrderImportRun[]>(buildImportRunsQuery(selectedAccountSeq))
         .then((runData) => {
           if (!ignore) {
             setImportRuns(runData)
@@ -236,6 +237,20 @@ export function OrderHistoryPage() {
   )
 
   const selectedAccount = accounts.find((account) => account.account_seq === selectedAccountSeq)
+
+  const refreshImportRunsForSnapshot = (
+    snapshot: OrderQuerySnapshot,
+    requestId: number,
+    clearImportError = false,
+  ) =>
+    apiGet<TossOrderImportRun[]>(buildImportRunsQuery(snapshot.accountSeq)).then((runData) => {
+      if (isCurrentImportAccount(snapshot.accountSeq, requestId)) {
+        setImportRuns(runData)
+      }
+      if (clearImportError && isCurrentImportSnapshot(snapshot, requestId)) {
+        setImportError("")
+      }
+    })
 
   const handleImport = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -276,22 +291,16 @@ export function OrderHistoryPage() {
               setLoadedOrderQueryKey(orderQueryKeyFrom(submittedSnapshot))
             }
           }),
-          apiGet<TossOrderImportRun[]>(
-            `/api/toss/order-imports?account_seq=${encodeURIComponent(submittedSnapshot.accountSeq)}`,
-          ).then((runData) => {
-            if (isCurrentImportAccount(submittedSnapshot.accountSeq, importRequestId)) {
-              setImportRuns(runData)
-            }
-            if (isCurrentImportSnapshot(submittedSnapshot, importRequestId)) {
-              setImportError("")
-            }
-          }),
+          refreshImportRunsForSnapshot(submittedSnapshot, importRequestId, true),
         ])
       })
       .catch((err) => {
         if (isCurrentImportSnapshot(submittedSnapshot, importRequestId)) {
           setImportError(getErrorMessage(err))
         }
+        return refreshImportRunsForSnapshot(submittedSnapshot, importRequestId).catch(
+          () => undefined,
+        )
       })
       .finally(() => {
         if (latestImportRequestIdRef.current === importRequestId) {

@@ -69,6 +69,8 @@ async def import_toss_orders(
 
                 if not page.has_next:
                     break
+                if page.next_cursor is None:
+                    raise ValueError("Toss 주문 목록 nextCursor가 필요합니다.")
                 cursor = page.next_cursor
 
             finish_toss_order_import_run(
@@ -85,7 +87,7 @@ async def import_toss_orders(
                 db,
                 run_id=run_id,
                 run_status="failed",
-                imported_count=imported_count,
+                imported_count=0,
                 error_message=str(exc),
             )
             db.commit()
