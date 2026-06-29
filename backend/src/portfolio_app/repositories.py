@@ -2,6 +2,8 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
+from portfolio_app.services.toss_portfolio import TossOrder
+
 
 @dataclass(frozen=True)
 class SummaryHoldingRow:
@@ -583,3 +585,132 @@ def fetch_latest_transaction_fx_rate_to_krw(
     if row is None:
         return None
     return float(row["fx_rate_to_krw"])
+
+
+def create_toss_order_import_run(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    status_filter: str,
+    symbol_filter: str | None,
+    from_date: str | None,
+    to_date: str | None,
+) -> int:
+    cursor = db.execute(
+        """
+        insert into toss_order_import_runs(
+          account_seq, status_filter, symbol_filter, from_date, to_date, run_status
+        )
+        values (?, ?, ?, ?, ?, 'running')
+        """,
+        (account_seq, status_filter, symbol_filter, from_date, to_date),
+    )
+    db.commit()
+    return int(cursor.lastrowid)
+
+
+def finish_toss_order_import_run(
+    db: sqlite3.Connection,
+    *,
+    run_id: int,
+    run_status: str,
+    imported_count: int,
+    error_message: str = "",
+) -> None:
+    db.execute(
+        """
+        update toss_order_import_runs
+        set run_status = ?,
+            imported_count = ?,
+            error_message = ?,
+            completed_at = current_timestamp
+        where id = ?
+        """,
+        (run_status, imported_count, error_message, run_id),
+    )
+
+
+def upsert_toss_order(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    order: TossOrder,
+    raw_json: str,
+    import_run_id: int,
+) -> None:
+    execution = order.execution
+    db.execute(
+        """
+        insert into toss_orders(
+          account_seq,
+          order_id,
+          symbol,
+          side,
+          order_type,
+          time_in_force,
+          order_status,
+          price,
+          quantity,
+          order_amount,
+          currency,
+          ordered_at,
+          canceled_at,
+          filled_quantity,
+          average_filled_price,
+          filled_amount,
+          commission,
+          tax,
+          filled_at,
+          settlement_date,
+          raw_json,
+          import_run_id
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict(account_seq, order_id) do update set
+          symbol = excluded.symbol,
+          side = excluded.side,
+          order_type = excluded.order_type,
+          time_in_force = excluded.time_in_force,
+          order_status = excluded.order_status,
+          price = excluded.price,
+          quantity = excluded.quantity,
+          order_amount = excluded.order_amount,
+          currency = excluded.currency,
+          ordered_at = excluded.ordered_at,
+          canceled_at = excluded.canceled_at,
+          filled_quantity = excluded.filled_quantity,
+          average_filled_price = excluded.average_filled_price,
+          filled_amount = excluded.filled_amount,
+          commission = excluded.commission,
+          tax = excluded.tax,
+          filled_at = excluded.filled_at,
+          settlement_date = excluded.settlement_date,
+          raw_json = excluded.raw_json,
+          import_run_id = excluded.import_run_id,
+          updated_at = current_timestamp
+        """,
+        (
+            account_seq,
+            order.order_id,
+            order.symbol,
+            order.side,
+            order.order_type,
+            order.time_in_force,
+            order.status,
+            order.price,
+            order.quantity,
+            order.order_amount,
+            order.currency,
+            order.ordered_at,
+            order.canceled_at,
+            execution.filled_quantity,
+            execution.average_filled_price,
+            execution.filled_amount,
+            execution.commission,
+            execution.tax,
+            execution.filled_at,
+            execution.settlement_date,
+            raw_json,
+            import_run_id,
+        ),
+    )
