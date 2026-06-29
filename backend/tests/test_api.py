@@ -66,6 +66,8 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
         "/api/transactions",
         "/api/growth",
         "/api/growth/history",
+        "/api/growth/snapshots",
+        "/api/growth/snapshots/today",
         "/api/goals/progress",
         "/api/market-data/status",
     }.isdisjoint(paths)
@@ -92,6 +94,8 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
         ("post", "/api/transactions"),
         ("get", "/api/growth"),
         ("get", "/api/growth/history"),
+        ("get", "/api/growth/snapshots"),
+        ("post", "/api/growth/snapshots/today"),
         ("get", "/api/goals/progress"),
         ("get", "/api/market-data/status"),
     ],

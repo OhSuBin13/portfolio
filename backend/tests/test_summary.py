@@ -1,18 +1,7 @@
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
-from portfolio_app.db import connect
 from portfolio_app.main import create_app
-from portfolio_app.migrations import migrate
-from portfolio_app.repositories import create_account, create_asset, upsert_holding
-from portfolio_app.services import summary as summary_service
-from portfolio_app.services.summary import build_summary
-
-
-def create_summary_db(tmp_path):
-    db = connect(tmp_path / "portfolio.sqlite")
-    migrate(db)
-    return db
 
 
 def create_test_client(tmp_path, **settings_overrides):
@@ -70,157 +59,6 @@ def test_summary_endpoint_documents_typed_response_model(tmp_path):
     assert summary_response["properties"]["goal_progress"]["items"] == {
         "$ref": "#/components/schemas/GoalProgress"
     }
-
-
-def test_build_summary_from_rows_calculates_empty_summary_without_db():
-    build_summary_from_rows = getattr(summary_service, "build_summary_from_rows", None)
-    assert build_summary_from_rows is not None
-
-    result = build_summary_from_rows(
-        holding_rows=[],
-        income_rows=[],
-        usd_krw_rate=1390.5,
-        usd_krw_change_percent=-0.15,
-    )
-
-    assert result.summary.net_worth_krw == 0
-    assert result.summary.monthly_income_krw == 0
-    assert result.summary.usd_krw_rate == 1390.5
-    assert result.summary.usd_krw_change_percent == -0.15
-    assert result.asset_mix == {}
-    assert result.asset_allocations == []
-
-
-def test_build_summary_returns_no_usd_rate_when_rate_is_missing(tmp_path):
-    db = create_summary_db(tmp_path)
-    try:
-        result = build_summary(db)
-    finally:
-        db.close()
-
-    assert result.summary.usd_krw_rate is None
-    assert result.summary.usd_krw_change_percent is None
-    assert result.asset_mix == {}
-    assert result.asset_allocations == []
-
-
-def test_build_summary_exposes_latest_usd_krw_rate_for_display(tmp_path):
-    db = create_summary_db(tmp_path)
-    try:
-        db.executemany(
-            """
-            insert into fx_rates(
-              base_currency, quote_currency, rate, source, fetched_at, change_percent
-            )
-            values (?, ?, ?, ?, ?, ?)
-            """,
-            [
-                ("USD", "KRW", 1300, "test", "2026-06-12T09:00:00", 0.2),
-                ("USD", "KRW", 1390.5, "test", "2026-06-12T10:00:00", -0.15),
-            ],
-        )
-        db.commit()
-
-        result = build_summary(db)
-    finally:
-        db.close()
-
-    assert result.summary.usd_krw_rate == 1390.5
-    assert result.summary.usd_krw_change_percent == -0.15
-
-
-def test_build_summary_exposes_stock_etf_allocations_by_ticker(tmp_path):
-    db = create_summary_db(tmp_path)
-    try:
-        cash_account_id = create_account(db, name="원화 현금", type="cash")
-        brokerage_account_id = create_account(db, name="증권", type="brokerage")
-        cash_asset_id = create_asset(
-            db,
-            symbol=None,
-            name="KRW",
-            type="cash",
-            currency="KRW",
-            market=None,
-        )
-        aapl_asset_id = create_asset(
-            db,
-            symbol="AAPL",
-            name="Apple",
-            type="stock_etf",
-            currency="USD",
-            market="US",
-        )
-        voo_asset_id = create_asset(
-            db,
-            symbol="VOO",
-            name="Vanguard S&P 500 ETF",
-            type="stock_etf",
-            currency="USD",
-            market="US",
-        )
-        db.executemany(
-            "update assets set manual_price_krw = ? where id = ?",
-            [
-                (100_000, aapl_asset_id),
-                (200_000, voo_asset_id),
-            ],
-        )
-        upsert_holding(
-            db,
-            account_id=cash_account_id,
-            asset_id=cash_asset_id,
-            quantity=1_000_000,
-            average_cost=None,
-        )
-        upsert_holding(
-            db,
-            account_id=brokerage_account_id,
-            asset_id=aapl_asset_id,
-            quantity=10,
-            average_cost=100,
-        )
-        upsert_holding(
-            db,
-            account_id=brokerage_account_id,
-            asset_id=voo_asset_id,
-            quantity=10,
-            average_cost=100,
-        )
-
-        result = build_summary(db)
-    finally:
-        db.close()
-
-    assert result.asset_mix == {"cash": 25.0, "stock_etf": 75.0}
-    assert result.asset_allocations == [
-        {
-            "asset_id": cash_asset_id,
-            "asset_type": "cash",
-            "label": "KRW",
-            "name": "KRW",
-            "percent": 25.0,
-            "symbol": None,
-            "value_krw": 1_000_000.0,
-        },
-        {
-            "asset_id": aapl_asset_id,
-            "asset_type": "stock_etf",
-            "label": "AAPL",
-            "name": "Apple",
-            "percent": 25.0,
-            "symbol": "AAPL",
-            "value_krw": 1_000_000.0,
-        },
-        {
-            "asset_id": voo_asset_id,
-            "asset_type": "stock_etf",
-            "label": "VOO",
-            "name": "Vanguard S&P 500 ETF",
-            "percent": 50.0,
-            "symbol": "VOO",
-            "value_krw": 2_000_000.0,
-        },
-    ]
 
 
 def test_summary_endpoint_requires_account_seq(tmp_path):
@@ -351,3 +189,33 @@ def test_summary_endpoint_fetches_toss_fx_for_usd_holdings(tmp_path, httpx_mock)
             "percent": 100.0,
         }
     ]
+
+
+def test_summary_endpoint_maps_provider_http_errors_to_502_without_secrets(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        status_code=500,
+        text="provider body contains toss-secret and token-123",
+    )
+
+    response = client.get("/api/summary?account_seq=acct-1")
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail == "Toss 요청 실패: HTTP 500 Internal Server Error"
+    assert "toss-secret" not in detail
+    assert "token-123" not in detail

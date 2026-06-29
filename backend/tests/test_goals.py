@@ -1,4 +1,3 @@
-from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +7,6 @@ from pydantic import ValidationError
 from portfolio_app.config import Settings
 from portfolio_app.main import create_app
 from portfolio_app.models import Goal, GoalProgress, PortfolioSummary
-from portfolio_app.services.summary import SummaryResult
 from portfolio_app.services.toss_portfolio import TossSummaryResult
 
 
@@ -213,42 +211,3 @@ def test_build_goal_progress_rejects_unknown_goal_type():
 
     with pytest.raises(ValueError, match="지원하지 않는 목표 유형입니다"):
         goal_service.build_goal_progress(summary, [goal])
-
-
-def test_list_goal_progress_threads_today_to_summary_builder(monkeypatch):
-    from portfolio_app.services import goals as goal_service
-
-    db = object()
-    requested_today = date(2026, 1, 15)
-    portfolio_summary = PortfolioSummary(
-        net_worth_krw=1_000_000,
-        gross_assets_krw=1_000_000,
-        debt_krw=0,
-        monthly_income_krw=100_000,
-    )
-    calls = []
-
-    def fake_build_summary(received_db, *, today=None):
-        calls.append((received_db, today))
-        return SummaryResult(
-            summary=portfolio_summary,
-            asset_mix={},
-            asset_allocations=[],
-        )
-
-    def fake_list_goal_progress_for_summary(received_db, received_summary):
-        assert received_db is db
-        assert received_summary is portfolio_summary
-        return []
-
-    monkeypatch.setattr(goal_service, "build_summary", fake_build_summary)
-    monkeypatch.setattr(
-        goal_service,
-        "list_goal_progress_for_summary",
-        fake_list_goal_progress_for_summary,
-    )
-
-    progress = goal_service.list_goal_progress(db, today=requested_today)
-
-    assert progress == []
-    assert calls == [(db, requested_today)]

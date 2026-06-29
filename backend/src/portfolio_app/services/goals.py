@@ -2,12 +2,10 @@ import math
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
 
 from portfolio_app import repositories
 from portfolio_app.finance import calculate_goal_progress
 from portfolio_app.models import GOAL_TYPES, Goal, GoalProgress, PortfolioSummary
-from portfolio_app.services.summary import build_summary
 
 
 @dataclass(frozen=True)
@@ -98,12 +96,3 @@ def list_goal_progress_for_summary(
     summary: PortfolioSummary,
 ) -> list[GoalProgress]:
     return build_goal_progress(summary, list_goals(db))
-
-
-def list_goal_progress(
-    db: sqlite3.Connection,
-    *,
-    today: date | None = None,
-) -> list[GoalProgress]:
-    result = build_summary(db, today=today)
-    return list_goal_progress_for_summary(db, result.summary)

@@ -28,6 +28,7 @@ def test_main_registers_toss_portfolio_instead_of_local_ledger_routers():
     assert "app.include_router(accounts.router)" not in source
     assert "app.include_router(assets.router)" not in source
     assert "app.include_router(transactions.router)" not in source
+    assert "app.include_router(growth.router)" not in source
     assert "app.include_router(market_data.router)" not in source
 
 
