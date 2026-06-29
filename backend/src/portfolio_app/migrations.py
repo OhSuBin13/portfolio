@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BUILTIN_INITIAL_ASSETS = (
     ("원화 현금", "cash", "KRW"),
@@ -61,6 +61,10 @@ def _create_assets_table_sql(table_name: str) -> str:
           currency text not null check (currency in ('USD','KRW')) default 'KRW',
           market text,
           manual_price_krw real,
+          is_listed integer check (is_listed in (0,1)),
+          instrument_type text,
+          metadata_source text not null default 'manual'
+            check (metadata_source in ('manual','toss')),
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         )
@@ -296,6 +300,40 @@ def _migrate_from_7_to_8(db: sqlite3.Connection) -> None:
         db.execute("pragma foreign_keys = on")
 
 
+def _migrate_from_8_to_9(db: sqlite3.Connection) -> None:
+    columns = _pragma_column_names(db.execute("pragma table_info(assets)").fetchall())
+    with db:
+        if "is_listed" not in columns:
+            db.execute("alter table assets add column is_listed integer check (is_listed in (0,1))")
+        if "instrument_type" not in columns:
+            db.execute("alter table assets add column instrument_type text")
+        if "metadata_source" not in columns:
+            db.execute(
+                """
+                alter table assets
+                add column metadata_source text not null default 'manual'
+                check (metadata_source in ('manual','toss'))
+                """
+            )
+        db.execute(
+            """
+            update assets
+            set is_listed = 1
+            where type = 'stock_etf'
+              and is_listed is null
+            """
+        )
+        db.execute(
+            """
+            update assets
+            set is_listed = null,
+                instrument_type = null
+            where type in ('cash', 'savings', 'debt')
+            """
+        )
+        db.execute("insert or ignore into schema_migrations(version) values (9)")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -342,6 +380,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 7:
         _migrate_from_7_to_8(db)
         version = 8
+
+    if version == 8:
+        _migrate_from_8_to_9(db)
+        version = 9
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

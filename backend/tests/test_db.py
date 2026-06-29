@@ -62,7 +62,108 @@ def test_migrate_records_schema_version(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [8]
+    assert migration_versions(db) == [9]
+
+
+def test_assets_table_has_stock_metadata_columns(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+
+    columns = {row["name"]: row for row in db.execute("pragma table_info(assets)").fetchall()}
+
+    assert "is_listed" in columns
+    assert "instrument_type" in columns
+    assert "metadata_source" in columns
+    assert columns["metadata_source"]["dflt_value"] == "'manual'"
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into assets(symbol, name, type, currency, market, is_listed)
+            values ('BADLISTED', 'Invalid Listed Flag', 'stock_etf', 'USD', 'US', 2)
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into assets(symbol, name, type, currency, market, metadata_source)
+            values ('BADSOURCE', 'Invalid Metadata Source', 'stock_etf', 'USD', 'US', 'external')
+            """
+        )
+
+
+def test_migrate_from_v8_adds_stock_metadata_columns(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    db.executescript(
+        """
+        create table schema_migrations (
+          version integer primary key,
+          applied_at text not null default current_timestamp
+        );
+        insert into schema_migrations(version) values (8);
+
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
+        create unique index idx_assets_symbol_market
+        on assets(symbol, market)
+        where symbol is not null;
+        insert into assets(symbol, name, type, currency, market)
+        values ('VOO', 'Vanguard S&P 500 ETF', 'stock_etf', 'USD', 'US');
+        insert into assets(symbol, name, type, currency, market, manual_price_krw)
+        values ('KRW', '원화 현금', 'cash', 'KRW', 'KR', 1);
+        """
+    )
+
+    migrate(db)
+
+    version = db.execute("select max(version) from schema_migrations").fetchone()[0]
+    row = db.execute(
+        """
+        select symbol, name, type, currency, market, is_listed, instrument_type, metadata_source
+        from assets
+        where symbol = 'VOO'
+        """
+    ).fetchone()
+    assert version == 9
+    assert dict(row) == {
+        "symbol": "VOO",
+        "name": "Vanguard S&P 500 ETF",
+        "type": "stock_etf",
+        "currency": "USD",
+        "market": "US",
+        "is_listed": 1,
+        "instrument_type": None,
+        "metadata_source": "manual",
+    }
+    cash_row = db.execute(
+        """
+        select symbol, name, type, currency, market, is_listed, instrument_type, metadata_source
+        from assets
+        where type = 'cash'
+        """
+    ).fetchone()
+    assert dict(cash_row) == {
+        "symbol": "KRW",
+        "name": "원화 현금",
+        "type": "cash",
+        "currency": "KRW",
+        "market": "KR",
+        "is_listed": None,
+        "instrument_type": None,
+        "metadata_source": "manual",
+    }
 
 
 def test_migrate_creates_summary_query_indexes(tmp_path):
@@ -106,6 +207,17 @@ def test_migrate_upgrades_version_7_database_with_goal_target_check(tmp_path):
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         insert into goals(id, name, type, target_amount_krw, created_at, updated_at)
         values (42, '순자산 1억', 'net_worth', 100000000, '2026-06-19', '2026-06-19');
         insert into schema_migrations(version) values (7);
@@ -116,7 +228,7 @@ def test_migrate_upgrades_version_7_database_with_goal_target_check(tmp_path):
     migrate(db)
 
     row = db.execute("select * from goals where id = 42").fetchone()
-    assert migration_versions(db) == [7, 8]
+    assert migration_versions(db) == [7, 8, 9]
     assert row["target_amount_krw"] == 100_000_000
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
@@ -166,6 +278,17 @@ def test_migrate_removes_account_currency_from_version_4_database(tmp_path):
         );
         insert into accounts(id, name, type, currency, created_at, updated_at)
         values (42, '해외 증권', 'brokerage', 'USD', '2026-06-12T00:00:00', '2026-06-12T00:00:00');
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         insert into schema_migrations(version) values (4);
         """
     )
@@ -175,7 +298,7 @@ def test_migrate_removes_account_currency_from_version_4_database(tmp_path):
 
     account_columns = {row["name"] for row in db.execute("pragma table_info(accounts)").fetchall()}
     row = db.execute("select id, name, type, created_at, updated_at from accounts").fetchone()
-    assert migration_versions(db) == [4, 5, 6, 7, 8]
+    assert migration_versions(db) == [4, 5, 6, 7, 8, 9]
     assert "currency" not in account_columns
     assert dict(row) == {
         "id": 42,
@@ -315,7 +438,7 @@ def test_migrate_upgrades_version_2_database_with_builtin_savings_and_debt_asset
         order by type, name
         """
     ).fetchall()
-    assert migration_versions(db) == [2, 3, 4, 5, 6, 7, 8]
+    assert migration_versions(db) == [2, 3, 4, 5, 6, 7, 8, 9]
     assert [dict(row) for row in rows] == [
         {
             "name": "부채",
@@ -350,6 +473,17 @@ def test_migrate_upgrades_version_5_database_with_portfolio_snapshots(tmp_path):
           created_at text not null default current_timestamp,
           updated_at text not null default current_timestamp
         );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         insert into schema_migrations(version) values (5);
         """
     )
@@ -360,7 +494,7 @@ def test_migrate_upgrades_version_5_database_with_portfolio_snapshots(tmp_path):
     columns = {
         row["name"] for row in db.execute("pragma table_info(portfolio_snapshots)").fetchall()
     }
-    assert migration_versions(db) == [5, 6, 7, 8]
+    assert migration_versions(db) == [5, 6, 7, 8, 9]
     assert {
         "id",
         "snapshot_date",
@@ -409,6 +543,17 @@ def test_migrate_upgrades_version_6_database_with_summary_query_indexes(tmp_path
           fetched_at text not null,
           change_percent real
         );
+        create table assets (
+          id integer primary key,
+          symbol text,
+          name text not null,
+          type text not null check (type in ('cash','savings','stock_etf','debt')),
+          currency text not null check (currency in ('USD','KRW')) default 'KRW',
+          market text,
+          manual_price_krw real,
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp
+        );
         insert into schema_migrations(version) values (6);
         """
     )
@@ -416,7 +561,7 @@ def test_migrate_upgrades_version_6_database_with_summary_query_indexes(tmp_path
 
     migrate(db)
 
-    assert migration_versions(db) == [6, 7, 8]
+    assert migration_versions(db) == [6, 7, 8, 9]
     assert SUMMARY_QUERY_INDEXES.issubset(index_names(db))
 
 
@@ -427,7 +572,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [8]
+    assert migration_versions(db) == [9]
 
 
 def test_migrate_supports_plain_sqlite_connections(tmp_path):
@@ -436,7 +581,7 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [8]
+    assert migration_versions(db) == [9]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
@@ -450,7 +595,7 @@ def test_migrate_rejects_newer_schema_version(tmp_path):
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (9)")
+    db.execute("insert into schema_migrations(version) values (10)")
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
@@ -487,14 +632,14 @@ def test_migrate_rejects_existing_version_without_incremental_migration(tmp_path
         )
         """
     )
-    db.execute("insert into schema_migrations(version) values (8)")
+    db.execute("insert into schema_migrations(version) values (9)")
     db.commit()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 9)
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 10)
 
     with pytest.raises(RuntimeError, match="incremental migrations are not defined"):
         migrate(db)
 
-    assert migration_versions(db) == [8]
+    assert migration_versions(db) == [9]
 
 
 def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
@@ -543,7 +688,7 @@ def test_migrate_upgrades_version_1_database_with_builtin_cash_assets(tmp_path):
         order by currency
         """
     ).fetchall()
-    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert [dict(row) for row in rows] == [
         {"name": "원화 현금", "currency": "KRW", "symbol": None, "market": None},
         {"name": "달러 현금", "currency": "USD", "symbol": None, "market": None},

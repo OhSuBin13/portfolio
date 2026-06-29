@@ -19,6 +19,9 @@ create table if not exists assets (
   currency text not null check (currency in ('USD','KRW')) default 'KRW',
   market text,
   manual_price_krw real,
+  is_listed integer check (is_listed in (0,1)),
+  instrument_type text,
+  metadata_source text not null default 'manual' check (metadata_source in ('manual','toss')),
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp
 );
