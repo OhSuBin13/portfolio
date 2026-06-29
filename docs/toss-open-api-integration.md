@@ -88,6 +88,23 @@ reported as Korean user-facing 502 responses such as:
 Toss 요청 실패: HTTP 500 Internal Server Error
 ```
 
+### Rate-limit mitigation
+
+Toss rate limits are enforced per client and API group. The backend reduces
+burst traffic in three places:
+
+- a single app-scoped `TossAuthClient` reuses the OAuth access token across
+  account, holding, summary, and FX API calls;
+- market-data sync also shares one Toss auth client within each sync pass;
+- `/api/toss/accounts` uses a short in-memory TTL cache so repeated dashboard
+  and holdings page loads do not hit the `ACCOUNT` group every time;
+- Toss providers retry one `429` response after the provider's `Retry-After`
+  header, falling back to `X-RateLimit-Reset` when `Retry-After` is absent.
+
+The cache is process-local and intentionally short-lived. It protects the local
+UI from refresh and React development-mode duplicate requests without making
+Toss account data a durable local source of truth.
+
 Validation errors such as a blank `account_seq`, malformed Toss account items,
 or unsupported holding market/currency combinations return 400-level responses
 or service-level `ValueError`s in tests.
