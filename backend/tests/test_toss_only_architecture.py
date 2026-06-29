@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -30,6 +31,20 @@ def test_main_registers_toss_portfolio_instead_of_local_ledger_routers():
     assert "app.include_router(transactions.router)" not in source
     assert "app.include_router(growth.router)" not in source
     assert "app.include_router(market_data.router)" not in source
+
+
+def test_registered_api_surface_includes_toss_orders_not_transactions():
+    source = (BACKEND_SRC / "api/toss_portfolio.py").read_text(encoding="utf-8")
+    prefix_match = re.search(r'APIRouter\(prefix="([^"]+)"', source)
+    assert prefix_match is not None
+    prefix = prefix_match.group(1)
+    registered_paths = {
+        f"{prefix}{path}"
+        for path in re.findall(r'@router\.(?:get|post|put|delete)\("([^"]*)"', source)
+    }
+
+    assert "/api/toss/orders" in registered_paths
+    assert "/api/transactions" not in registered_paths
 
 
 def test_frontend_no_longer_calls_local_ledger_endpoints():

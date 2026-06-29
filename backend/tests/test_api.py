@@ -82,6 +82,18 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
     ]
 
 
+def test_openapi_exposes_toss_order_history_paths(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = set(response.json()["paths"])
+    assert "/api/toss/order-imports" in paths
+    assert "/api/toss/orders" in paths
+    assert "/api/transactions" not in paths
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [
@@ -290,6 +302,69 @@ def test_toss_holdings_endpoint_rejects_blank_account_seq(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Toss 계좌 식별자를 입력해 주세요."
+
+
+def test_toss_order_import_endpoint_imports_open_orders(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_optional=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders?status=OPEN&limit=100",
+        json={
+            "result": {
+                "orders": [
+                    {
+                        "orderId": "order-1",
+                        "symbol": "005930",
+                        "side": "BUY",
+                        "orderType": "LIMIT",
+                        "timeInForce": "DAY",
+                        "status": "OPEN",
+                        "price": "70000",
+                        "quantity": "10",
+                        "orderAmount": None,
+                        "currency": "KRW",
+                        "orderedAt": "2026-06-29T09:30:00+09:00",
+                        "canceledAt": None,
+                        "execution": {
+                            "filledQuantity": "3",
+                            "averageFilledPrice": "70100",
+                            "filledAmount": "210300",
+                            "commission": "100",
+                            "tax": "0",
+                            "filledAt": "2026-06-29T09:31:15+09:00",
+                            "settlementDate": "2026-07-01",
+                        },
+                    }
+                ],
+                "nextCursor": None,
+                "hasNext": False,
+            }
+        },
+        is_optional=True,
+    )
+
+    import_response = client.post(
+        "/api/toss/order-imports",
+        json={"account_seq": "acct-1", "status": "OPEN"},
+    )
+
+    assert import_response.status_code == 201
+    assert import_response.json()["imported_count"] == 1
+    orders_response = client.get("/api/toss/orders?account_seq=acct-1")
+    assert orders_response.status_code == 200
+    orders = orders_response.json()
+    assert orders[0]["order_id"] == "order-1"
+    assert orders[0]["filled_amount"] == "210300"
 
 
 def test_summary_endpoint_uses_toss_account_seq(tmp_path, httpx_mock):

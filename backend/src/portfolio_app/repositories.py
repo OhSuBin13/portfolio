@@ -630,6 +630,34 @@ def finish_toss_order_import_run(
     )
 
 
+def fetch_toss_order_import_run(
+    db: sqlite3.Connection,
+    *,
+    run_id: int,
+) -> sqlite3.Row | None:
+    return db.execute(
+        "select * from toss_order_import_runs where id = ?",
+        (run_id,),
+    ).fetchone()
+
+
+def fetch_toss_order_import_runs(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str | None = None,
+) -> list[sqlite3.Row]:
+    conditions: list[str] = []
+    params: list[object] = []
+    if account_seq is not None:
+        conditions.append("account_seq = ?")
+        params.append(account_seq)
+    where = f"where {' and '.join(conditions)}" if conditions else ""
+    return db.execute(
+        f"select * from toss_order_import_runs {where} order by id desc",
+        params,
+    ).fetchall()
+
+
 def upsert_toss_order(
     db: sqlite3.Connection,
     *,
@@ -714,3 +742,61 @@ def upsert_toss_order(
             import_run_id,
         ),
     )
+
+
+def fetch_toss_orders(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    symbol: str | None = None,
+    order_status: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> list[sqlite3.Row]:
+    conditions = ["account_seq = ?"]
+    params: list[object] = [account_seq]
+    if symbol is not None:
+        conditions.append("symbol = ?")
+        params.append(symbol.upper())
+    if order_status is not None:
+        conditions.append("order_status = ?")
+        params.append(order_status)
+    if from_date is not None:
+        conditions.append("date(ordered_at) >= date(?)")
+        params.append(from_date)
+    if to_date is not None:
+        conditions.append("date(ordered_at) <= date(?)")
+        params.append(to_date)
+
+    return db.execute(
+        f"""
+        select
+          id,
+          account_seq,
+          order_id,
+          symbol,
+          side,
+          order_type,
+          time_in_force,
+          order_status,
+          price,
+          quantity,
+          order_amount,
+          currency,
+          ordered_at,
+          canceled_at,
+          filled_quantity,
+          average_filled_price,
+          filled_amount,
+          commission,
+          tax,
+          filled_at,
+          settlement_date,
+          imported_at,
+          updated_at
+        from toss_orders
+        where {' and '.join(conditions)}
+        order by ordered_at desc, id desc
+        """,
+        params,
+    ).fetchall()

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AssetType = Literal["cash", "savings", "stock_etf", "debt"]
 Currency = Literal["USD", "KRW"]
@@ -25,6 +25,7 @@ GrowthPeriod = Literal["monthly", "annual"]
 BackupReason = Literal["startup", "automatic", "manual"]
 BACKUP_REASONS = frozenset(get_args(BackupReason))
 PriceSnapshotStatus = Literal["ok", "stale", "failed", "manual"]
+OrderHistoryStatus = Literal["OPEN", "CLOSED"]
 
 
 class HoldingValue(BaseModel):
@@ -159,3 +160,64 @@ class MarketDataStatus(BaseModel):
     status: PriceSnapshotStatus
     error_message: str
     fetched_at: str
+
+
+class TossOrderImportCreate(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    account_seq: str = Field(min_length=1)
+    status: OrderHistoryStatus = "OPEN"
+    symbol: str | None = None
+    from_date: date | None = None
+    to_date: date | None = None
+
+    @field_validator("from_date", "to_date", mode="before")
+    @classmethod
+    def _parse_iso_date(cls, value: object) -> object:
+        if isinstance(value, str):
+            return date.fromisoformat(value)
+        return value
+
+
+class TossOrderImportRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    account_seq: str
+    status_filter: OrderHistoryStatus
+    symbol_filter: str | None
+    from_date: str | None
+    to_date: str | None
+    run_status: str
+    imported_count: int
+    error_message: str
+    started_at: str
+    completed_at: str | None
+
+
+class TossOrderResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    account_seq: str
+    order_id: str
+    symbol: str
+    side: str
+    order_type: str
+    time_in_force: str
+    order_status: str
+    price: str | None
+    quantity: str
+    order_amount: str | None
+    currency: str
+    ordered_at: str
+    canceled_at: str | None
+    filled_quantity: str
+    average_filled_price: str | None
+    filled_amount: str | None
+    commission: str | None
+    tax: str | None
+    filled_at: str | None
+    settlement_date: str | None
+    imported_at: str
+    updated_at: str
