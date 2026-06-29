@@ -1,6 +1,16 @@
+import asyncio
+
+import httpx
 import pytest
 
-from portfolio_app.services.market_data import FxRate, TossAuthClient, TossFxRateProvider
+from portfolio_app.services.market_data import (
+    TOSS_DEFAULT_RETRY_AFTER_SECONDS,
+    FxRate,
+    TossAuthClient,
+    TossFxRateProvider,
+    _retry_after_seconds,
+    request_with_toss_retry,
+)
 from portfolio_app.services.toss_portfolio import (
     TossBrokerageProvider,
     TossHolding,
@@ -28,6 +38,132 @@ async def test_toss_auth_client_posts_client_credentials_form(httpx_mock):
     assert requests[0].content.decode() == (
         "grant_type=client_credentials&client_id=toss-client&client_secret=toss-secret"
     )
+
+
+@pytest.mark.asyncio
+async def test_toss_auth_client_serializes_concurrent_token_fetches(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    auth_client = TossAuthClient("toss-client", "toss-secret")
+
+    tokens = await asyncio.gather(auth_client.token(), auth_client.token())
+
+    assert tokens == ["token-123", "token-123"]
+    requests = httpx_mock.get_requests()
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+
+
+@pytest.mark.asyncio
+async def test_toss_auth_client_retries_token_once_after_429_retry_after(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        status_code=429,
+        headers={"Retry-After": "0.25", "X-RateLimit-Remaining": "0"},
+        json={"error": "rate-limit-exceeded"},
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    auth_client = TossAuthClient("toss-client", "toss-secret", sleep=fake_sleep)
+
+    token = await auth_client.token()
+
+    assert token == "token-123"
+    assert sleeps == [0.25]
+    assert len(httpx_mock.get_requests()) == 2
+
+
+@pytest.mark.asyncio
+async def test_toss_auth_client_reuses_token_before_expiry_and_refreshes_after_expiry(
+    httpx_mock,
+):
+    now = [1000.0]
+
+    def fake_now() -> float:
+        return now[0]
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 120},
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-456", "token_type": "Bearer", "expires_in": 120},
+    )
+    auth_client = TossAuthClient("toss-client", "toss-secret", now=fake_now)
+
+    first_token = await auth_client.token()
+    now[0] = 1059.0
+    cached_token = await auth_client.token()
+    now[0] = 1060.1
+    refreshed_token = await auth_client.token()
+
+    assert [first_token, cached_token, refreshed_token] == [
+        "token-123",
+        "token-123",
+        "token-456",
+    ]
+    assert len(httpx_mock.get_requests()) == 2
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected_delay"),
+    [
+        ({"X-RateLimit-Reset": "0.75"}, 0.75),
+        ({"Retry-After": "soon"}, TOSS_DEFAULT_RETRY_AFTER_SECONDS),
+        ({"Retry-After": "-1.25"}, 0.0),
+    ],
+)
+def test_retry_after_seconds_parses_rate_limit_headers(headers, expected_delay):
+    response = httpx.Response(429, headers=headers)
+
+    assert _retry_after_seconds(response) == expected_delay
+
+
+@pytest.mark.asyncio
+async def test_request_with_toss_retry_returns_second_429_without_internal_raise():
+    sleeps: list[float] = []
+    request_count = 0
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "0.5"},
+            json={"attempt": request_count},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        response = await request_with_toss_retry(
+            client,
+            "GET",
+            "https://openapi.tossinvest.com/api/v1/accounts",
+            sleep=fake_sleep,
+        )
+
+    assert response.status_code == 429
+    assert response.json() == {"attempt": 2}
+    assert sleeps == [0.5]
+    assert request_count == 2
 
 
 @pytest.mark.asyncio
