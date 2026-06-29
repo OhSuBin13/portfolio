@@ -8,6 +8,7 @@ from portfolio_app.services.market_data import (
     FxRate,
     TossAuthClient,
     TossFxRateProvider,
+    TossMarketDataProvider,
     _retry_after_seconds,
     request_with_toss_retry,
 )
@@ -203,6 +204,104 @@ async def test_toss_fx_rate_provider_sends_authorization_header(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_toss_fx_rate_provider_retries_after_429(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        status_code=429,
+        headers={"Retry-After": "0.5"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": "1400",
+                "validFrom": "2026-06-29T09:00:00+09:00",
+            }
+        },
+    )
+    provider = TossFxRateProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    rate = await provider.fetch_rate("USD", "KRW")
+
+    assert rate.rate == 1400
+    assert sleeps == [0.5]
+
+
+@pytest.mark.asyncio
+async def test_toss_market_data_provider_retries_prices_after_429(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        status_code=429,
+        headers={"X-RateLimit-Reset": "0.75"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        json={
+            "result": [
+                {
+                    "symbol": "005930",
+                    "currency": "KRW",
+                    "lastPrice": "75000",
+                }
+            ]
+        },
+    )
+    provider = TossMarketDataProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    quotes = await provider.fetch_equity_quotes(["005930"])
+
+    assert len(quotes) == 1
+    assert quotes[0].symbol == "005930"
+    assert quotes[0].price == 75000
+    assert quotes[0].currency == "KRW"
+    assert sleeps == [0.75]
+
+
+@pytest.mark.asyncio
 async def test_toss_brokerage_provider_fetches_accounts(httpx_mock):
     httpx_mock.add_response(
         method="POST",
@@ -234,6 +333,94 @@ async def test_toss_brokerage_provider_fetches_accounts(httpx_mock):
     assert accounts[0].account_no == "123-45-67890"
     assert accounts[0].account_type == "BROKERAGE"
     assert accounts[0].display_name == "토스증권 123-45-67890"
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_retries_accounts_once_after_429(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        status_code=429,
+        headers={"Retry-After": "0.5", "X-RateLimit-Remaining": "0"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        json={
+            "result": [
+                {
+                    "accountNo": "123-45-67890",
+                    "accountSeq": "acct-1",
+                    "accountType": "BROKERAGE",
+                }
+            ]
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    accounts = await provider.fetch_accounts()
+
+    assert accounts[0].account_seq == "acct-1"
+    assert sleeps == [0.5]
+    account_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/accounts"
+    ]
+    assert len(account_requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_retries_holdings_with_ratelimit_reset(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        status_code=429,
+        headers={"X-RateLimit-Reset": "0.75", "X-RateLimit-Remaining": "0"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        json={"result": {"items": []}},
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    holdings = await provider.fetch_holdings("acct-1")
+
+    assert holdings == []
+    assert sleeps == [0.75]
 
 
 @pytest.mark.asyncio

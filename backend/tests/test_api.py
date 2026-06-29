@@ -187,6 +187,50 @@ def test_toss_accounts_endpoint_uses_ttl_cache(tmp_path, httpx_mock):
     assert len(account_requests) == 1
 
 
+def test_toss_accounts_endpoint_retries_cold_cache_rate_limit_once(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        status_code=429,
+        headers={"Retry-After": "0", "X-RateLimit-Remaining": "0"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        json={
+            "result": [
+                {
+                    "accountNo": "123-45-67890",
+                    "accountSeq": "acct-1",
+                    "accountType": "BROKERAGE",
+                }
+            ]
+        },
+    )
+
+    response = client.get("/api/toss/accounts")
+
+    assert response.status_code == 200
+    assert response.json()[0]["account_seq"] == "acct-1"
+    account_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/accounts"
+    ]
+    assert len(account_requests) == 2
+
+
 def test_toss_holdings_endpoint_returns_provider_holdings(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,

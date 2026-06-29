@@ -129,6 +129,54 @@ async def test_toss_stock_metadata_provider_marks_inactive_stock_unlisted(httpx_
 
 
 @pytest.mark.asyncio
+async def test_toss_stock_metadata_provider_retries_after_429(httpx_mock):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/stocks?symbols=005930",
+        status_code=429,
+        headers={"Retry-After": "0.5"},
+        json={"error": {"code": "rate-limit-exceeded"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/stocks?symbols=005930",
+        json={
+            "result": [
+                {
+                    "symbol": "005930",
+                    "name": "삼성전자",
+                    "market": "KOSPI",
+                    "securityType": "STOCK",
+                    "status": "ACTIVE",
+                    "currency": "KRW",
+                }
+            ]
+        },
+    )
+    provider = TossStockMetadataProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+        sleep=fake_sleep,
+    )
+
+    metadata = await provider.fetch_stock_metadata("005930")
+
+    assert metadata.symbol == "005930"
+    assert sleeps == [0.5]
+
+
+@pytest.mark.asyncio
 async def test_toss_stock_metadata_provider_rejects_missing_symbol():
     provider = TossStockMetadataProvider("toss-client", "toss-secret")
 

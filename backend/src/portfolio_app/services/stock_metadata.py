@@ -1,9 +1,10 @@
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-from portfolio_app.services.market_data import TossAuthClient
+from portfolio_app.services.market_data import Sleep, TossAuthClient, request_with_toss_retry
 
 TOSS_STOCKS_URL = "https://openapi.tossinvest.com/api/v1/stocks"
 
@@ -36,8 +37,14 @@ class TossStockMetadataProvider:
         client_secret: str,
         *,
         auth_client: TossAuthClient | None = None,
+        sleep: Sleep = asyncio.sleep,
     ) -> None:
-        self._auth_client = auth_client or TossAuthClient(client_id, client_secret)
+        self._sleep = sleep
+        self._auth_client = auth_client or TossAuthClient(
+            client_id,
+            client_secret,
+            sleep=sleep,
+        )
 
     async def fetch_stock_metadata(self, symbol: str) -> StockMetadata:
         normalized_symbol = symbol.strip().upper()
@@ -46,10 +53,13 @@ class TossStockMetadataProvider:
 
         token = await self._auth_client.token()
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
+            response = await request_with_toss_retry(
+                client,
+                "GET",
                 TOSS_STOCKS_URL,
                 params={"symbols": normalized_symbol},
                 headers={"Authorization": f"Bearer {token}"},
+                sleep=self._sleep,
             )
             response.raise_for_status()
             payload = response.json()

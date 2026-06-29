@@ -222,12 +222,15 @@ class TossFxRateProvider:
         *,
         base_url: str = "https://openapi.tossinvest.com",
         auth_client: TossAuthClient | None = None,
+        sleep: Sleep = asyncio.sleep,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self._sleep = sleep
         self._auth_client = auth_client or TossAuthClient(
             client_id,
             client_secret,
             base_url=self.base_url,
+            sleep=sleep,
         )
 
     async def _token(self) -> str:
@@ -241,10 +244,13 @@ class TossFxRateProvider:
 
         token = await self._token()
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
+            response = await request_with_toss_retry(
+                client,
+                "GET",
                 f"{self.base_url}/api/v1/exchange-rate",
                 params={"baseCurrency": base, "quoteCurrency": quote},
                 headers={"Authorization": f"Bearer {token}"},
+                sleep=self._sleep,
             )
             response.raise_for_status()
             payload = response.json()
@@ -298,12 +304,15 @@ class TossMarketDataProvider:
         *,
         base_url: str = "https://openapi.tossinvest.com",
         auth_client: TossAuthClient | None = None,
+        sleep: Sleep = asyncio.sleep,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self._sleep = sleep
         self._auth_client = auth_client or TossAuthClient(
             client_id,
             client_secret,
             base_url=self.base_url,
+            sleep=sleep,
         )
 
     async def _token(self) -> str:
@@ -327,10 +336,13 @@ class TossMarketDataProvider:
 
         async with httpx.AsyncClient(timeout=10) as client:
             for chunk in _chunks(normalized_symbols, TOSS_PRICE_SYMBOL_LIMIT):
-                response = await client.get(
+                response = await request_with_toss_retry(
+                    client,
+                    "GET",
                     f"{self.base_url}/api/v1/prices",
                     params={"symbols": ",".join(chunk)},
                     headers={"Authorization": f"Bearer {token}"},
+                    sleep=self._sleep,
                 )
                 response.raise_for_status()
                 payload = response.json()

@@ -10,8 +10,10 @@ import httpx
 from portfolio_app.models import Currency, PortfolioSummary, TossAssetAllocation, TossMarket
 from portfolio_app.services.market_data import (
     FxRateProvider,
+    Sleep,
     TossAuthClient,
     default_fx_rate_provider,
+    request_with_toss_retry,
 )
 
 
@@ -108,12 +110,15 @@ class TossBrokerageProvider:
         *,
         base_url: str = "https://openapi.tossinvest.com",
         auth_client: TossAuthClient | None = None,
+        sleep: Sleep = asyncio.sleep,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self._sleep = sleep
         self._auth_client = auth_client or TossAuthClient(
             client_id,
             client_secret,
             base_url=self.base_url,
+            sleep=sleep,
         )
 
     async def _token(self) -> str:
@@ -122,9 +127,12 @@ class TossBrokerageProvider:
     async def fetch_accounts(self) -> list[TossAccount]:
         token = await self._token()
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
+            response = await request_with_toss_retry(
+                client,
+                "GET",
                 f"{self.base_url}/api/v1/accounts",
                 headers={"Authorization": f"Bearer {token}"},
+                sleep=self._sleep,
             )
             response.raise_for_status()
             payload = response.json()
@@ -159,12 +167,15 @@ class TossBrokerageProvider:
     async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
         token = await self._token()
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
+            response = await request_with_toss_retry(
+                client,
+                "GET",
                 f"{self.base_url}/api/v1/holdings",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "x-tossinvest-account": account_seq,
                 },
+                sleep=self._sleep,
             )
             response.raise_for_status()
             payload = response.json()
