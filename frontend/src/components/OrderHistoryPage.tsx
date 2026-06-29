@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Search, X } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import type { TossAccount, TossOrder, TossOrderImportRun } from "../types"
 
-type StatusFilter = TossOrderImportRun["status_filter"]
+const periodOptions = [
+  { value: "day", label: "일" },
+  { value: "month", label: "월" },
+  { value: "year", label: "년" },
+] as const
+
+type PeriodFilter = (typeof periodOptions)[number]["value"]
 
 type OrderQuerySnapshot = {
   accountSeq: string
@@ -17,6 +24,30 @@ const accountLabel = (account: TossAccount) =>
   `${account.display_name} (${account.account_type})`
 
 const displayValue = (value: string | null) => value || "-"
+
+const formatDatePart = (date: Date) => {
+  const year = String(date.getFullYear())
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
+}
+
+const getPeriodRange = (periodFilter: PeriodFilter) => {
+  const today = new Date()
+  const from = new Date(today)
+
+  if (periodFilter === "year") {
+    from.setMonth(0, 1)
+  } else if (periodFilter === "month") {
+    from.setDate(1)
+  }
+
+  return {
+    fromDate: formatDatePart(from),
+    toDate: formatDatePart(today),
+  }
+}
 
 const formatDateTime = (value: string | null) => {
   if (!value) {
@@ -73,10 +104,9 @@ const buildImportRunsQuery = (accountSeq: string) =>
 export function OrderHistoryPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
   const [selectedAccountSeq, setSelectedAccountSeq] = useState("")
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("OPEN")
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("day")
   const [symbolFilter, setSymbolFilter] = useState("")
-  const [fromDate, setFromDate] = useState("")
-  const [toDate, setToDate] = useState("")
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const [orders, setOrders] = useState<TossOrder[]>([])
   const [importRuns, setImportRuns] = useState<TossOrderImportRun[]>([])
   const [accountsLoaded, setAccountsLoaded] = useState(false)
@@ -89,12 +119,13 @@ export function OrderHistoryPage() {
   const latestOrderQueryKeyRef = useRef("")
   const latestSelectedAccountSeqRef = useRef("")
   const latestImportRequestIdRef = useRef(0)
+  const periodRange = useMemo(() => getPeriodRange(periodFilter), [periodFilter])
 
   const currentOrderQueryKey = orderQueryKeyFrom({
     accountSeq: selectedAccountSeq,
     symbolFilter,
-    fromDate,
-    toDate,
+    fromDate: periodRange.fromDate,
+    toDate: periodRange.toDate,
   })
 
   useEffect(() => {
@@ -102,13 +133,19 @@ export function OrderHistoryPage() {
     latestSelectedAccountSeqRef.current = selectedAccountSeq
   }, [currentOrderQueryKey, selectedAccountSeq])
 
-  const isCurrentImportSnapshot = (snapshot: OrderQuerySnapshot, requestId: number) =>
-    latestImportRequestIdRef.current === requestId &&
-    latestOrderQueryKeyRef.current === orderQueryKeyFrom(snapshot)
+  const isCurrentImportSnapshot = useCallback(
+    (snapshot: OrderQuerySnapshot, requestId: number) =>
+      latestImportRequestIdRef.current === requestId &&
+      latestOrderQueryKeyRef.current === orderQueryKeyFrom(snapshot),
+    [],
+  )
 
-  const isCurrentImportAccount = (accountSeq: string, requestId: number) =>
-    latestImportRequestIdRef.current === requestId &&
-    latestSelectedAccountSeqRef.current === accountSeq
+  const isCurrentImportAccount = useCallback(
+    (accountSeq: string, requestId: number) =>
+      latestImportRequestIdRef.current === requestId &&
+      latestSelectedAccountSeqRef.current === accountSeq,
+    [],
+  )
 
   const hasCurrentOrders = loadedOrderQueryKey === currentOrderQueryKey
   const shouldShowOrdersLoading =
@@ -162,6 +199,12 @@ export function OrderHistoryPage() {
     let ignore = false
 
     if (selectedAccountSeq) {
+      const requestSnapshot: OrderQuerySnapshot = {
+        accountSeq: selectedAccountSeq,
+        symbolFilter,
+        fromDate: periodRange.fromDate,
+        toDate: periodRange.toDate,
+      }
       const requestQueryKey = currentOrderQueryKey
       void Promise.resolve()
         .then(() => {
@@ -171,9 +214,7 @@ export function OrderHistoryPage() {
 
           setOrdersLoading(true)
           setOrdersError("")
-          return apiGet<TossOrder[]>(
-            buildOrderQuery(selectedAccountSeq, symbolFilter, fromDate, toDate),
-          )
+          return apiGet<TossOrder[]>(buildOrderQueryFromSnapshot(requestSnapshot))
         })
         .then((orderData) => {
           if (ignore) {
@@ -201,7 +242,13 @@ export function OrderHistoryPage() {
     return () => {
       ignore = true
     }
-  }, [currentOrderQueryKey, fromDate, selectedAccountSeq, symbolFilter, toDate])
+  }, [
+    currentOrderQueryKey,
+    periodRange.fromDate,
+    periodRange.toDate,
+    selectedAccountSeq,
+    symbolFilter,
+  ])
 
   useEffect(() => {
     let ignore = false
@@ -238,48 +285,57 @@ export function OrderHistoryPage() {
 
   const selectedAccount = accounts.find((account) => account.account_seq === selectedAccountSeq)
 
-  const refreshImportRunsForSnapshot = (
-    snapshot: OrderQuerySnapshot,
-    requestId: number,
-    clearImportError = false,
-  ) =>
-    apiGet<TossOrderImportRun[]>(buildImportRunsQuery(snapshot.accountSeq)).then((runData) => {
-      if (isCurrentImportAccount(snapshot.accountSeq, requestId)) {
-        setImportRuns(runData)
-      }
-      if (clearImportError && isCurrentImportSnapshot(snapshot, requestId)) {
-        setImportError("")
-      }
-    })
+  const refreshImportRunsForSnapshot = useCallback(
+    (snapshot: OrderQuerySnapshot, requestId: number, clearImportError = false) =>
+      apiGet<TossOrderImportRun[]>(buildImportRunsQuery(snapshot.accountSeq)).then((runData) => {
+        if (isCurrentImportAccount(snapshot.accountSeq, requestId)) {
+          setImportRuns(runData)
+        }
+        if (clearImportError && isCurrentImportSnapshot(snapshot, requestId)) {
+          setImportError("")
+        }
+      }),
+    [isCurrentImportAccount, isCurrentImportSnapshot],
+  )
 
-  const handleImport = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  useEffect(() => {
     if (!selectedAccountSeq) {
-      return
+      return undefined
     }
 
     const submittedSnapshot: OrderQuerySnapshot = {
       accountSeq: selectedAccountSeq,
       symbolFilter,
-      fromDate,
-      toDate,
+      fromDate: periodRange.fromDate,
+      toDate: periodRange.toDate,
     }
     const submittedQueryKey = orderQueryKeyFrom(submittedSnapshot)
     const importRequestId = latestImportRequestIdRef.current + 1
     latestImportRequestIdRef.current = importRequestId
 
     const symbol = submittedSnapshot.symbolFilter.trim()
-    setImportingQueryKey(submittedQueryKey)
-    setImportError("")
 
-    apiPost<TossOrderImportRun>("/api/toss/order-imports", {
-      account_seq: submittedSnapshot.accountSeq,
-      status: statusFilter,
-      symbol: symbol || null,
-      from_date: submittedSnapshot.fromDate || null,
-      to_date: submittedSnapshot.toDate || null,
-    })
+    void Promise.resolve()
+      .then(() => {
+        if (!isCurrentImportSnapshot(submittedSnapshot, importRequestId)) {
+          return null
+        }
+
+        setImportingQueryKey(submittedQueryKey)
+        setImportError("")
+        return apiPost<TossOrderImportRun>("/api/toss/order-imports", {
+          account_seq: submittedSnapshot.accountSeq,
+          status: "CLOSED",
+          symbol: symbol || null,
+          from_date: submittedSnapshot.fromDate || null,
+          to_date: submittedSnapshot.toDate || null,
+        })
+      })
       .then((run) => {
+        if (!run) {
+          return undefined
+        }
+
         if (isCurrentImportAccount(submittedSnapshot.accountSeq, importRequestId)) {
           setImportRuns((current) => [run, ...current.filter((item) => item.id !== run.id)])
         }
@@ -307,7 +363,22 @@ export function OrderHistoryPage() {
           setImportingQueryKey((current) => (current === submittedQueryKey ? null : current))
         }
       })
-  }
+
+    return () => {
+      if (latestImportRequestIdRef.current === importRequestId) {
+        latestImportRequestIdRef.current += 1
+      }
+    }
+  }, [
+    currentOrderQueryKey,
+    isCurrentImportAccount,
+    isCurrentImportSnapshot,
+    periodRange.fromDate,
+    periodRange.toDate,
+    refreshImportRunsForSnapshot,
+    selectedAccountSeq,
+    symbolFilter,
+  ])
 
   return (
     <section className="screen-stack">
@@ -320,14 +391,65 @@ export function OrderHistoryPage() {
       {ordersError && <div className="error">{ordersError}</div>}
       {importError && <div className="error">{importError}</div>}
 
-      <form className="panel form-panel" onSubmit={handleImport}>
+      <section className="panel form-panel order-query-panel">
+        <div className="order-toolbar">
+          <div className="currency-toggle order-period-toggle" aria-label="주문 기간 선택">
+            {periodOptions.map((option) => (
+              <button
+                aria-pressed={periodFilter === option.value}
+                className={periodFilter === option.value ? "active" : ""}
+                key={option.value}
+                onClick={() => setPeriodFilter(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="order-search">
+            {symbolSearchOpen && (
+              <input
+                aria-label="종목"
+                autoFocus
+                className="order-symbol-input"
+                onChange={(event) => setSymbolFilter(event.target.value)}
+                placeholder="AAPL"
+                value={symbolFilter}
+              />
+            )}
+            <button
+              aria-label="종목 검색"
+              aria-pressed={symbolSearchOpen}
+              className="icon-button"
+              onClick={() => setSymbolSearchOpen((current) => !current)}
+              title="종목 검색"
+              type="button"
+            >
+              <Search size={18} />
+            </button>
+            {(symbolSearchOpen || symbolFilter) && (
+              <button
+                aria-label="종목 검색 초기화"
+                className="icon-button"
+                onClick={() => {
+                  setSymbolFilter("")
+                  setSymbolSearchOpen(false)
+                }}
+                title="종목 검색 초기화"
+                type="button"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+        </div>
         <div className="section-heading">
-          <h3>주문내역 가져오기</h3>
+          <h3>주문내역 조회</h3>
           <span>{accounts.length.toLocaleString("ko-KR")}개 계좌</span>
         </div>
         {accounts.length > 0 ? (
           <>
-            <div className="form-grid">
+            <div className="form-grid single-column-form">
               <label>
                 Toss 계좌
                 <select
@@ -340,40 +462,6 @@ export function OrderHistoryPage() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label>
-                상태
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                >
-                  <option value="OPEN">OPEN</option>
-                  <option value="CLOSED">CLOSED</option>
-                </select>
-              </label>
-              <label>
-                종목
-                <input
-                  value={symbolFilter}
-                  onChange={(event) => setSymbolFilter(event.target.value)}
-                  placeholder="AAPL"
-                />
-              </label>
-              <label>
-                시작일
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(event) => setFromDate(event.target.value)}
-                />
-              </label>
-              <label>
-                종료일
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(event) => setToDate(event.target.value)}
-                />
               </label>
             </div>
             <p className="form-message">
@@ -389,9 +477,7 @@ export function OrderHistoryPage() {
                 <strong>{selectedAccount?.account_no ?? "-"}</strong>
               </div>
             </div>
-            <button className="primary-button" type="submit" disabled={importing}>
-              {importing ? "가져오는 중" : "가져오기"}
-            </button>
+            {importing && <p className="form-message">현재 조건으로 주문내역을 조회하는 중입니다.</p>}
           </>
         ) : (
           <p className="empty-state">
@@ -400,7 +486,7 @@ export function OrderHistoryPage() {
               : "Toss 계좌를 불러오는 중입니다."}
           </p>
         )}
-      </form>
+      </section>
 
       <section className="panel">
         <div className="section-heading">

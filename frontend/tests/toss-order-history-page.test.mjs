@@ -13,16 +13,46 @@ for (const expectedText of [
   "/api/toss/order-imports",
   "/api/toss/orders",
   "account_seq",
-  "OPEN",
   "CLOSED",
+  "Search",
+  "periodFilter",
+  "order-period-toggle",
+  "일",
+  "월",
+  "년",
 ]) {
   assert.ok(source.includes(expectedText), `Order history page should include ${expectedText}`)
 }
 
 assert.ok(!source.includes("/api/transactions"), "Order history page should not use local transactions")
+for (const removedControl of [
+  'type="date"',
+  "시작일",
+  "종료일",
+  "value={statusFilter}",
+  "<option value=\"OPEN\">",
+  "<option value=\"CLOSED\">",
+  "setStatusFilter",
+  "handleImport",
+  "onSubmit=",
+  'type="submit"',
+]) {
+  assert.ok(
+    !source.includes(removedControl),
+    `Order history page should remove ${removedControl}`,
+  )
+}
 assert.ok(
   !source.includes('params.set("order_status", statusFilter)'),
   "Saved Toss orders should not be filtered by the import OPEN/CLOSED status",
+)
+assert.ok(
+  source.includes('status: "CLOSED"'),
+  "Order history imports should always request CLOSED orders",
+)
+assert.ok(
+  source.includes("setSymbolSearchOpen"),
+  "Order history page should reveal symbol input from an interactive search button",
 )
 assert.ok(source.includes("useRef"), "Order history page should use a stale-response guard ref")
 assert.ok(

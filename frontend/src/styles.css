@@ -479,6 +479,65 @@ button {
   gap: 12px;
 }
 
+.order-query-panel {
+  gap: 14px;
+}
+
+.order-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.order-period-toggle {
+  flex: 0 0 auto;
+}
+
+.order-period-toggle button {
+  min-width: 44px;
+}
+
+.order-search {
+  align-items: center;
+  display: flex;
+  flex: 1 1 280px;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.order-symbol-input {
+  max-width: 220px;
+}
+
+.icon-button {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #111827;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible,
+.icon-button[aria-pressed="true"] {
+  background: #eef2f7;
+  outline: none;
+}
+
+.single-column-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .panel-divider {
   background: #e5e7eb;
   height: 1px;
@@ -732,6 +791,21 @@ select:focus {
 
   .currency-toggle button {
     flex: 1;
+  }
+
+  .order-toolbar {
+    align-items: stretch;
+  }
+
+  .order-period-toggle,
+  .order-search,
+  .order-symbol-input {
+    max-width: none;
+    width: 100%;
+  }
+
+  .order-search {
+    flex-basis: 100%;
   }
 
   .allocation-chart,
