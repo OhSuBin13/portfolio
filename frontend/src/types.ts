@@ -40,6 +40,46 @@ export type TossHolding = {
   market_value: number
 }
 
+export type TossOrder = {
+  id: number
+  account_seq: string
+  order_id: string
+  symbol: string
+  side: string
+  order_type: string
+  time_in_force: string
+  order_status: string
+  price: string | null
+  quantity: string
+  order_amount: string | null
+  currency: string
+  ordered_at: string
+  canceled_at: string | null
+  filled_quantity: string
+  average_filled_price: string | null
+  filled_amount: string | null
+  commission: string | null
+  tax: string | null
+  filled_at: string | null
+  settlement_date: string | null
+  imported_at: string
+  updated_at: string
+}
+
+export type TossOrderImportRun = {
+  id: number
+  account_seq: string
+  status_filter: "OPEN" | "CLOSED"
+  symbol_filter: string | null
+  from_date: string | null
+  to_date: string | null
+  run_status: "running" | "success" | "failed"
+  imported_count: number
+  error_message: string
+  started_at: string
+  completed_at: string | null
+}
+
 export type Goal = {
   id: number
   name: string
