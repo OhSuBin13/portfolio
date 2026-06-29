@@ -2,179 +2,23 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/HoldingsPage.tsx", import.meta.url), "utf8")
-const apiSource = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8")
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
+const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
 
-function labelBlocks(labelText) {
-  const blocks = []
-  let cursor = 0
+assert.ok(source.includes("/api/toss/accounts"), "Holdings page should load Toss brokerage accounts")
+assert.ok(source.includes("/api/toss/holdings"), "Holdings page should load Toss holdings")
+assert.ok(source.includes("Toss 보유자산"), "Holdings page should present Toss holdings")
+assert.ok(source.includes("account_seq"), "Holdings page should use Toss account sequence identifiers")
+assert.ok(source.includes("readOnly"), "Holdings page should not present manual ledger writes")
 
-  while (cursor < source.length) {
-    const labelIndex = source.indexOf(labelText, cursor)
-    if (labelIndex === -1) {
-      break
-    }
-
-    const start = source.lastIndexOf("<label>", labelIndex)
-    const end = source.indexOf("</label>", labelIndex)
-    assert.notEqual(start, -1, `${labelText} label should be wrapped in a label element`)
-    assert.notEqual(end, -1, `${labelText} label should close its label element`)
-
-    blocks.push(source.slice(start, end))
-    cursor = end + "</label>".length
-  }
-
-  return blocks
+for (const removedEndpoint of ["/api/accounts", "/api/assets", "/api/transactions"]) {
+  assert.ok(!source.includes(removedEndpoint), `${removedEndpoint} should not be used by Toss-only holdings`)
 }
 
-function optionValues(block) {
-  return Array.from(block.matchAll(/<option\s+value="([^"]+)"/g), (match) => match[1])
+for (const removedText of ["계좌 만들기", "자산 만들기", "초기 잔액/보유 반영", "초기 거래 저장"]) {
+  assert.ok(!source.includes(removedText), `${removedText} should be removed from Toss-only holdings`)
 }
 
-function sourceBlock(startText, endText) {
-  const start = source.indexOf(startText)
-  assert.notEqual(start, -1, `${startText} block should exist`)
-
-  const end = source.indexOf(endText, start)
-  assert.notEqual(end, -1, `${endText} should appear after ${startText}`)
-
-  return source.slice(start, end)
-}
-
-const currencyBlocks = labelBlocks("통화")
-assert.equal(currencyBlocks.length, 2, "Holdings page should expose only asset and balance currency controls")
-
-for (const block of currencyBlocks) {
-  assert.match(block, /<select\b/, "currency control should be a select")
-  assert.doesNotMatch(block, /<input\b/, "currency control should not be a free text input")
-  assert.deepEqual(optionValues(block), ["KRW", "USD"], "currency select should offer KRW and USD")
-}
-
-const marketBlocks = labelBlocks("시장")
-assert.equal(marketBlocks.length, 1, "Holdings page should expose one market control")
-assert.match(marketBlocks[0], /<select\b/, "market control should be a select")
-assert.doesNotMatch(marketBlocks[0], /<input\b/, "market control should not be a free text input")
-assert.deepEqual(optionValues(marketBlocks[0]), ["US", "KR"], "market select should offer US and KR")
-
-const assetTypesBlock = sourceBlock("const assetTypes = [", "]\n\nconst initialTransactionTypes")
-assert.ok(
-  !assetTypesBlock.includes('["cash", "현금"]'),
-  "cash should be a built-in asset instead of a manual asset creation option",
-)
-assert.deepEqual(
-  Array.from(assetTypesBlock.matchAll(/\["([^"]+)",/g), (match) => match[1]),
-  ["stock_etf"],
-  "asset creation should only expose manually tracked stock/ETF assets",
-)
-
-assert.ok(source.includes("종목 정보 불러오기"), "asset form should expose a stock metadata lookup action")
-assert.ok(source.includes("/api/assets/stock-metadata"), "asset form should call the stock metadata lookup API")
-assert.ok(source.includes("상장 상태"), "asset form should expose listed status")
-assert.ok(source.includes("상품 유형"), "asset form should expose instrument type")
-assert.ok(source.includes("metadataSource"), "asset form should track metadata source")
-assert.ok(
-  source.includes('instrumentType: metadata.instrument_type ?? ""'),
-  "asset lookup should preserve null instrument type as empty form state",
-)
-
-const lookupBlock = sourceBlock("const handleStockMetadataLookup", "const handleAssetSubmit")
-assert.ok(
-  lookupBlock.includes("const lookupRequestId = assetLookupRequestIdRef.current + 1"),
-  "asset lookup should record a request id before fetching metadata",
-)
-assert.ok(
-  lookupBlock.includes("const lookupEditVersion = assetFormEditVersionRef.current"),
-  "asset lookup should record the current manual-edit version before fetching metadata",
-)
-assert.ok(
-  lookupBlock.includes("lookupRequestId !== assetLookupRequestIdRef.current"),
-  "asset lookup should ignore responses from superseded requests",
-)
-assert.ok(
-  lookupBlock.includes("lookupEditVersion !== assetFormEditVersionRef.current"),
-  "asset lookup should ignore responses after manual asset-form edits",
-)
-assert.ok(
-  lookupBlock.includes("assetFormSymbolRef.current.trim().toUpperCase() !== symbol"),
-  "asset lookup should ignore responses when the current form symbol changed",
-)
-
-const lookupButtonBlock = sourceBlock("onClick={handleStockMetadataLookup}", "</button>")
-assert.ok(
-  lookupButtonBlock.includes("disabled={assetLookupLoading}"),
-  "asset lookup button should be disabled while lookup is loading",
-)
-assert.ok(lookupButtonBlock.includes("불러오는 중"), "asset lookup button should show loading text")
-
-const instrumentTypeBlocks = labelBlocks("상품 유형")
-assert.equal(instrumentTypeBlocks.length, 1, "asset form should expose one instrument type control")
-assert.ok(
-  instrumentTypeBlocks[0].includes('metadataSource: "manual"'),
-  "manual instrument type edits should mark metadata source manual",
-)
-
-const listedStatusBlocks = labelBlocks("상장 상태")
-assert.equal(listedStatusBlocks.length, 1, "asset form should expose one listed status control")
-assert.ok(
-  listedStatusBlocks[0].includes('metadataSource: "manual"'),
-  "manual listed status edits should mark metadata source manual",
-)
-
-const assetSubmitBlock = sourceBlock("const handleAssetSubmit", "const handleBalanceSubmit")
-assert.ok(assetSubmitBlock.includes("is_listed"), "asset submit should send listed status")
-assert.ok(assetSubmitBlock.includes("instrument_type"), "asset submit should send instrument type")
-assert.ok(
-  assetSubmitBlock.includes("instrument_type: assetForm.instrumentType.trim() || null"),
-  "asset submit should preserve blank instrument type as null",
-)
-assert.ok(assetSubmitBlock.includes("metadata_source"), "asset submit should send metadata source")
-
-const accountFormBlock = sourceBlock("const [accountForm", "const [accountEditForm")
-assert.ok(!accountFormBlock.includes("currency"), "account forms should not store account currency")
-
-const balanceFormBlock = sourceBlock("const [balanceForm", "const [accountMessage")
-assert.ok(balanceFormBlock.includes('currency: "KRW"'), "initial cash balances should default to KRW")
-
-assert.ok(
-  source.includes('const selectedBalanceAsset = assets.find((asset) => String(asset.id) === balanceForm.assetId)'),
-  "initial balance form should derive the selected asset",
-)
-assert.ok(
-  source.includes('const showBalanceQuantity = selectedBalanceAsset?.type === "stock_etf"'),
-  "quantity should only be available for stock/ETF assets",
-)
-
-const quantityLabelMatch = source.match(/<label>\s+수량\s+<input/)
-assert.ok(quantityLabelMatch, "quantity label should exist for stock/ETF assets")
-const quantityLabelIndex = quantityLabelMatch.index ?? -1
-assert.ok(
-  source.lastIndexOf("showBalanceQuantity &&", quantityLabelIndex) !== -1,
-  "quantity label should be conditionally rendered by stock/ETF asset type",
-)
-
-assert.ok(!source.includes('market: "KR"'), "market default should no longer use KR")
-
-assert.match(source, /apiGet<Account>\(`\/api\/accounts\/\$\{accountId\}`\)/, "account detail should load through the account detail API")
-assert.match(source, /apiPut<Account>\(`\/api\/accounts\/\$\{selectedAccountId\}`/, "account edits should use the account update API")
-assert.match(source, /apiDelete\(`\/api\/accounts\/\$\{selectedAccountId\}`\)/, "account deletion should use the selected account delete API")
-assert.ok(source.includes('type HoldingsView = "overview" | "account-detail"'), "Holdings page should model a separate account detail page")
-assert.ok(source.includes('setHoldingsView("account-detail")'), "management action should navigate to the account detail page")
-assert.ok(source.includes('setHoldingsView("overview")'), "account detail page should navigate back to the holdings overview")
-assert.ok(source.includes("계좌 목록"), "Holdings page should include an account list section")
-assert.ok(source.includes("계좌 상세"), "Holdings page should include an account detail page")
-assert.ok(source.includes("list_accounts"), "account list section should identify list_accounts")
-assert.ok(source.includes("get_account"), "account detail section should identify get_account")
-assert.ok(source.includes("수정 저장"), "Holdings page should expose an account update action")
-assert.ok(source.includes("삭제"), "Holdings page should expose an account delete action")
-
-const accountListBlock = sourceBlock('data-view="holdings-overview"', 'className="panel form-panel compact-form"')
-assert.ok(accountListBlock.includes("관리"), "account list rows should expose the management action")
-assert.ok(!accountListBlock.includes("수정 저장"), "account list page should not expose update before navigation")
-assert.ok(!accountListBlock.includes("삭제"), "account list page should not expose delete before navigation")
-
-const accountDetailBlock = sourceBlock('data-view="account-detail"', "data-view=\"holdings-overview\"")
-assert.ok(accountDetailBlock.includes("수정 저장"), "account detail page should expose update")
-assert.ok(accountDetailBlock.includes("삭제"), "account detail page should expose delete")
-assert.ok(accountDetailBlock.includes("목록으로"), "account detail page should expose a back action")
-
-assert.match(apiSource, /export async function apiPut<T>/, "API helper should expose PUT requests")
-assert.match(apiSource, /export async function apiDelete/, "API helper should expose DELETE requests")
+assert.ok(!appSource.includes("TransactionsPage"), "App should not mount the local transaction ledger page")
+assert.ok(!shellSource.includes('id: "transactions"'), "Navigation should not expose local transactions")
+assert.ok(!shellSource.includes('id: "growth"'), "Navigation should not expose transaction-derived growth")

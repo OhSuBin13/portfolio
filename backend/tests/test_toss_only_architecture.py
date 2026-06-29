@@ -1,0 +1,37 @@
+from pathlib import Path
+
+ROOT = Path(__file__).parents[1]
+BACKEND_SRC = ROOT / "src/portfolio_app"
+FRONTEND_SRC = ROOT.parents[0] / "frontend/src"
+
+
+def test_fresh_schema_no_longer_defines_local_ledger_tables():
+    schema_sql = (BACKEND_SRC / "schema.sql").read_text(encoding="utf-8")
+
+    removed_tables = ("accounts", "assets", "holdings", "transactions")
+    for table_name in removed_tables:
+        assert f"create table if not exists {table_name}" not in schema_sql
+
+
+def test_main_registers_toss_portfolio_instead_of_local_ledger_routers():
+    source = (BACKEND_SRC / "main.py").read_text(encoding="utf-8")
+
+    assert "toss_portfolio" in source
+    assert "app.include_router(toss_portfolio.router)" in source
+    assert "app.include_router(accounts.router)" not in source
+    assert "app.include_router(assets.router)" not in source
+    assert "app.include_router(transactions.router)" not in source
+    assert "app.include_router(market_data.router)" not in source
+
+
+def test_frontend_no_longer_calls_local_ledger_endpoints():
+    combined = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in FRONTEND_SRC.glob("**/*")
+        if path.suffix in {".ts", ".tsx"}
+    )
+
+    for endpoint in ("/api/accounts", "/api/assets", "/api/transactions", "/api/market-data/status"):
+        assert endpoint not in combined
+    assert "/api/toss/accounts" in combined
+    assert "/api/toss/holdings" in combined
