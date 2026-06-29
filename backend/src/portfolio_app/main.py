@@ -17,6 +17,7 @@ from portfolio_app.migrations import migrate
 from portfolio_app.services.backup_scheduler import start_backup_task, stop_backup_task
 from portfolio_app.services.backups import create_startup_backup_if_needed
 from portfolio_app.services.market_data import TossAuthClient
+from portfolio_app.services.toss_portfolio import TossAccountsCache
 
 LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
@@ -78,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_settings.toss_api_key,
         app_settings.toss_secret_key,
     )
+    app.state.toss_accounts_cache = TossAccountsCache()
     app.state.db_path = app_settings.database_path
 
     @app.get("/health")

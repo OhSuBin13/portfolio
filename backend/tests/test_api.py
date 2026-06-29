@@ -148,6 +148,45 @@ def test_toss_accounts_endpoint_returns_provider_accounts(tmp_path, httpx_mock):
     ]
 
 
+def test_toss_accounts_endpoint_uses_ttl_cache(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/accounts",
+        json={
+            "result": [
+                {
+                    "accountNo": "123-45-67890",
+                    "accountSeq": "acct-1",
+                    "accountType": "BROKERAGE",
+                }
+            ]
+        },
+    )
+
+    first = client.get("/api/toss/accounts")
+    second = client.get("/api/toss/accounts")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    account_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/accounts"
+    ]
+    assert len(account_requests) == 1
+
+
 def test_toss_holdings_endpoint_returns_provider_holdings(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,

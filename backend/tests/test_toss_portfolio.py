@@ -407,6 +407,57 @@ class StubTossBrokerageProvider:
         return self.holdings
 
 
+def test_toss_accounts_cache_returns_entry_until_ttl_expires():
+    now = 100.0
+
+    def fake_now() -> float:
+        return now
+
+    from portfolio_app.services.toss_portfolio import TossAccount, TossAccountsCache
+
+    cache = TossAccountsCache(ttl_seconds=10, now=fake_now)
+    account = TossAccount(
+        account_seq="acct-1",
+        account_no="123-45-67890",
+        account_type="BROKERAGE",
+        display_name="토스증권 123-45-67890",
+    )
+
+    cache.set([account])
+    assert cache.get() == [account]
+
+    now = 111.0
+    assert cache.get() is None
+
+
+@pytest.mark.asyncio
+async def test_toss_accounts_cache_collapses_concurrent_fetches():
+    from portfolio_app.services.toss_portfolio import TossAccount, TossAccountsCache
+
+    cache = TossAccountsCache(ttl_seconds=60)
+    account = TossAccount(
+        account_seq="acct-1",
+        account_no="123-45-67890",
+        account_type="BROKERAGE",
+        display_name="토스증권 123-45-67890",
+    )
+    calls = 0
+
+    async def fetch_accounts() -> list[TossAccount]:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return [account]
+
+    results = await asyncio.gather(
+        cache.get_or_fetch(fetch_accounts),
+        cache.get_or_fetch(fetch_accounts),
+    )
+
+    assert results == [[account], [account]]
+    assert calls == 1
+
+
 @pytest.mark.asyncio
 async def test_fetch_toss_summary_fetches_fx_once_for_usd_holdings():
     provider = StubTossBrokerageProvider(

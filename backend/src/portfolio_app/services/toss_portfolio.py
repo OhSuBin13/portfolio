@@ -1,4 +1,7 @@
+import asyncio
 import math
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -37,6 +40,59 @@ class TossSummaryResult:
     summary: PortfolioSummary
     asset_mix: dict[str, float]
     asset_allocations: list[dict[str, Any]]
+
+
+TOSS_ACCOUNTS_CACHE_TTL_SECONDS = 60.0
+
+
+@dataclass
+class _TossAccountsCacheEntry:
+    fetched_at: float
+    accounts: list[TossAccount]
+
+
+class TossAccountsCache:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = TOSS_ACCOUNTS_CACHE_TTL_SECONDS,
+        now: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.ttl_seconds = ttl_seconds
+        self._now = now
+        self._entry: _TossAccountsCacheEntry | None = None
+        self._refresh_lock = asyncio.Lock()
+
+    def get(self) -> list[TossAccount] | None:
+        entry = self._entry
+        if entry is None:
+            return None
+        if self._now() - entry.fetched_at >= self.ttl_seconds:
+            return None
+        return list(entry.accounts)
+
+    def set(self, accounts: list[TossAccount]) -> None:
+        self._entry = _TossAccountsCacheEntry(
+            fetched_at=self._now(),
+            accounts=list(accounts),
+        )
+
+    async def get_or_fetch(
+        self,
+        fetch_accounts: Callable[[], Awaitable[list[TossAccount]]],
+    ) -> list[TossAccount]:
+        cached = self.get()
+        if cached is not None:
+            return cached
+
+        async with self._refresh_lock:
+            cached = self.get()
+            if cached is not None:
+                return cached
+
+            accounts = await fetch_accounts()
+            self.set(accounts)
+            return list(accounts)
 
 
 class TossHoldingProvider(Protocol):
