@@ -1,0 +1,266 @@
+import math
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
+from portfolio_app.models import Currency, PortfolioSummary
+from portfolio_app.services.market_data import (
+    FxRateProvider,
+    TossAuthClient,
+    default_fx_rate_provider,
+)
+
+TossMarket = Literal["KR", "US"]
+
+
+@dataclass(frozen=True)
+class TossAccount:
+    account_seq: str
+    account_no: str
+    account_type: str
+    display_name: str
+
+
+@dataclass(frozen=True)
+class TossHolding:
+    symbol: str
+    name: str
+    market: TossMarket
+    currency: Currency
+    quantity: float
+    average_purchase_price: float
+    last_price: float | None
+    market_value: float
+
+
+@dataclass(frozen=True)
+class TossSummaryResult:
+    summary: PortfolioSummary
+    asset_mix: dict[str, float]
+    asset_allocations: list[dict[str, Any]]
+
+
+class TossAssetAllocation(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    asset_key: str
+    asset_type: Literal["stock_etf"]
+    symbol: str
+    name: str
+    label: str
+    market: TossMarket
+    currency: Currency
+    value_krw: float = Field(ge=0, allow_inf_nan=False)
+    percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+
+
+class TossHoldingProvider(Protocol):
+    async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
+        pass
+
+
+class TossBrokerageProvider:
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        *,
+        base_url: str = "https://openapi.tossinvest.com",
+        auth_client: TossAuthClient | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self._auth_client = auth_client or TossAuthClient(
+            client_id,
+            client_secret,
+            base_url=self.base_url,
+        )
+
+    async def _token(self) -> str:
+        return await self._auth_client.token()
+
+    async def fetch_accounts(self) -> list[TossAccount]:
+        token = await self._token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/accounts",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(result, list):
+            raise ValueError("Toss 응답에서 계좌 목록을 찾을 수 없습니다.")
+
+        accounts: list[TossAccount] = []
+        for item in result:
+            if not isinstance(item, dict):
+                raise ValueError("Toss 계좌 항목은 객체여야 합니다.")
+            account_no = _required_text(item.get("accountNo"), "Toss 계좌번호가 필요합니다.")
+            account_seq = _required_text(
+                item.get("accountSeq"),
+                "Toss 계좌 식별자가 필요합니다.",
+            )
+            account_type = _required_text(
+                item.get("accountType"),
+                "Toss 계좌 유형이 필요합니다.",
+            )
+            accounts.append(
+                TossAccount(
+                    account_seq=account_seq,
+                    account_no=account_no,
+                    account_type=account_type,
+                    display_name=f"토스증권 {account_no}",
+                )
+            )
+        return accounts
+
+    async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
+        token = await self._token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/holdings",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-tossinvest-account": account_seq,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("result") if isinstance(payload, dict) else None
+        items = result.get("items") if isinstance(result, dict) else None
+        if not isinstance(items, list):
+            raise ValueError("Toss 응답에서 보유자산 목록을 찾을 수 없습니다.")
+
+        holdings: list[TossHolding] = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("Toss 보유자산 항목은 객체여야 합니다.")
+            holdings.append(_parse_holding(item))
+        return holdings
+
+
+def build_toss_summary(
+    holdings: list[TossHolding],
+    *,
+    usd_krw_rate: float | None,
+) -> TossSummaryResult:
+    if any(holding.currency == "USD" for holding in holdings):
+        rate = _positive_number(usd_krw_rate, "USD 보유자산에는 USD/KRW 환율이 필요합니다.")
+    else:
+        rate = usd_krw_rate
+
+    allocation_values: list[tuple[TossHolding, float]] = []
+    for holding in holdings:
+        value_krw = holding.market_value
+        if holding.currency == "USD":
+            value_krw = holding.market_value * float(rate)
+        allocation_values.append((holding, value_krw))
+
+    total_krw = sum(value_krw for _, value_krw in allocation_values)
+    asset_mix = {"stock_etf": 100} if total_krw > 0 else {}
+    asset_allocations = [
+        TossAssetAllocation(
+            asset_key=f"{holding.market}:{holding.symbol}",
+            asset_type="stock_etf",
+            symbol=holding.symbol,
+            name=holding.name,
+            label=holding.symbol,
+            market=holding.market,
+            currency=holding.currency,
+            value_krw=value_krw,
+            percent=(value_krw / total_krw * 100) if total_krw > 0 else 0,
+        ).model_dump()
+        for holding, value_krw in allocation_values
+    ]
+
+    return TossSummaryResult(
+        summary=PortfolioSummary(
+            net_worth_krw=total_krw,
+            gross_assets_krw=total_krw,
+            debt_krw=0,
+            monthly_income_krw=0,
+            usd_krw_rate=rate,
+        ),
+        asset_mix=asset_mix,
+        asset_allocations=asset_allocations,
+    )
+
+
+async def fetch_toss_summary(
+    account_seq: str,
+    provider: TossHoldingProvider,
+    fx_provider: FxRateProvider | None = None,
+) -> TossSummaryResult:
+    holdings = await provider.fetch_holdings(account_seq)
+    usd_krw_rate: float | None = None
+    if any(holding.currency == "USD" for holding in holdings):
+        resolved_fx_provider = fx_provider or default_fx_rate_provider()
+        usd_krw_rate = (
+            await resolved_fx_provider.fetch_rate("USD", "KRW")
+        ).rate
+    return build_toss_summary(holdings, usd_krw_rate=usd_krw_rate)
+
+
+def _parse_holding(item: dict[str, Any]) -> TossHolding:
+    market, currency = _market_currency_pair(item)
+
+    market_value = item.get("marketValue")
+    if not isinstance(market_value, dict):
+        raise ValueError("Toss 보유자산 평가금액이 필요합니다.")
+
+    last_price = item.get("lastPrice")
+    return TossHolding(
+        symbol=_required_text(item.get("symbol"), "Toss 보유자산 심볼이 필요합니다.").upper(),
+        name=_required_text(item.get("name"), "Toss 보유자산명이 필요합니다."),
+        market=market,
+        currency=currency,
+        quantity=_positive_number(item.get("quantity"), "Toss 보유수량은 0보다 커야 합니다."),
+        average_purchase_price=_positive_number(
+            item.get("averagePurchasePrice"),
+            "Toss 평균매입가는 0보다 커야 합니다.",
+        ),
+        last_price=(
+            _positive_number(last_price, "Toss 현재가는 0보다 커야 합니다.")
+            if last_price is not None
+            else None
+        ),
+        market_value=_positive_number(
+            market_value.get("amount"),
+            "Toss 평가금액은 0보다 커야 합니다.",
+        ),
+    )
+
+
+def _market_currency_pair(item: dict[str, Any]) -> tuple[TossMarket, Currency]:
+    market = _required_text(item.get("marketCountry"), "Toss 시장 국가가 필요합니다.").upper()
+    currency = _required_text(item.get("currency"), "Toss 보유자산 통화가 필요합니다.").upper()
+    if (market, currency) == ("KR", "KRW"):
+        return "KR", "KRW"
+    if (market, currency) == ("US", "USD"):
+        return "US", "USD"
+    if market not in {"KR", "US"}:
+        raise ValueError("Toss 보유자산 시장은 KR 또는 US여야 합니다.")
+    if currency not in {"KRW", "USD"}:
+        raise ValueError("Toss 보유자산 통화는 KRW 또는 USD여야 합니다.")
+    raise ValueError("Toss 보유자산 시장과 통화 조합이 일치하지 않습니다.")
+
+
+def _required_text(value: Any, message: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        raise ValueError(message)
+    return text
+
+
+def _positive_number(value: Any, message: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(message) from exc
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(message)
+    return number
