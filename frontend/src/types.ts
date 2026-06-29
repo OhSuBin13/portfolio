@@ -60,6 +60,19 @@ export type Asset = {
   type: string
   currency: string
   market: string | null
+  is_listed: number | null
+  instrument_type: string | null
+  metadata_source: "manual" | "toss"
+}
+
+export type StockMetadata = {
+  symbol: string
+  name: string
+  market: "US" | "KR"
+  currency: "USD" | "KRW"
+  is_listed: boolean
+  instrument_type: string | null
+  metadata_source: "toss"
 }
 
 export type Transaction = {

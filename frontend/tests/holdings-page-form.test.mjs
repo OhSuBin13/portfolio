@@ -53,7 +53,7 @@ const marketBlocks = labelBlocks("시장")
 assert.equal(marketBlocks.length, 1, "Holdings page should expose one market control")
 assert.match(marketBlocks[0], /<select\b/, "market control should be a select")
 assert.doesNotMatch(marketBlocks[0], /<input\b/, "market control should not be a free text input")
-assert.deepEqual(optionValues(marketBlocks[0]), ["US"], "market select should only offer US")
+assert.deepEqual(optionValues(marketBlocks[0]), ["US", "KR"], "market select should offer US and KR")
 
 const assetTypesBlock = sourceBlock("const assetTypes = [", "]\n\nconst initialTransactionTypes")
 assert.ok(
@@ -65,6 +65,68 @@ assert.deepEqual(
   ["stock_etf"],
   "asset creation should only expose manually tracked stock/ETF assets",
 )
+
+assert.ok(source.includes("종목 정보 불러오기"), "asset form should expose a stock metadata lookup action")
+assert.ok(source.includes("/api/assets/stock-metadata"), "asset form should call the stock metadata lookup API")
+assert.ok(source.includes("상장 상태"), "asset form should expose listed status")
+assert.ok(source.includes("상품 유형"), "asset form should expose instrument type")
+assert.ok(source.includes("metadataSource"), "asset form should track metadata source")
+assert.ok(
+  source.includes('instrumentType: metadata.instrument_type ?? ""'),
+  "asset lookup should preserve null instrument type as empty form state",
+)
+
+const lookupBlock = sourceBlock("const handleStockMetadataLookup", "const handleAssetSubmit")
+assert.ok(
+  lookupBlock.includes("const lookupRequestId = assetLookupRequestIdRef.current + 1"),
+  "asset lookup should record a request id before fetching metadata",
+)
+assert.ok(
+  lookupBlock.includes("const lookupEditVersion = assetFormEditVersionRef.current"),
+  "asset lookup should record the current manual-edit version before fetching metadata",
+)
+assert.ok(
+  lookupBlock.includes("lookupRequestId !== assetLookupRequestIdRef.current"),
+  "asset lookup should ignore responses from superseded requests",
+)
+assert.ok(
+  lookupBlock.includes("lookupEditVersion !== assetFormEditVersionRef.current"),
+  "asset lookup should ignore responses after manual asset-form edits",
+)
+assert.ok(
+  lookupBlock.includes("assetFormSymbolRef.current.trim().toUpperCase() !== symbol"),
+  "asset lookup should ignore responses when the current form symbol changed",
+)
+
+const lookupButtonBlock = sourceBlock("onClick={handleStockMetadataLookup}", "</button>")
+assert.ok(
+  lookupButtonBlock.includes("disabled={assetLookupLoading}"),
+  "asset lookup button should be disabled while lookup is loading",
+)
+assert.ok(lookupButtonBlock.includes("불러오는 중"), "asset lookup button should show loading text")
+
+const instrumentTypeBlocks = labelBlocks("상품 유형")
+assert.equal(instrumentTypeBlocks.length, 1, "asset form should expose one instrument type control")
+assert.ok(
+  instrumentTypeBlocks[0].includes('metadataSource: "manual"'),
+  "manual instrument type edits should mark metadata source manual",
+)
+
+const listedStatusBlocks = labelBlocks("상장 상태")
+assert.equal(listedStatusBlocks.length, 1, "asset form should expose one listed status control")
+assert.ok(
+  listedStatusBlocks[0].includes('metadataSource: "manual"'),
+  "manual listed status edits should mark metadata source manual",
+)
+
+const assetSubmitBlock = sourceBlock("const handleAssetSubmit", "const handleBalanceSubmit")
+assert.ok(assetSubmitBlock.includes("is_listed"), "asset submit should send listed status")
+assert.ok(assetSubmitBlock.includes("instrument_type"), "asset submit should send instrument type")
+assert.ok(
+  assetSubmitBlock.includes("instrument_type: assetForm.instrumentType.trim() || null"),
+  "asset submit should preserve blank instrument type as null",
+)
+assert.ok(assetSubmitBlock.includes("metadata_source"), "asset submit should send metadata source")
 
 const accountFormBlock = sourceBlock("const [accountForm", "const [accountEditForm")
 assert.ok(!accountFormBlock.includes("currency"), "account forms should not store account currency")

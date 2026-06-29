@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { apiDelete, apiGet, apiPost, apiPut } from "../api"
 import { buildTransactionPayload } from "../transactionPayload"
-import type { Account, Asset, Transaction } from "../types"
+import type { Account, Asset, StockMetadata, Transaction } from "../types"
 
 const accountTypes = [
   ["cash", "현금"],
@@ -42,6 +42,9 @@ type AssetForm = {
   type: string
   currency: string
   market: string
+  isListed: boolean
+  instrumentType: string
+  metadataSource: "manual" | "toss"
 }
 
 type BalanceForm = {
@@ -98,6 +101,9 @@ export function HoldingsPage() {
     type: "stock_etf",
     currency: "USD",
     market: "US",
+    isListed: true,
+    instrumentType: "STOCK",
+    metadataSource: "manual",
   })
   const [balanceForm, setBalanceForm] = useState<BalanceForm>({
     type: "adjustment",
@@ -117,6 +123,10 @@ export function HoldingsPage() {
   const [accountManageError, setAccountManageError] = useState("")
   const [assetMessage, setAssetMessage] = useState("")
   const [assetError, setAssetError] = useState("")
+  const [assetLookupLoading, setAssetLookupLoading] = useState(false)
+  const assetLookupRequestIdRef = useRef(0)
+  const assetFormEditVersionRef = useRef(0)
+  const assetFormSymbolRef = useRef(assetForm.symbol)
   const [balanceMessage, setBalanceMessage] = useState("")
   const [balanceError, setBalanceError] = useState("")
   const selectedBalanceAsset = assets.find((asset) => String(asset.id) === balanceForm.assetId)
@@ -136,6 +146,15 @@ export function HoldingsPage() {
     const data = await apiGet<Asset[]>("/api/assets")
     setAssets(data)
     return data
+  }
+
+  const setManualAssetForm = (updater: (prev: AssetForm) => AssetForm) => {
+    assetFormEditVersionRef.current += 1
+    setAssetForm((prev) => {
+      const next = updater(prev)
+      assetFormSymbolRef.current = next.symbol
+      return next
+    })
   }
 
   useEffect(() => {
@@ -280,10 +299,76 @@ export function HoldingsPage() {
     }
   }
 
+  const handleStockMetadataLookup = async () => {
+    setAssetMessage("")
+    setAssetError("")
+
+    const symbol = assetForm.symbol.trim().toUpperCase()
+    if (!symbol) {
+      setAssetError("종목 심볼을 입력하세요.")
+      return
+    }
+
+    const lookupRequestId = assetLookupRequestIdRef.current + 1
+    assetLookupRequestIdRef.current = lookupRequestId
+    const lookupEditVersion = assetFormEditVersionRef.current
+
+    setAssetLookupLoading(true)
+    try {
+      const metadata = await apiGet<StockMetadata>(
+        `/api/assets/stock-metadata?symbol=${encodeURIComponent(symbol)}`,
+      )
+      if (
+        lookupRequestId !== assetLookupRequestIdRef.current ||
+        lookupEditVersion !== assetFormEditVersionRef.current ||
+        assetFormSymbolRef.current.trim().toUpperCase() !== symbol
+      ) {
+        return
+      }
+
+      setAssetForm((prev) => {
+        if (prev.symbol.trim().toUpperCase() !== symbol) {
+          return prev
+        }
+
+        const next = {
+          ...prev,
+          symbol: metadata.symbol,
+          name: metadata.name,
+          currency: metadata.currency,
+          market: metadata.market,
+          isListed: metadata.is_listed,
+          instrumentType: metadata.instrument_type ?? "",
+          metadataSource: metadata.metadata_source,
+        }
+        assetFormSymbolRef.current = next.symbol
+        return next
+      })
+      setAssetMessage("종목 정보를 불러왔습니다.")
+    } catch (err) {
+      if (
+        lookupRequestId === assetLookupRequestIdRef.current &&
+        lookupEditVersion === assetFormEditVersionRef.current &&
+        assetFormSymbolRef.current.trim().toUpperCase() === symbol
+      ) {
+        setAssetError(getErrorMessage(err))
+      }
+    } finally {
+      if (lookupRequestId === assetLookupRequestIdRef.current) {
+        setAssetLookupLoading(false)
+      }
+    }
+  }
+
   const handleAssetSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setAssetMessage("")
     setAssetError("")
+
+    if (assetLookupLoading) {
+      setAssetError("종목 정보를 불러오는 중입니다.")
+      return
+    }
 
     if (!assetForm.name.trim()) {
       setAssetError("자산 이름을 입력하세요.")
@@ -297,6 +382,9 @@ export function HoldingsPage() {
         type: assetForm.type,
         currency: assetForm.currency.trim().toUpperCase(),
         market: assetForm.market.trim().toUpperCase(),
+        is_listed: assetForm.isListed,
+        instrument_type: assetForm.instrumentType.trim() || null,
+        metadata_source: assetForm.metadataSource,
       })
       const nextAssets = await refreshAssets()
       const createdAsset = nextAssets.find((asset) => asset.id === created.id)
@@ -306,7 +394,19 @@ export function HoldingsPage() {
           createdAsset,
         ),
       )
-      setAssetForm((prev) => ({ ...prev, symbol: "", name: "" }))
+      assetFormEditVersionRef.current += 1
+      setAssetForm((prev) => {
+        const next: AssetForm = {
+          ...prev,
+          symbol: "",
+          name: "",
+          isListed: true,
+          instrumentType: "STOCK",
+          metadataSource: "manual",
+        }
+        assetFormSymbolRef.current = next.symbol
+        return next
+      })
       setAssetMessage("자산을 만들었습니다.")
     } catch (err) {
       setAssetError(getErrorMessage(err))
@@ -536,19 +636,41 @@ export function HoldingsPage() {
             자산 이름
             <input
               value={assetForm.name}
-              onChange={(event) => setAssetForm((prev) => ({ ...prev, name: event.target.value }))}
+              onChange={(event) =>
+                setManualAssetForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                  metadataSource: "manual",
+                }))
+              }
               placeholder="예: 삼성전자 보통주"
             />
           </label>
           <div className="field-row">
-            <label>
-              심볼
-              <input
-                value={assetForm.symbol}
-                onChange={(event) => setAssetForm((prev) => ({ ...prev, symbol: event.target.value }))}
-                placeholder="선택"
-              />
-            </label>
+            <div>
+              <label>
+                심볼
+                <input
+                  value={assetForm.symbol}
+                  onChange={(event) =>
+                    setManualAssetForm((prev) => ({
+                      ...prev,
+                      symbol: event.target.value,
+                      metadataSource: "manual",
+                    }))
+                  }
+                  placeholder="선택"
+                />
+              </label>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={handleStockMetadataLookup}
+                disabled={assetLookupLoading}
+              >
+                {assetLookupLoading ? "불러오는 중..." : "종목 정보 불러오기"}
+              </button>
+            </div>
             <label>
               자산 유형
               <select
@@ -568,7 +690,13 @@ export function HoldingsPage() {
               통화
               <select
                 value={assetForm.currency}
-                onChange={(event) => setAssetForm((prev) => ({ ...prev, currency: event.target.value }))}
+                onChange={(event) =>
+                  setManualAssetForm((prev) => ({
+                    ...prev,
+                    currency: event.target.value,
+                    metadataSource: "manual",
+                  }))
+                }
               >
                 <option value="KRW">KRW</option>
                 <option value="USD">USD</option>
@@ -578,13 +706,58 @@ export function HoldingsPage() {
               시장
               <select
                 value={assetForm.market}
-                onChange={(event) => setAssetForm((prev) => ({ ...prev, market: event.target.value }))}
+                onChange={(event) =>
+                  setManualAssetForm((prev) => ({
+                    ...prev,
+                    market: event.target.value,
+                    metadataSource: "manual",
+                  }))
+                }
               >
                 <option value="US">US</option>
+                <option value="KR">KR</option>
               </select>
             </label>
           </div>
-          <button className="primary-button" type="submit">
+          <div className="field-row">
+            <label>
+              상품 유형
+              <select
+                value={assetForm.instrumentType}
+                onChange={(event) =>
+                  setManualAssetForm((prev) => ({
+                    ...prev,
+                    instrumentType: event.target.value,
+                    metadataSource: "manual",
+                  }))
+                }
+              >
+                <option value="">알 수 없음</option>
+                <option value="STOCK">STOCK</option>
+                <option value="ETF">ETF</option>
+                <option value="ETN">ETN</option>
+                <option value="REIT">REIT</option>
+                <option value="OTHER">OTHER</option>
+              </select>
+            </label>
+            <label>
+              상장 상태
+              <select
+                value={assetForm.isListed ? "listed" : "unlisted"}
+                onChange={(event) =>
+                  setManualAssetForm((prev) => ({
+                    ...prev,
+                    isListed: event.target.value === "listed",
+                    metadataSource: "manual",
+                  }))
+                }
+              >
+                <option value="listed">상장</option>
+                <option value="unlisted">상장폐지/비상장</option>
+              </select>
+            </label>
+          </div>
+          <button className="primary-button" type="submit" disabled={assetLookupLoading}>
             자산 저장
           </button>
           {assetError && <p className="form-message error-text">{assetError}</p>}
