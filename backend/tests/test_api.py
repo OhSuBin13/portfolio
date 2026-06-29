@@ -443,6 +443,7 @@ def test_asset_payload_validation_normalizes_stock_etf_input():
         type="stock_etf",
         currency=" usd ",
         market=" us ",
+        instrument_type="   ",
     )
 
     assert hasattr(assets, "validate_asset_payload")
@@ -453,6 +454,34 @@ def test_asset_payload_validation_normalizes_stock_etf_input():
     assert validated.type == "stock_etf"
     assert validated.currency == "USD"
     assert validated.market == "US"
+    assert validated.is_listed is True
+    assert validated.instrument_type is None
+
+
+def test_asset_payload_validation_normalizes_stock_metadata():
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol=" 005930 ",
+        name=" 삼성전자 ",
+        type="stock_etf",
+        currency=" krw ",
+        market=" kr ",
+        is_listed=True,
+        instrument_type=" stock ",
+        metadata_source="toss",
+    )
+
+    validated = assets.validate_asset_payload(payload)
+
+    assert validated.symbol == "005930"
+    assert validated.name == "삼성전자"
+    assert validated.type == "stock_etf"
+    assert validated.currency == "KRW"
+    assert validated.market == "KR"
+    assert validated.is_listed is True
+    assert validated.instrument_type == "STOCK"
+    assert validated.metadata_source == "toss"
 
 
 def test_asset_payload_validation_normalizes_builtin_asset_input():
@@ -474,6 +503,29 @@ def test_asset_payload_validation_normalizes_builtin_asset_input():
     assert validated.type == "cash"
     assert validated.currency == "KRW"
     assert validated.market is None
+
+
+def test_asset_payload_validation_clears_metadata_for_builtin_asset():
+    from portfolio_app.api import assets
+
+    payload = assets.AssetCreate(
+        symbol="KRW",
+        name="원화 현금",
+        type="cash",
+        currency="KRW",
+        market="KR",
+        is_listed=True,
+        instrument_type="stock",
+        metadata_source="toss",
+    )
+
+    validated = assets.validate_asset_payload(payload)
+
+    assert validated.symbol is None
+    assert validated.market is None
+    assert validated.is_listed is None
+    assert validated.instrument_type is None
+    assert validated.metadata_source == "manual"
 
 
 def test_asset_payload_validation_rejects_missing_stock_etf_market():
@@ -521,6 +573,35 @@ def test_assets_include_builtin_cash_without_manual_asset_creation(tmp_path):
     assert cash_assets[0]["name"] == "원화 현금"
     assert cash_assets[0]["symbol"] is None
     assert cash_assets[0]["market"] is None
+
+
+def test_can_create_stock_asset_with_manual_metadata(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/assets",
+        json={
+            "symbol": "005930",
+            "name": "삼성전자",
+            "type": "stock_etf",
+            "currency": "KRW",
+            "market": "KR",
+            "is_listed": True,
+            "instrument_type": "stock",
+            "metadata_source": "manual",
+        },
+    )
+
+    assert response.status_code == 201
+    created = response.json()
+    assert created["symbol"] == "005930"
+    assert created["name"] == "삼성전자"
+    assert created["type"] == "stock_etf"
+    assert created["currency"] == "KRW"
+    assert created["market"] == "KR"
+    assert created["is_listed"] == 1
+    assert created["instrument_type"] == "STOCK"
+    assert created["metadata_source"] == "manual"
 
 
 def test_assets_include_builtin_savings_and_debt_without_manual_asset_creation(tmp_path):

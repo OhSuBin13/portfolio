@@ -9,6 +9,7 @@ from portfolio_app import repositories
 from portfolio_app.api import get_db, require_allowed, require_non_empty, row_to_dict
 
 ASSET_TYPES = {"cash", "savings", "stock_etf", "debt"}
+METADATA_SOURCES = {"manual", "toss"}
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
@@ -22,6 +23,9 @@ class AssetCreate(BaseModel):
     type: str
     currency: str
     market: str | None = None
+    is_listed: bool | None = None
+    instrument_type: str | None = None
+    metadata_source: str = "manual"
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,9 @@ class ValidatedAssetPayload:
     type: str
     currency: str
     market: str | None
+    is_listed: bool | None
+    instrument_type: str | None
+    metadata_source: str
 
 
 def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
@@ -40,12 +47,25 @@ def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
     currency = require_non_empty(payload.currency, "통화를 입력해 주세요.").upper()
     market_value = payload.market.strip().upper() if payload.market else ""
     market = market_value or None
+    metadata_source = require_allowed(
+        payload.metadata_source,
+        METADATA_SOURCES,
+        "지원하지 않는 메타데이터 출처입니다.",
+    )
+    instrument_type_value = payload.instrument_type.strip() if payload.instrument_type else ""
+    instrument_type = instrument_type_value.upper() if instrument_type_value else None
+    is_listed = payload.is_listed
 
     if asset_type == "stock_etf":
         market = require_non_empty(payload.market or "", "시장을 입력해 주세요.").upper()
+        if is_listed is None:
+            is_listed = True
     elif asset_type in {"cash", "savings", "debt"}:
         symbol = None
         market = None
+        is_listed = None
+        instrument_type = None
+        metadata_source = "manual"
 
     return ValidatedAssetPayload(
         symbol=symbol,
@@ -53,6 +73,9 @@ def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
         type=asset_type,
         currency=currency,
         market=market,
+        is_listed=is_listed,
+        instrument_type=instrument_type,
+        metadata_source=metadata_source,
     )
 
 
@@ -68,6 +91,9 @@ def create_asset_endpoint(payload: AssetCreate, db: Db) -> dict[str, object]:
             type=asset.type,
             currency=asset.currency,
             market=asset.market,
+            is_listed=asset.is_listed,
+            instrument_type=asset.instrument_type,
+            metadata_source=asset.metadata_source,
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(

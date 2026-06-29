@@ -97,6 +97,28 @@ def test_fetch_goals_returns_goals_ordered_by_id(tmp_path):
     assert [row["name"] for row in rows] == ["순자산 1억", "월 소득 100만"]
 
 
+def test_create_asset_record_persists_stock_metadata(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    row = repositories.create_asset_record(
+        db,
+        symbol="005930",
+        name="삼성전자",
+        type="stock_etf",
+        currency="KRW",
+        market="KR",
+        is_listed=True,
+        instrument_type="STOCK",
+        metadata_source="manual",
+    )
+
+    assert row["symbol"] == "005930"
+    assert row["is_listed"] == 1
+    assert row["instrument_type"] == "STOCK"
+    assert row["metadata_source"] == "manual"
+
+
 def test_update_account_repository_updates_existing_account(tmp_path):
     from portfolio_app import repositories
 

@@ -173,10 +173,27 @@ def create_asset(
     type: str,
     currency: str,
     market: str | None,
+    is_listed: bool | None = None,
+    instrument_type: str | None = None,
+    metadata_source: str = "manual",
 ) -> int:
     cursor = db.execute(
-        "insert into assets(symbol, name, type, currency, market) values (?, ?, ?, ?, ?)",
-        (symbol, name, type, currency, market),
+        """
+        insert into assets(
+          symbol, name, type, currency, market, is_listed, instrument_type, metadata_source
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            symbol,
+            name,
+            type,
+            currency,
+            market,
+            None if is_listed is None else int(is_listed),
+            instrument_type,
+            metadata_source,
+        ),
     )
     db.commit()
     return int(cursor.lastrowid)
@@ -198,6 +215,9 @@ def create_asset_record(
     type: str,
     currency: str,
     market: str | None,
+    is_listed: bool | None = None,
+    instrument_type: str | None = None,
+    metadata_source: str = "manual",
 ) -> sqlite3.Row:
     asset_id = create_asset(
         db,
@@ -206,6 +226,9 @@ def create_asset_record(
         type=type,
         currency=currency,
         market=market,
+        is_listed=is_listed,
+        instrument_type=instrument_type,
+        metadata_source=metadata_source,
     )
     row = fetch_asset(db, asset_id=asset_id)
     if row is None:
