@@ -10,8 +10,8 @@ Current product direction for the brokerage slice is Toss-only.
 `accounts`, `assets`, `holdings`, and `transactions` are no longer the source of
 truth for brokerage data. Toss `GET /api/v1/accounts` and `GET /api/v1/holdings`
 own the displayed account and stock/ETF holding state. SQLite remains for app
-settings, goals, backups, migration bookkeeping, and optional provider cache
-data only.
+settings, goals, backups, migration bookkeeping, FX cache data, and imported
+read-only Toss order history.
 
 Removed behavior:
 
@@ -31,11 +31,14 @@ ledger features.
 | --- | --- | --- |
 | Brokerage account list | `GET /api/v1/accounts` | `GET /api/toss/accounts` |
 | Brokerage holdings | `GET /api/v1/holdings` with `X-Tossinvest-Account` | `GET /api/toss/holdings?account_seq=...` |
+| Order-history import | `GET /api/v1/orders` with `X-Tossinvest-Account` | `POST /api/toss/order-imports` |
+| Imported order-history list | Local SQLite cache populated from `GET /api/v1/orders` | `GET /api/toss/orders?account_seq=...` |
+| Order detail parsing | `GET /api/v1/orders/{orderId}` with `X-Tossinvest-Account` | Backend provider/parser boundary |
 | USD/KRW valuation | `GET /api/v1/exchange-rate` | `GET /api/summary?account_seq=...` |
 | OAuth token | `POST /oauth2/token` | Backend-only provider boundary |
 
 All Toss credentials stay on the backend. The frontend only receives normalized
-account, holding, summary, goal, and backup response models.
+account, holding, order-history, summary, goal, and backup response models.
 
 ## 3. Local Persistence Boundary
 
@@ -46,11 +49,19 @@ SQLite tables that remain in the fresh schema:
 - `fx_rates`
 - `goals`
 - `backups`
+- `toss_order_import_runs`
+- `toss_orders`
 
 The app no longer creates source-of-truth local tables for Toss brokerage
 accounts, assets, holdings, transactions, market price snapshots, or growth
 snapshots. Migration v10 drops the old local ledger tables and preserves
-survivor data such as goals, backups, settings, and FX rates.
+survivor data such as goals, backups, settings, and FX rates. Migration v11 adds
+the Toss order-history import cache tables.
+
+Imported Toss order history is read-only historical data. It does not mutate
+holdings, replace the removed `/api/transactions` command path, drive current
+holdings valuation, or create growth snapshots. Current holdings and valuation
+still come from live Toss holdings plus Toss USD/KRW FX data.
 
 ## 4. Summary Behavior
 
@@ -74,6 +85,13 @@ The dashboard and holdings page load Toss accounts first, keep a selected
 `account_seq`, and request account-scoped holdings or summary data. The holdings
 page is read-only.
 
+The order-history page loads imported orders from the local read-only cache and
+can start an order-history import for the selected Toss account. OPEN order
+imports are supported through the Toss order list API. CLOSED imports can fail
+while the Toss OpenAPI reports `closed-not-supported`; the app records the failed
+import run and surfaces the provider failure instead of assuming closed history
+is available.
+
 The app no longer mounts transaction entry, growth history, local market-sync
 status, local account creation, local asset creation, or initial balance setup
 views.
@@ -94,8 +112,7 @@ Toss rate limits are enforced per client and API group. The backend reduces
 burst traffic in three places:
 
 - a single app-scoped `TossAuthClient` reuses the OAuth access token across
-  account, holding, summary, and FX API calls;
-- market-data sync also shares one Toss auth client within each sync pass;
+  account, holding, order-history, summary, and FX API calls;
 - `/api/toss/accounts` uses a short in-memory TTL cache so repeated dashboard
   and holdings page loads do not hit the `ACCOUNT` group every time;
 - Toss providers retry one `429` response after the provider's `Retry-After`
@@ -114,7 +131,8 @@ or service-level `ValueError`s in tests.
 These areas are outside the current Toss-only brokerage slice:
 
 - Toss order placement.
-- Toss order-history import.
+- Confirmed CLOSED order-history availability if Toss enables it beyond the
+  current `closed-not-supported` behavior.
 - Cash, savings, debt, and non-stock products.
 - Local manual onboarding or adjustment flows.
 - A new growth-history model based on a future durable snapshot source.
