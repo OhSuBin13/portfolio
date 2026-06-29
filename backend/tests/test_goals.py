@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from portfolio_app.config import Settings
 from portfolio_app.main import create_app
 from portfolio_app.models import Goal, GoalProgress, PortfolioSummary
 from portfolio_app.services.summary import SummaryResult
+from portfolio_app.services.toss_portfolio import TossSummaryResult
 
 
 def create_test_client(tmp_path):
@@ -36,9 +38,7 @@ def test_goal_endpoints_document_typed_response_models(tmp_path):
     assert schema["paths"]["/api/goals"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]["items"] == {"$ref": "#/components/schemas/Goal"}
-    assert schema["paths"]["/api/goals/progress"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["items"] == {"$ref": "#/components/schemas/GoalProgress"}
+    assert "/api/goals/progress" not in schema["paths"]
     assert {"id", "name", "type", "target_amount_krw"} <= set(goal_schema["properties"])
     assert goal_create_schema["properties"]["type"]["enum"] == goal_schema["properties"][
         "type"
@@ -114,6 +114,8 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
     from portfolio_app.api import summary as summary_api
 
     db = object()
+    settings = SimpleNamespace(toss_api_key="toss-client", toss_secret_key="toss-secret")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
     portfolio_summary = PortfolioSummary(
         net_worth_krw=1_000_000,
         gross_assets_krw=1_000_000,
@@ -135,9 +137,20 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
     ]
     calls = []
 
-    def fake_build_summary(received_db):
-        assert received_db is db
-        return SummaryResult(
+    class FakeTossBrokerageProvider:
+        def __init__(self, client_id, client_secret):
+            assert client_id == "toss-client"
+            assert client_secret == "toss-secret"
+
+    def fake_default_fx_rate_provider(received_settings):
+        assert received_settings is settings
+        return object()
+
+    async def fake_fetch_toss_summary(account_seq, provider, fx_provider=None):
+        assert account_seq == "acct-1"
+        assert isinstance(provider, FakeTossBrokerageProvider)
+        assert fx_provider is not None
+        return TossSummaryResult(
             summary=portfolio_summary,
             asset_mix={},
             asset_allocations=[],
@@ -147,14 +160,16 @@ async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(
         calls.append((received_db, received_summary))
         return progress
 
-    monkeypatch.setattr(summary_api, "build_summary", fake_build_summary)
+    monkeypatch.setattr(summary_api, "TossBrokerageProvider", FakeTossBrokerageProvider)
+    monkeypatch.setattr(summary_api, "default_fx_rate_provider", fake_default_fx_rate_provider)
+    monkeypatch.setattr(summary_api, "fetch_toss_summary", fake_fetch_toss_summary)
     monkeypatch.setattr(
         summary_api.goal_service,
         "list_goal_progress_for_summary",
         fake_list_goal_progress_for_summary,
     )
 
-    response = await summary_api.get_summary(object(), db, refresh=False)
+    response = await summary_api.get_summary(request, db, account_seq="acct-1")
 
     assert response.goal_progress == progress
     assert calls == [(db, portfolio_summary)]

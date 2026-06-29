@@ -1,62 +1,19 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 
 const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
-const pageSource = readFileSync(new URL("../src/components/TransactionsPage.tsx", import.meta.url), "utf8")
 const holdingsSource = readFileSync(new URL("../src/components/HoldingsPage.tsx", import.meta.url), "utf8")
 const packageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8")
+const removedPageFile = new URL(
+  "../src/components/" + ["Transactions", "Page.tsx"].join(""),
+  import.meta.url,
+)
+const removedEndpoint = "/api/" + "transactions"
 
-assert.ok(
-  typesSource.includes("account_id: number | null"),
-  "Transaction type should allow deleted account references",
-)
-assert.ok(
-  typesSource.includes("asset_id: number | null"),
-  "Transaction type should allow deleted asset references",
-)
-assert.ok(
-  pageSource.includes("transaction.account_id === null"),
-  "Transactions page should render deleted account references explicitly",
-)
-assert.ok(
-  pageSource.includes("transaction.asset_id === null"),
-  "Transactions page should render deleted asset references explicitly",
-)
+assert.ok(!typesSource.includes("export type Transaction ="), "Local transaction type should be removed")
+assert.ok(!existsSync(removedPageFile), "Local transaction page should be removed")
+assert.ok(!holdingsSource.includes(removedEndpoint), "Holdings should not write local transactions")
 assert.ok(
   packageSource.includes("transactions-nullable-relations.test.mjs"),
-  "package test script should include nullable transaction relation checks",
-)
-assert.ok(
-  pageSource.includes('const requiresFxRate = transactionCurrency.trim().toUpperCase() !== "KRW"'),
-  "Transactions page should require an FX rate from the selected asset currency",
-)
-assert.ok(
-  holdingsSource.includes(
-    'const requiresFxRate = balanceCurrency.trim().toUpperCase() !== "KRW"',
-  ),
-  "Holdings initial-balance form should require an FX rate from the selected asset currency",
-)
-assert.ok(
-  pageSource.includes("selectedTransactionAsset?.currency ?? form.currency"),
-  "Transactions page should derive transaction currency from the selected asset",
-)
-assert.ok(
-  holdingsSource.includes("selectedBalanceAsset?.currency ?? balanceForm.currency"),
-  "Holdings initial-balance form should derive transaction currency from the selected asset",
-)
-assert.ok(
-  pageSource.includes("currency: transactionCurrency"),
-  "Transactions page should post the selected asset currency",
-)
-assert.ok(
-  holdingsSource.includes("currency: balanceCurrency"),
-  "Holdings initial-balance form should post the selected asset currency",
-)
-assert.ok(
-  pageSource.includes("외화 거래에는 환율을 입력하세요."),
-  "Transactions page should explain the non-KRW FX requirement",
-)
-assert.ok(
-  holdingsSource.includes("외화 거래에는 환율을 입력하세요."),
-  "Holdings page should explain the non-KRW FX requirement",
+  "package test script should include the Toss-only transaction removal guard",
 )

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 AssetType = Literal["cash", "savings", "stock_etf", "debt"]
 Currency = Literal["USD", "KRW"]
+TossMarket = Literal["KR", "US"]
 TransactionType = Literal[
     "deposit",
     "withdrawal",
@@ -87,6 +88,20 @@ class AssetAllocation(BaseModel):
     percent: float = Field(ge=0, le=100, allow_inf_nan=False)
 
 
+class TossAssetAllocation(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    asset_key: str
+    asset_type: Literal["stock_etf"]
+    symbol: str
+    name: str
+    label: str
+    market: TossMarket
+    currency: Currency
+    value_krw: float = Field(ge=0, allow_inf_nan=False)
+    percent: float = Field(ge=0, le=100, allow_inf_nan=False)
+
+
 class TransactionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -123,7 +138,7 @@ class GoalProgress(BaseModel):
 
 class SummaryResponse(PortfolioSummary):
     asset_mix: dict[str, float]
-    asset_allocations: list[AssetAllocation]
+    asset_allocations: list[TossAssetAllocation]
     goal_progress: list[GoalProgress]
 
 

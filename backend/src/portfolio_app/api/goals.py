@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from portfolio_app.api import get_db
-from portfolio_app.models import Goal, GoalProgress, GoalType
+from portfolio_app.models import Goal, GoalType
 from portfolio_app.services import goals as goal_service
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
@@ -54,14 +54,3 @@ def create_goal_endpoint(payload: GoalCreate, db: Db) -> Goal:
 @router.get("", response_model=list[Goal])
 def list_goals(db: Db) -> list[Goal]:
     return goal_service.list_goals(db)
-
-
-@router.get("/progress", response_model=list[GoalProgress])
-def list_goal_progress(db: Db) -> list[GoalProgress]:
-    try:
-        return goal_service.list_goal_progress(db)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc

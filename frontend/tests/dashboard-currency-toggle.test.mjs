@@ -2,8 +2,10 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/Dashboard.tsx", import.meta.url), "utf8")
+const goalsSource = readFileSync(new URL("../src/components/GoalsPage.tsx", import.meta.url), "utf8")
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
 const types = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
+const removedGoalProgressPath = "/api/goals/" + "progress"
 
 assert.match(types, /usd_krw_rate:\s*number\s*\|\s*null/, "PortfolioSummary should expose the USD/KRW display rate")
 assert.match(
@@ -17,6 +19,12 @@ assert.match(
   /asset_allocations:\s*AssetAllocation\[\]/,
   "PortfolioSummary should expose asset allocation rows",
 )
+assert.match(types, /export type TossAccount/, "Dashboard should type Toss brokerage accounts")
+assert.match(types, /account_seq:\s*string/, "Toss accounts should expose account_seq")
+assert.match(types, /asset_key:\s*string/, "Asset allocations should use Toss asset keys")
+assert.match(types, /market:\s*"KR"\s*\|\s*"US"/, "Asset allocations should expose Toss market")
+assert.match(types, /currency:\s*"KRW"\s*\|\s*"USD"/, "Asset allocations should expose Toss currency")
+assert.match(types, /symbol:\s*string/, "Asset allocation symbols should be required strings")
 assert.match(
   types,
   /goal_progress:\s*GoalProgress\[\]/,
@@ -31,6 +39,13 @@ assert.ok(
 assert.ok(source.includes('aria-label="표시 통화 선택"'), "Dashboard should expose an accessible currency toggle")
 assert.ok(source.includes('aria-pressed={displayCurrency === currency}'), "Currency buttons should expose pressed state")
 assert.ok(source.includes("summary.usd_krw_rate"), "Dashboard should use the summary USD/KRW rate")
+assert.ok(source.includes("/api/toss/accounts"), "Dashboard should load Toss brokerage accounts first")
+assert.ok(
+  source.includes("/api/summary?account_seq="),
+  "Dashboard should fetch summary for the selected Toss account",
+)
+assert.ok(source.includes("encodeURIComponent(selectedAccountSeq)"), "Dashboard should encode account_seq")
+assert.ok(source.includes("계좌가 없어 요약을 불러오지 않았습니다."), "Dashboard should show an empty account state")
 assert.ok(!source.includes("summary.usd_krw_change_percent"), "Dashboard should not render USD/KRW daily movement")
 assert.ok(!source.includes("전일대비"), "Dashboard should hide daily FX movement")
 assert.doesNotMatch(source, /import \{ ArrowDown, ArrowUp \} from "lucide-react"/, "Dashboard should not import FX arrows")
@@ -43,18 +58,21 @@ assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should n
 assert.ok(source.includes("getAllocationSegments"), "Dashboard should derive allocation segments from asset mix")
 assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
 assert.ok(source.includes("주식/ETF"), "Dashboard should label the stock/ETF allocation")
-assert.ok(source.includes("현금"), "Dashboard should label the cash allocation")
-assert.ok(source.includes("기타"), "Dashboard should preserve remaining allocation as other")
 assert.ok(source.includes("allocationSegments"), "Dashboard should render allocation segments")
 assert.ok(source.includes("summary.asset_allocations"), "Dashboard should use per-asset allocation rows")
 assert.ok(source.includes("summary.goal_progress"), "Dashboard should use goal progress from the summary response")
-assert.ok(!source.includes('"/api/goals/progress"'), "Dashboard should not fetch goal progress separately")
+assert.ok(!source.includes(removedGoalProgressPath), "Dashboard should not fetch goal progress separately")
+assert.ok(!goalsSource.includes(removedGoalProgressPath), "Goals page should not fetch local goal progress")
+assert.ok(goalsSource.includes('apiGet<Goal[]>("/api/goals")'), "Goals page should list goals directly")
+assert.ok(goalsSource.includes("useState<Goal[]>([])"), "Goals page should store goal rows, not progress rows")
+assert.ok(!goalsSource.includes("current_amount_krw"), "Goals page should not render current progress amount")
+assert.ok(!goalsSource.includes("remaining_krw"), "Goals page should not render remaining progress amount")
 assert.ok(
-  source.includes('allocation.asset_type === "stock_etf"'),
-  "Dashboard should split stock/ETF allocations by holding ticker",
+  source.includes("key: allocation.asset_key"),
+  "Dashboard should key allocation segments by Toss asset_key",
 )
 assert.ok(
-  source.includes("allocation.symbol ?? allocation.name"),
+  source.includes("allocation.symbol || allocation.name"),
   "Dashboard should prefer ticker labels for stock/ETF allocation segments",
 )
 assert.ok(source.includes("getPieSlicePath"), "Dashboard should render pie slices as SVG paths")

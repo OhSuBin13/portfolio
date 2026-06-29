@@ -6,24 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from portfolio_app.api import (
-    accounts,
-    assets,
     backups,
     goals,
-    growth,
-    market_data,
     summary,
-    transactions,
+    toss_portfolio,
 )
 from portfolio_app.config import Settings, get_settings
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 from portfolio_app.services.backup_scheduler import start_backup_task, stop_backup_task
 from portfolio_app.services.backups import create_startup_backup_if_needed
-from portfolio_app.services.market_sync_scheduler import (
-    start_market_sync_task,
-    stop_market_sync_task,
-)
 
 LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
@@ -44,13 +36,11 @@ def _validation_error_message(error: dict[str, object]) -> str:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    market_sync_task = start_market_sync_task(app)
     backup_task = start_backup_task(app)
     try:
         yield
     finally:
         await stop_backup_task(backup_task)
-        await stop_market_sync_task(market_sync_task)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -100,12 +90,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(summary.router)
-    app.include_router(accounts.router)
-    app.include_router(assets.router)
-    app.include_router(transactions.router)
+    app.include_router(toss_portfolio.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
-    app.include_router(growth.router)
-    app.include_router(market_data.router)
 
     return app

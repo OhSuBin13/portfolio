@@ -1,18 +1,15 @@
 import math
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
 
-from portfolio_app.models import Currency, PortfolioSummary
+from portfolio_app.models import Currency, PortfolioSummary, TossAssetAllocation, TossMarket
 from portfolio_app.services.market_data import (
     FxRateProvider,
     TossAuthClient,
     default_fx_rate_provider,
 )
-
-TossMarket = Literal["KR", "US"]
 
 
 @dataclass(frozen=True)
@@ -40,20 +37,6 @@ class TossSummaryResult:
     summary: PortfolioSummary
     asset_mix: dict[str, float]
     asset_allocations: list[dict[str, Any]]
-
-
-class TossAssetAllocation(BaseModel):
-    model_config = ConfigDict(strict=True)
-
-    asset_key: str
-    asset_type: Literal["stock_etf"]
-    symbol: str
-    name: str
-    label: str
-    market: TossMarket
-    currency: Currency
-    value_krw: float = Field(ge=0, allow_inf_nan=False)
-    percent: float = Field(ge=0, le=100, allow_inf_nan=False)
 
 
 class TossHoldingProvider(Protocol):
@@ -161,7 +144,7 @@ def build_toss_summary(
         allocation_values.append((holding, value_krw))
 
     total_krw = sum(value_krw for _, value_krw in allocation_values)
-    asset_mix = {"stock_etf": 100} if total_krw > 0 else {}
+    asset_mix = {"stock_etf": 100.0} if total_krw > 0 else {}
     asset_allocations = [
         TossAssetAllocation(
             asset_key=f"{holding.market}:{holding.symbol}",

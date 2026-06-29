@@ -1,9 +1,11 @@
 export type AssetAllocation = {
-  asset_id: number
-  asset_type: string
-  symbol: string | null
+  asset_key: string
+  asset_type: "stock_etf"
+  symbol: string
   name: string
   label: string
+  market: "KR" | "US"
+  currency: "KRW" | "USD"
   value_krw: number
   percent: number
 }
@@ -20,72 +22,22 @@ export type PortfolioSummary = {
   goal_progress: GoalProgress[]
 }
 
-export type PortfolioSnapshot = {
-  id: number
-  snapshot_date: string
-  net_worth_krw: number
-  gross_assets_krw: number
-  debt_krw: number
-  monthly_income_krw: number
-  asset_mix: Record<string, number>
-  source: "scheduled" | "manual" | "market_sync" | "import"
-  created_at: string
-  updated_at: string
+export type TossAccount = {
+  account_seq: string
+  account_no: string
+  account_type: string
+  display_name: string
 }
 
-export type GrowthHistoryRow = {
-  period: string
-  start_date: string
-  end_date: string
-  starting_net_worth_krw: number
-  ending_net_worth_krw: number
-  external_cash_flow_krw: number
-  dividend_interest_krw: number
-  profit_krw: number
-  growth_rate: number | null
-  cumulative_profit_krw: number
-  cumulative_growth_rate: number | null
-}
-
-export type Account = {
-  id: number
-  name: string
-  type: string
-}
-
-export type Asset = {
-  id: number
-  symbol: string | null
-  name: string
-  type: string
-  currency: string
-  market: string | null
-  is_listed: number | null
-  instrument_type: string | null
-  metadata_source: "manual" | "toss"
-}
-
-export type StockMetadata = {
+export type TossHolding = {
   symbol: string
   name: string
-  market: "US" | "KR"
-  currency: "USD" | "KRW"
-  is_listed: boolean
-  instrument_type: string | null
-  metadata_source: "toss"
-}
-
-export type Transaction = {
-  id: number
-  occurred_on: string
-  type: string
-  account_id: number | null
-  asset_id: number | null
-  quantity: number | null
-  amount: number
-  currency: string
-  fx_rate_to_krw: number | null
-  memo: string
+  market: "KR" | "US"
+  currency: "KRW" | "USD"
+  quantity: number
+  average_purchase_price: number
+  last_price: number | null
+  market_value: number
 }
 
 export type Goal = {
@@ -106,15 +58,4 @@ export type BackupRecord = {
   path: string
   reason: string
   created_at: string
-}
-
-export type MarketSnapshotStatus = "ok" | "stale" | "failed" | "manual"
-
-export type MarketDataStatus = {
-  asset_id: number
-  source: string
-  price_krw: number | null
-  status: MarketSnapshotStatus
-  error_message: string | null
-  fetched_at: string | null
 }

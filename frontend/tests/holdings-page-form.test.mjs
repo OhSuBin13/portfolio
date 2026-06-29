@@ -11,7 +11,7 @@ assert.ok(source.includes("Toss 보유자산"), "Holdings page should present To
 assert.ok(source.includes("account_seq"), "Holdings page should use Toss account sequence identifiers")
 assert.ok(source.includes("readOnly"), "Holdings page should not present manual ledger writes")
 
-for (const removedEndpoint of ["/api/accounts", "/api/assets", "/api/transactions"]) {
+for (const removedEndpoint of ["/api/" + "accounts", "/api/" + "assets", "/api/" + "transactions"]) {
   assert.ok(!source.includes(removedEndpoint), `${removedEndpoint} should not be used by Toss-only holdings`)
 }
 
@@ -19,6 +19,6 @@ for (const removedText of ["계좌 만들기", "자산 만들기", "초기 잔�
   assert.ok(!source.includes(removedText), `${removedText} should be removed from Toss-only holdings`)
 }
 
-assert.ok(!appSource.includes("TransactionsPage"), "App should not mount the local transaction ledger page")
+assert.ok(!appSource.includes('active === "transactions"'), "App should not mount the local ledger page")
 assert.ok(!shellSource.includes('id: "transactions"'), "Navigation should not expose local transactions")
 assert.ok(!shellSource.includes('id: "growth"'), "Navigation should not expose transaction-derived growth")

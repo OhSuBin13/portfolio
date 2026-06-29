@@ -1,39 +1,45 @@
 import sqlite3
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from portfolio_app.api import get_db
+from portfolio_app.api.toss_portfolio import normalize_account_seq, toss_http_error_detail
 from portfolio_app.models import SummaryResponse
 from portfolio_app.services import goals as goal_service
-from portfolio_app.services.fx_rates import FX_REFRESH_TTL_SECONDS, refresh_fx_rate_if_stale
 from portfolio_app.services.market_data import default_fx_rate_provider
-from portfolio_app.services.summary import build_summary
+from portfolio_app.services.toss_portfolio import TossBrokerageProvider, fetch_toss_summary
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
+AccountSeq = Annotated[str, Query(min_length=1)]
 
 
 @router.get("", response_model=SummaryResponse)
 async def get_summary(
     request: Request,
     db: Db,
-    refresh: bool = True,
-    fx_ttl_seconds: int = Query(default=FX_REFRESH_TTL_SECONDS, ge=0, le=86_400),
+    account_seq: AccountSeq,
 ) -> SummaryResponse:
-    if refresh:
-        await refresh_fx_rate_if_stale(
-            db,
-            ttl_seconds=fx_ttl_seconds,
-            provider=default_fx_rate_provider(request.app.state.settings),
-        )
-
+    normalized_account_seq = normalize_account_seq(account_seq)
+    settings = request.app.state.settings
+    provider = TossBrokerageProvider(settings.toss_api_key, settings.toss_secret_key)
     try:
-        result = build_summary(db)
+        result = await fetch_toss_summary(
+            normalized_account_seq,
+            provider,
+            fx_provider=default_fx_rate_provider(settings),
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=toss_http_error_detail(exc),
         ) from exc
 
     return SummaryResponse(

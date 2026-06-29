@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
-import type { GoalProgress } from "../types"
+import type { Goal } from "../types"
 
 const goalTypes = [
   ["net_worth", "순자산"],
@@ -23,21 +23,21 @@ export function GoalsPage() {
     type: "net_worth",
     targetAmountKrw: "",
   })
-  const [progress, setProgress] = useState<GoalProgress[]>([])
+  const [goals, setGoals] = useState<Goal[]>([])
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
 
-  const refreshProgress = async () => {
-    const data = await apiGet<GoalProgress[]>("/api/goals/progress")
-    setProgress(data)
+  const refreshGoals = async () => {
+    const data = await apiGet<Goal[]>("/api/goals")
+    setGoals(data)
   }
 
   useEffect(() => {
     let ignore = false
-    apiGet<GoalProgress[]>("/api/goals/progress")
+    apiGet<Goal[]>("/api/goals")
       .then((data) => {
         if (!ignore) {
-          setProgress(data)
+          setGoals(data)
           setError("")
         }
       })
@@ -74,7 +74,7 @@ export function GoalsPage() {
         type: form.type,
         target_amount_krw: targetAmountKrw,
       })
-      await refreshProgress()
+      await refreshGoals()
       setForm((prev) => ({ ...prev, name: "", targetAmountKrw: "" }))
       setMessage("목표를 저장했습니다.")
     } catch (err) {
@@ -136,32 +136,24 @@ export function GoalsPage() {
       <section className="panel">
         <div className="section-heading">
           <h3>목표 현황</h3>
-          <span>{progress.length.toLocaleString("ko-KR")}개 목표</span>
+          <span>{goals.length.toLocaleString("ko-KR")}개 목표</span>
         </div>
-        {progress.length > 0 ? (
+        {goals.length > 0 ? (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>목표</th>
                   <th>유형</th>
-                  <th className="numeric-cell">현재</th>
-                  <th className="numeric-cell">목표</th>
-                  <th className="numeric-cell">진행률</th>
-                  <th className="numeric-cell">남은 금액</th>
+                  <th className="numeric-cell">목표 금액</th>
                 </tr>
               </thead>
               <tbody>
-                {progress.map((row) => (
-                  <tr key={row.goal.id}>
-                    <td>{row.goal.name}</td>
-                    <td>{goalTypeLabel(row.goal.type)}</td>
-                    <td className="numeric-cell">{formatKrw(row.current_amount_krw)}</td>
-                    <td className="numeric-cell">{formatKrw(row.goal.target_amount_krw)}</td>
-                    <td className="numeric-cell">
-                      {row.percent.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} %
-                    </td>
-                    <td className="numeric-cell">{formatKrw(row.remaining_krw)}</td>
+                {goals.map((goal) => (
+                  <tr key={goal.id}>
+                    <td>{goal.name}</td>
+                    <td>{goalTypeLabel(goal.type)}</td>
+                    <td className="numeric-cell">{formatKrw(goal.target_amount_krw)}</td>
                   </tr>
                 ))}
               </tbody>

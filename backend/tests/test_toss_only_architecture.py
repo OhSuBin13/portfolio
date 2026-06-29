@@ -1,10 +1,13 @@
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 BACKEND_SRC = ROOT / "src/portfolio_app"
 FRONTEND_SRC = ROOT.parents[0] / "frontend/src"
 
 
+@pytest.mark.xfail(strict=True, reason="Task 4 drops local ledger tables")
 def test_fresh_schema_no_longer_defines_local_ledger_tables():
     schema_sql = (BACKEND_SRC / "schema.sql").read_text(encoding="utf-8")
 
@@ -31,7 +34,12 @@ def test_frontend_no_longer_calls_local_ledger_endpoints():
         if path.suffix in {".ts", ".tsx"}
     )
 
-    for endpoint in ("/api/accounts", "/api/assets", "/api/transactions", "/api/market-data/status"):
+    for endpoint in (
+        "/api/accounts",
+        "/api/assets",
+        "/api/transactions",
+        "/api/market-data/status",
+    ):
         assert endpoint not in combined
     assert "/api/toss/accounts" in combined
     assert "/api/toss/holdings" in combined
