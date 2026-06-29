@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,8 @@ def create_test_client(tmp_path):
         data_dir=tmp_path,
         database_path=tmp_path / "portfolio.sqlite",
         backup_dir=tmp_path / "backups",
+        toss_api_key="",
+        toss_secret_key="",
     )
     app = create_app(settings=settings)
     return TestClient(app)
@@ -602,6 +605,138 @@ def test_can_create_stock_asset_with_manual_metadata(tmp_path):
     assert created["is_listed"] == 1
     assert created["instrument_type"] == "STOCK"
     assert created["metadata_source"] == "manual"
+
+
+def test_stock_metadata_lookup_endpoint_is_documented(tmp_path):
+    client = create_test_client(tmp_path)
+
+    schema = client.get("/openapi.json").json()
+
+    assert "/api/assets/stock-metadata" in schema["paths"]
+    response_schema = schema["paths"]["/api/assets/stock-metadata"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    assert response_schema == {"$ref": "#/components/schemas/StockMetadataResponse"}
+
+
+def test_stock_metadata_lookup_endpoint_returns_provider_metadata(tmp_path, monkeypatch):
+    from portfolio_app.api import assets
+    from portfolio_app.services.stock_metadata import StockMetadata
+
+    class StubProvider:
+        def __init__(self, client_id, client_secret):
+            assert client_id == ""
+            assert client_secret == ""
+
+        async def fetch_stock_metadata(self, symbol):
+            assert symbol == "005930"
+            return StockMetadata(
+                symbol="005930",
+                name="삼성전자",
+                market="KR",
+                currency="KRW",
+                is_listed=True,
+                instrument_type="STOCK",
+            )
+
+    monkeypatch.setattr(assets, "TossStockMetadataProvider", StubProvider)
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets/stock-metadata?symbol=005930")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "symbol": "005930",
+        "name": "삼성전자",
+        "market": "KR",
+        "currency": "KRW",
+        "is_listed": True,
+        "instrument_type": "STOCK",
+        "metadata_source": "toss",
+    }
+
+
+def test_stock_metadata_lookup_endpoint_rejects_blank_symbol(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets/stock-metadata?symbol=%20%20")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "종목 심볼을 입력해 주세요."
+
+
+def test_stock_metadata_lookup_endpoint_maps_provider_value_error(tmp_path, monkeypatch):
+    from portfolio_app.api import assets
+
+    class StubProvider:
+        def __init__(self, client_id, client_secret):
+            pass
+
+        async def fetch_stock_metadata(self, symbol):
+            raise ValueError("Toss 응답 시장은 지원하지 않는 값입니다.")
+
+    monkeypatch.setattr(assets, "TossStockMetadataProvider", StubProvider)
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets/stock-metadata?symbol=005930")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Toss 응답 시장은 지원하지 않는 값입니다."
+
+
+def test_stock_metadata_lookup_endpoint_maps_provider_http_error(tmp_path, monkeypatch):
+    from portfolio_app.api import assets
+
+    class StubProvider:
+        def __init__(self, client_id, client_secret):
+            pass
+
+        async def fetch_stock_metadata(self, symbol):
+            request = httpx.Request(
+                "GET",
+                "https://openapi.tossinvest.com/api/v1/stocks?symbols=005930",
+            )
+            response = httpx.Response(
+                status_code=503,
+                content=b'{"access_token":"raw-secret","message":"provider down"}',
+                request=request,
+            )
+            raise httpx.HTTPStatusError(
+                "upstream failed with raw-secret",
+                request=request,
+                response=response,
+            )
+
+    monkeypatch.setattr(assets, "TossStockMetadataProvider", StubProvider)
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets/stock-metadata?symbol=005930")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "종목 메타데이터 제공자 요청 실패: HTTP 503 Service Unavailable"
+    )
+    assert "raw-secret" not in str(response.json())
+
+
+def test_stock_metadata_lookup_endpoint_maps_provider_network_error(tmp_path, monkeypatch):
+    from portfolio_app.api import assets
+
+    class StubProvider:
+        def __init__(self, client_id, client_secret):
+            pass
+
+        async def fetch_stock_metadata(self, symbol):
+            raise httpx.ConnectError("connection failed raw-secret")
+
+    monkeypatch.setattr(assets, "TossStockMetadataProvider", StubProvider)
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/assets/stock-metadata?symbol=005930")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "종목 메타데이터 제공자 요청 실패: ConnectError"
+    assert "raw-secret" not in str(response.json())
 
 
 def test_assets_include_builtin_savings_and_debt_without_manual_asset_creation(tmp_path):

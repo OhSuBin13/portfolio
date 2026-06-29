@@ -2,11 +2,16 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from portfolio_app import repositories
 from portfolio_app.api import get_db, require_allowed, require_non_empty, row_to_dict
+from portfolio_app.services.stock_metadata import (
+    TossStockMetadataProvider,
+    safe_stock_metadata_error_message,
+)
 
 ASSET_TYPES = {"cash", "savings", "stock_etf", "debt"}
 METADATA_SOURCES = {"manual", "toss"}
@@ -26,6 +31,16 @@ class AssetCreate(BaseModel):
     is_listed: bool | None = None
     instrument_type: str | None = None
     metadata_source: str = "manual"
+
+
+class StockMetadataResponse(BaseModel):
+    symbol: str
+    name: str
+    market: str
+    currency: str
+    is_listed: bool
+    instrument_type: str | None
+    metadata_source: str
 
 
 @dataclass(frozen=True)
@@ -76,6 +91,46 @@ def validate_asset_payload(payload: AssetCreate) -> ValidatedAssetPayload:
         is_listed=is_listed,
         instrument_type=instrument_type,
         metadata_source=metadata_source,
+    )
+
+
+@router.get("/stock-metadata", response_model=StockMetadataResponse)
+async def lookup_stock_metadata(symbol: str, request: Request) -> StockMetadataResponse:
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="종목 심볼을 입력해 주세요.",
+        )
+
+    settings = request.app.state.settings
+    provider = TossStockMetadataProvider(settings.toss_api_key, settings.toss_secret_key)
+    try:
+        metadata = await provider.fetch_stock_metadata(normalized_symbol)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=safe_stock_metadata_error_message(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=safe_stock_metadata_error_message(exc),
+        ) from exc
+
+    return StockMetadataResponse(
+        symbol=metadata.symbol,
+        name=metadata.name,
+        market=metadata.market,
+        currency=metadata.currency,
+        is_listed=metadata.is_listed,
+        instrument_type=metadata.instrument_type,
+        metadata_source=metadata.metadata_source,
     )
 
 
