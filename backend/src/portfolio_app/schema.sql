@@ -38,3 +38,55 @@ create table if not exists settings (
   value text not null,
   updated_at text not null default current_timestamp
 );
+
+create table if not exists toss_order_import_runs (
+  id integer primary key,
+  account_seq text not null,
+  status_filter text not null check (status_filter in ('OPEN','CLOSED')),
+  symbol_filter text,
+  from_date text,
+  to_date text,
+  run_status text not null check (run_status in ('running','success','failed')),
+  imported_count integer not null default 0 check (imported_count >= 0),
+  error_message text not null default '',
+  started_at text not null default current_timestamp,
+  completed_at text
+);
+
+create table if not exists toss_orders (
+  id integer primary key,
+  account_seq text not null,
+  order_id text not null,
+  symbol text not null,
+  side text not null,
+  order_type text not null,
+  time_in_force text not null,
+  order_status text not null,
+  price text,
+  quantity text not null,
+  order_amount text,
+  currency text not null,
+  ordered_at text not null,
+  canceled_at text,
+  filled_quantity text not null,
+  average_filled_price text,
+  filled_amount text,
+  commission text,
+  tax text,
+  filled_at text,
+  settlement_date text,
+  raw_json text not null,
+  import_run_id integer references toss_order_import_runs(id) on delete set null,
+  imported_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  unique(account_seq, order_id)
+);
+
+create index if not exists idx_toss_orders_account_ordered_at
+on toss_orders(account_seq, ordered_at desc, id desc);
+
+create index if not exists idx_toss_orders_account_status
+on toss_orders(account_seq, order_status, ordered_at desc, id desc);
+
+create index if not exists idx_toss_orders_account_symbol
+on toss_orders(account_seq, symbol, ordered_at desc, id desc);

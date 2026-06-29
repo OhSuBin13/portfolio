@@ -12,8 +12,18 @@ TOSS_ONLY_TABLES = {
     "goals",
     "backups",
     "settings",
+    "toss_order_import_runs",
+    "toss_orders",
 }
-TOSS_ONLY_INDEXES = {"idx_fx_rates_summary_pair_latest"}
+TOSS_ORDER_INDEXES = {
+    "idx_toss_orders_account_ordered_at",
+    "idx_toss_orders_account_status",
+    "idx_toss_orders_account_symbol",
+}
+TOSS_ONLY_INDEXES = {
+    "idx_fx_rates_summary_pair_latest",
+    *TOSS_ORDER_INDEXES,
+}
 REMOVED_LOCAL_LEDGER_TABLES = {
     "accounts",
     "assets",
@@ -257,13 +267,258 @@ def create_legacy_import_tables(db: sqlite3.Connection) -> None:
     )
 
 
+def insert_valid_toss_order_import_run(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str = "account-1",
+    status_filter: str = "CLOSED",
+    run_status: str = "success",
+    imported_count: int = 1,
+) -> int:
+    return insert_toss_order_import_run(
+        db,
+        toss_order_import_run_values(
+            account_seq=account_seq,
+            status_filter=status_filter,
+            run_status=run_status,
+            imported_count=imported_count,
+        ),
+    )
+
+
+def toss_order_import_run_values(
+    *,
+    account_seq: str = "account-1",
+    status_filter: str = "CLOSED",
+    run_status: str = "success",
+    imported_count: int = 1,
+) -> dict[str, object]:
+    return {
+        "account_seq": account_seq,
+        "status_filter": status_filter,
+        "run_status": run_status,
+        "imported_count": imported_count,
+    }
+
+
+def insert_toss_order_import_run(db: sqlite3.Connection, values: dict[str, object]) -> int:
+    cursor = db.execute(
+        """
+        insert into toss_order_import_runs(
+          account_seq, status_filter, run_status, imported_count
+        )
+        values (:account_seq, :status_filter, :run_status, :imported_count)
+        """,
+        values,
+    )
+    return cursor.lastrowid
+
+
+def toss_order_values(
+    *,
+    order_id: str = "order-1",
+    account_seq: str = "account-1",
+    import_run_id: int | None = None,
+) -> dict[str, object]:
+    return {
+        "account_seq": account_seq,
+        "order_id": order_id,
+        "symbol": "VOO",
+        "side": "BUY",
+        "order_type": "LIMIT",
+        "time_in_force": "DAY",
+        "order_status": "FILLED",
+        "price": None,
+        "quantity": "2",
+        "order_amount": None,
+        "currency": "USD",
+        "ordered_at": "2026-06-29T09:00:00+09:00",
+        "canceled_at": None,
+        "filled_quantity": "2",
+        "average_filled_price": None,
+        "filled_amount": None,
+        "commission": None,
+        "tax": None,
+        "filled_at": None,
+        "settlement_date": None,
+        "raw_json": '{"orderId":"order-1"}',
+        "import_run_id": import_run_id,
+    }
+
+
+def insert_toss_order(db: sqlite3.Connection, values: dict[str, object]) -> int:
+    cursor = db.execute(
+        """
+        insert into toss_orders(
+          account_seq,
+          order_id,
+          symbol,
+          side,
+          order_type,
+          time_in_force,
+          order_status,
+          price,
+          quantity,
+          order_amount,
+          currency,
+          ordered_at,
+          canceled_at,
+          filled_quantity,
+          average_filled_price,
+          filled_amount,
+          commission,
+          tax,
+          filled_at,
+          settlement_date,
+          raw_json,
+          import_run_id
+        )
+        values (
+          :account_seq,
+          :order_id,
+          :symbol,
+          :side,
+          :order_type,
+          :time_in_force,
+          :order_status,
+          :price,
+          :quantity,
+          :order_amount,
+          :currency,
+          :ordered_at,
+          :canceled_at,
+          :filled_quantity,
+          :average_filled_price,
+          :filled_amount,
+          :commission,
+          :tax,
+          :filled_at,
+          :settlement_date,
+          :raw_json,
+          :import_run_id
+        )
+        """,
+        values,
+    )
+    return cursor.lastrowid
+
+
+def insert_valid_toss_order(
+    db: sqlite3.Connection,
+    *,
+    order_id: str = "order-1",
+    account_seq: str = "account-1",
+    import_run_id: int | None = None,
+) -> int:
+    return insert_toss_order(
+        db,
+        toss_order_values(
+            order_id=order_id,
+            account_seq=account_seq,
+            import_run_id=import_run_id,
+        ),
+    )
+
+
+def assert_toss_order_history_contract(db: sqlite3.Connection) -> None:
+    import_run_id = insert_valid_toss_order_import_run(db)
+    order_id = insert_valid_toss_order(db, import_run_id=import_run_id)
+
+    row = db.execute("select * from toss_orders where id = ?", (order_id,)).fetchone()
+    assert row["account_seq"] == "account-1"
+    assert row["order_id"] == "order-1"
+    assert row["import_run_id"] == import_run_id
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_valid_toss_order(db, order_id="order-1", import_run_id=import_run_id)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_valid_toss_order_import_run(
+            db,
+            account_seq="invalid-status-filter",
+            status_filter="PENDING",
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_valid_toss_order_import_run(
+            db,
+            account_seq="invalid-run-status",
+            run_status="cancelled",
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_valid_toss_order_import_run(
+            db,
+            account_seq="invalid-imported-count",
+            imported_count=-1,
+        )
+
+    required_import_run_fields = (
+        "account_seq",
+        "status_filter",
+        "run_status",
+        "imported_count",
+    )
+    for field_name in required_import_run_fields:
+        values = toss_order_import_run_values(account_seq=f"missing-{field_name}")
+        values[field_name] = None
+        with pytest.raises(sqlite3.IntegrityError):
+            insert_toss_order_import_run(db, values)
+
+    db.execute("delete from toss_order_import_runs where id = ?", (import_run_id,))
+    assert db.execute(
+        "select import_run_id from toss_orders where id = ?",
+        (order_id,),
+    ).fetchone()[0] is None
+
+    required_order_fields = (
+        "account_seq",
+        "order_id",
+        "symbol",
+        "side",
+        "order_type",
+        "time_in_force",
+        "order_status",
+        "quantity",
+        "currency",
+        "ordered_at",
+        "filled_quantity",
+        "raw_json",
+    )
+    for field_name in required_order_fields:
+        values = toss_order_values(order_id=f"missing-{field_name}")
+        values[field_name] = None
+        with pytest.raises(sqlite3.IntegrityError):
+            insert_toss_order(db, values)
+
+
 def test_migrate_creates_toss_only_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
 
     migrate(db)
 
-    assert migration_versions(db) == [10]
+    assert migration_versions(db) == [11]
     assert_toss_only_schema(db)
+
+
+def test_migrate_creates_toss_order_history_tables(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+
+    migrate(db)
+
+    assert migration_versions(db) == [11]
+    assert {
+        "toss_order_import_runs",
+        "toss_orders",
+    } <= table_names(db)
+    assert index_names(db) >= TOSS_ORDER_INDEXES
+
+
+def test_toss_order_history_contract_in_fresh_schema(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert_toss_order_history_contract(db)
 
 
 def test_migrate_keeps_fx_rate_contract_in_fresh_schema(tmp_path):
@@ -339,7 +594,7 @@ def test_migrate_from_v9_drops_local_ledger_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [9, 10]
+    assert migration_versions(db) == [9, 10, 11]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     assert db.execute("select count(*) from goals").fetchone()[0] == 1
@@ -347,7 +602,61 @@ def test_migrate_from_v9_drops_local_ledger_tables(tmp_path):
     assert db.execute("select value from settings where key = 'theme'").fetchone()[0] == "dark"
 
 
-def test_migrate_upgrades_version_7_database_to_v10_and_preserves_goals(tmp_path):
+def test_migrate_from_v10_adds_toss_order_history_tables(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 10)
+    create_toss_only_survivor_tables(db)
+    db.commit()
+
+    migrate(db)
+
+    assert migration_versions(db) == [10, 11]
+    assert {
+        "toss_order_import_runs",
+        "toss_orders",
+    } <= table_names(db)
+    assert index_names(db) >= TOSS_ORDER_INDEXES
+    assert_removed_local_ledger_tables_gone(db)
+
+
+def test_migrate_from_v10_adds_toss_order_history_contract(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 10)
+    create_toss_only_survivor_tables(db)
+    db.commit()
+
+    migrate(db)
+
+    assert_toss_order_history_contract(db)
+
+
+def test_migrate_from_v10_rolls_back_partial_v11_schema_when_schema_application_fails(
+    tmp_path, monkeypatch
+):
+    schema_path = tmp_path / "broken_schema.sql"
+    schema_path.write_text(
+        """
+        create table if not exists toss_order_import_runs (
+          id integer primary key
+        );
+        create table broken_table (
+        """,
+        encoding="utf-8",
+    )
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 10)
+    create_toss_only_survivor_tables(db)
+    db.commit()
+    monkeypatch.setattr(migrations, "SCHEMA_PATH", schema_path)
+
+    with pytest.raises((sqlite3.Error, RuntimeError)):
+        migrate(db)
+
+    assert "toss_order_import_runs" not in table_names(db)
+    assert migration_versions(db) == [10]
+
+
+def test_migrate_upgrades_version_7_database_to_v11_and_preserves_goals(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     db.executescript(
         """
@@ -407,7 +716,7 @@ def test_migrate_upgrades_version_7_database_to_v10_and_preserves_goals(tmp_path
     migrate(db)
 
     row = db.execute("select * from goals where id = 42").fetchone()
-    assert migration_versions(db) == [7, 8, 9, 10]
+    assert migration_versions(db) == [7, 8, 9, 10, 11]
     assert_toss_only_schema(db)
     assert row["target_amount_krw"] == 100_000_000
     with pytest.raises(sqlite3.IntegrityError):
@@ -420,7 +729,7 @@ def test_migrate_upgrades_version_7_database_to_v10_and_preserves_goals(tmp_path
         )
 
 
-def test_migrate_upgrades_version_4_database_to_v10_and_removes_local_tables(tmp_path):
+def test_migrate_upgrades_version_4_database_to_v11_and_removes_local_tables(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     db.executescript(
         """
@@ -479,11 +788,11 @@ def test_migrate_upgrades_version_4_database_to_v10_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10]
+    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11]
     assert_toss_only_schema(db)
 
 
-def test_migrate_upgrades_version_1_database_to_v10_and_removes_local_tables(tmp_path):
+def test_migrate_upgrades_version_1_database_to_v11_and_removes_local_tables(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     db.executescript(
         """
@@ -532,7 +841,7 @@ def test_migrate_upgrades_version_1_database_to_v10_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     with pytest.raises(sqlite3.IntegrityError):
@@ -551,7 +860,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [10]
+    assert migration_versions(db) == [11]
     assert_toss_only_schema(db)
 
 
@@ -561,12 +870,12 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [10]
+    assert migration_versions(db) == [11]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
-    create_schema_migrations(db, 11)
+    create_schema_migrations(db, 12)
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
