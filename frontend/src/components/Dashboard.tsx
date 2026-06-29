@@ -286,34 +286,38 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
-      setSummary(emptySummary)
-      setSummaryLoading(false)
       return
     }
 
     let ignore = false
-    setSummaryLoading(true)
 
-    apiGet<PortfolioSummary>(`/api/summary?account_seq=${encodeURIComponent(selectedAccountSeq)}`)
-      .then((summaryData) => {
-        if (ignore) {
-          return
-        }
+    void Promise.resolve().then(() => {
+      if (ignore) {
+        return
+      }
 
-        setSummary(summaryData)
-        setError("")
-      })
-      .catch((err) => {
-        if (!ignore) {
-          setSummary(emptySummary)
-          setError(getErrorMessage(err))
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setSummaryLoading(false)
-        }
-      })
+      setSummaryLoading(true)
+      apiGet<PortfolioSummary>(`/api/summary?account_seq=${encodeURIComponent(selectedAccountSeq)}`)
+        .then((summaryData) => {
+          if (ignore) {
+            return
+          }
+
+          setSummary(summaryData)
+          setError("")
+        })
+        .catch((err) => {
+          if (!ignore) {
+            setSummary(emptySummary)
+            setError(getErrorMessage(err))
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setSummaryLoading(false)
+          }
+        })
+    })
 
     return () => {
       ignore = true

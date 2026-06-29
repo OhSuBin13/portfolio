@@ -68,37 +68,40 @@ export function HoldingsPage() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
-      setHoldings([])
-      setHoldingsLoading(false)
-      setHoldingsError("")
       return
     }
 
     let ignore = false
-    setHoldingsLoading(true)
 
-    apiGet<TossHolding[]>(
-      `/api/toss/holdings?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
-    )
-      .then((holdingData) => {
-        if (ignore) {
-          return
-        }
+    void Promise.resolve().then(() => {
+      if (ignore) {
+        return
+      }
 
-        setHoldings(holdingData)
-        setHoldingsError("")
-      })
-      .catch((err) => {
-        if (!ignore) {
-          setHoldings([])
-          setHoldingsError(getErrorMessage(err))
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setHoldingsLoading(false)
-        }
-      })
+      setHoldingsLoading(true)
+      apiGet<TossHolding[]>(
+        `/api/toss/holdings?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
+      )
+        .then((holdingData) => {
+          if (ignore) {
+            return
+          }
+
+          setHoldings(holdingData)
+          setHoldingsError("")
+        })
+        .catch((err) => {
+          if (!ignore) {
+            setHoldings([])
+            setHoldingsError(getErrorMessage(err))
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setHoldingsLoading(false)
+          }
+        })
+    })
 
     return () => {
       ignore = true
