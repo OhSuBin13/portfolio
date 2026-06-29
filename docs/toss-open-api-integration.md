@@ -90,7 +90,7 @@ an account sequence from `GET /api/v1/accounts`.
 | 1 | USD/KRW FX provider | `GET /api/v1/exchange-rate` | Implemented. Toss is now the only automatic USD/KRW provider and stores snapshots into `fx_rates` before summary reads them. |
 | 2 | Manual stock asset metadata input | `GET /api/v1/stocks` | Implemented for holdings-page stock/ETF asset creation. The user can enter metadata manually or prefill name, local market, currency, listed status, and instrument type from Toss stock info. |
 | 2 | No stock warning visibility | `GET /api/v1/stocks/{symbol}/warnings` | Good augmentation for holdings or transaction screens. |
-| 2 | Manual brokerage holding setup | `GET /api/v1/accounts`, `GET /api/v1/holdings` | Good read-only sync candidate for stock/ETF holdings. It should not erase local cash, savings, debt, or manual holdings. |
+| 2 | Manual brokerage holding setup | `GET /api/v1/accounts`, `GET /api/v1/holdings` | Good read-only sync candidate for stock/ETF holdings. It should erase local cash, savings, debt, or manual holdings. |
 | 3 | Manual buy/sell transaction entry | `GET /api/v1/orders`, `GET /api/v1/orders/{orderId}` | Useful for importing or reconciling filled orders. Not a complete transaction-ledger replacement. |
 | 4 | No real trading feature | `POST /api/v1/orders`, modify, cancel | Possible future feature, but it changes the app from tracking to trading and needs separate safety design. |
 
