@@ -88,7 +88,7 @@ an account sequence from `GET /api/v1/accounts`.
 | 1 | US stock price sync through Alpha Vantage | `GET /api/v1/prices` | Implemented. Toss now handles US stock/ETF price sync and Alpha Vantage dependency has been removed. |
 | 1 | Missing KR stock/ETF market sync | `GET /api/v1/prices` | Implemented for Toss-supported KR stock/ETF symbols. |
 | 1 | USD/KRW FX provider | `GET /api/v1/exchange-rate` | Implemented. Toss is now the only automatic USD/KRW provider and stores snapshots into `fx_rates` before summary reads them. |
-| 2 | Manual stock asset metadata input | `GET /api/v1/stocks` | Good augmentation. Can auto-fill name, market, currency, listed status, and instrument metadata. |
+| 2 | Manual stock asset metadata input | `GET /api/v1/stocks` | Implemented for holdings-page stock/ETF asset creation. The user can enter metadata manually or prefill name, local market, currency, listed status, and instrument type from Toss stock info. |
 | 2 | No stock warning visibility | `GET /api/v1/stocks/{symbol}/warnings` | Good augmentation for holdings or transaction screens. |
 | 2 | Manual brokerage holding setup | `GET /api/v1/accounts`, `GET /api/v1/holdings` | Good read-only sync candidate for stock/ETF holdings. It should not erase local cash, savings, debt, or manual holdings. |
 | 3 | Manual buy/sell transaction entry | `GET /api/v1/orders`, `GET /api/v1/orders/{orderId}` | Useful for importing or reconciling filled orders. Not a complete transaction-ledger replacement. |
@@ -162,23 +162,25 @@ Important caveat:
 
 ### 6.3 Stock Master And Warning Data
 
-Good augmentation, especially for the holdings screen.
+Stock master lookup is implemented for the holdings screen. Warning data remains
+a recommended future enhancement.
 
-Current behavior:
+Implemented stock metadata lookup:
 
-- Stock/ETF assets are manually created with symbol, name, currency, and market.
-- The backend only enforces that stock/ETF assets have a market value.
+- Holdings-page stock/ETF asset creation allows either manual metadata entry or
+  prefill from `GET /api/v1/stocks?symbols=...`.
+- Lookup results can prefill name, local market, currency, listed status, and
+  instrument type.
+- Toss markets are normalized before the local asset form is filled:
+  `KOSPI`/`KOSDAQ`/`KR_ETC` map to `KR`, and
+  `NYSE`/`NASDAQ`/`AMEX`/`US_ETC` map to `US`.
+- The local `assets` table remains the source of truth. Lookup reduces manual
+  input and validation errors rather than replacing local asset records.
 
-Recommended Toss usage:
+Recommended future Toss usage:
 
-- Use `GET /api/v1/stocks?symbols=...` when creating or editing a stock asset.
-- Auto-fill Korean name, English name, market, currency, listing status, and
-  security type where useful.
-- Use `/stocks/{symbol}/warnings` to show active trading warnings before a buy
-  record or future order is entered.
-
-This should not replace the local `assets` table. It should reduce manual input
-and validation errors.
+- Use `/stocks/{symbol}/warnings` for warning badges in holdings or transaction
+  screens if warning visibility is implemented later.
 
 ### 6.4 Toss Account And Holdings Sync
 
@@ -301,13 +303,18 @@ logic unchanged.
 
 ### Phase 2: Stock Metadata Validation
 
-Use Toss stock info during stock/ETF asset creation.
+Implemented behavior uses Toss stock info during stock/ETF asset creation while
+keeping manual metadata entry available. Toss stock markets such as `KOSPI` and
+`NASDAQ` are normalized to local asset markets `KR` and `US` before the form is
+filled.
 
-Deliverables:
+Implemented behavior:
 
 - Symbol lookup endpoint in the local backend.
-- Auto-fill name, currency, and market in the holdings screen.
-- Optional warning badges for active stock warnings.
+- Holdings-page stock/ETF creation can prefill name, local market, currency,
+  listed status, and instrument type.
+- Manual metadata entry remains available when lookup data is unavailable or the
+  user chooses to edit the filled values.
 
 This reduces manual data entry errors without changing the ledger.
 
