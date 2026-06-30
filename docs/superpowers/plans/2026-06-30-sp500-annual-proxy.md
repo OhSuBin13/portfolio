@@ -2,27 +2,146 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `S&P 500 연 성장률` to `Growth Annual History` using `VOO` price snapshots as the ETF proxy, while hiding the value for the unfinished current year.
+**Goal:** Add `S&P 500 연 성장률` to `Growth Annual History` using saved `VOO` annual proxy prices, while hiding the value for the unfinished current year.
 
-**Architecture:** Keep the derived annual portfolio history in `services/growth_history.py`. Fetch `VOO` proxy prices from existing `assets` and `price_snapshots` data in `repositories.py`, pass a year-to-ratio map through the annual history route, and render the nullable field in the existing React table.
+**Architecture:** Add a small Toss-only-compatible `sp500_proxy_prices` table instead of restoring removed local ledger tables. The growth API stores annual VOO year-end prices, derives a year-to-ratio map, and passes that map into the existing annual history assembly. The frontend renders the new annual column and a compact proxy-price entry form.
 
 **Tech Stack:** FastAPI, Pydantic v2, SQLite, pytest, React, TypeScript, Vite, Node source-inspection tests.
 
 ---
 
-### Task 1: Backend S&P 500 Proxy Field
+### Task 1: Backend Proxy Price Storage And Annual Ratio
 
 **Files:**
+- Modify: `backend/src/portfolio_app/schema.sql`
+- Modify: `backend/src/portfolio_app/migrations.py`
 - Modify: `backend/src/portfolio_app/models.py`
 - Modify: `backend/src/portfolio_app/repositories.py`
 - Modify: `backend/src/portfolio_app/services/growth_history.py`
 - Modify: `backend/src/portfolio_app/api/growth_history.py`
+- Test: `backend/tests/test_db.py`
 - Test: `backend/tests/test_growth_history.py`
 - Test: `backend/tests/test_api.py`
 
-- [ ] **Step 1: Write the failing service/model tests**
+- [ ] **Step 1: Write failing schema and repository tests**
 
-Add tests that expect `GrowthAnnualHistoryRow.sp500_annual_return_ratio` to exist, accept `None`, and receive values passed through from `build_annual_history`.
+Add tests to `backend/tests/test_db.py`:
+
+```python
+SP500_PROXY_PRICE_INDEXES = {
+    "idx_sp500_proxy_prices_symbol_year",
+}
+```
+
+Add `sp500_proxy_prices` to `TOSS_ONLY_TABLES` and `SP500_PROXY_PRICE_INDEXES` to `TOSS_ONLY_INDEXES`.
+
+Add:
+
+```python
+def assert_sp500_proxy_prices_contract(db: sqlite3.Connection) -> None:
+    assert "sp500_proxy_prices" in table_names(db)
+    assert column_names(db, "sp500_proxy_prices") == {
+        "id",
+        "year",
+        "proxy_symbol",
+        "price",
+        "currency",
+        "created_at",
+        "updated_at",
+    }
+    assert index_names(db) >= SP500_PROXY_PRICE_INDEXES
+
+    db.execute(
+        """
+        insert into sp500_proxy_prices(year, price)
+        values (?, ?)
+        """,
+        (2025, 500.0),
+    )
+    row = db.execute("select * from sp500_proxy_prices where year = 2025").fetchone()
+    assert row["proxy_symbol"] == "VOO"
+    assert row["currency"] == "USD"
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("insert into sp500_proxy_prices(year, price) values (?, ?)", (2025, 510.0))
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("insert into sp500_proxy_prices(year, price) values (?, ?)", (2026, 0))
+```
+
+Add fresh and migration tests:
+
+```python
+def test_sp500_proxy_prices_contract_in_fresh_schema(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert migration_versions(db) == [13]
+    assert_sp500_proxy_prices_contract(db)
+
+
+def test_migrate_from_v12_adds_sp500_proxy_prices_table(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 12)
+    create_toss_only_survivor_tables(db)
+    create_v11_toss_order_history_tables(db)
+    db.execute(
+        """
+        create table growth_month_history (
+          id integer primary key,
+          account_seq text not null,
+          year integer not null check (year >= 2000 and year <= 2099),
+          month integer not null check (month >= 1 and month <= 12),
+          net_worth_krw real not null check (net_worth_krw >= 0),
+          monthly_dividend_krw real not null default 0 check (monthly_dividend_krw >= 0),
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp,
+          unique(account_seq, year, month)
+        )
+        """
+    )
+    db.execute(
+        """
+        create index idx_growth_month_history_account_period
+        on growth_month_history(account_seq, year, month)
+        """
+    )
+    db.commit()
+
+    migrate(db)
+
+    assert migration_versions(db) == [12, 13]
+    assert_sp500_proxy_prices_contract(db)
+```
+
+Add a repository helper test:
+
+```python
+def test_sp500_proxy_price_repository_helpers_upsert_fetch_and_ratio(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    repositories.upsert_sp500_proxy_price(db, year=2024, price=100)
+    saved_2025 = repositories.upsert_sp500_proxy_price(db, year=2025, price=125)
+    updated_2025 = repositories.upsert_sp500_proxy_price(db, year=2025, price=130)
+    repositories.upsert_sp500_proxy_price(db, year=2026, price=160)
+
+    assert updated_2025["id"] == saved_2025["id"]
+    assert updated_2025["price"] == 130
+    assert [(row["year"], row["price"]) for row in repositories.fetch_sp500_proxy_prices(db)] == [
+        (2024, 100),
+        (2025, 130),
+        (2026, 160),
+    ]
+    assert repositories.fetch_sp500_proxy_annual_return_ratios(
+        db,
+        years=[2024, 2025, 2026],
+        current_year=2026,
+    ) == {2025: 1.3}
+```
+
+- [ ] **Step 2: Write failing growth API/model tests**
+
+In `backend/tests/test_growth_history.py`, add:
 
 ```python
 def test_annual_history_attaches_sp500_proxy_ratios_for_completed_years():
@@ -32,7 +151,7 @@ def test_annual_history_attaches_sp500_proxy_ratios_for_completed_years():
             month(2025, 12, 1_250_000),
             month(2026, 6, 1_500_000),
         ],
-        sp500_annual_return_ratios={2025: 1.2},
+        sp500_annual_return_ratios={2025: 1.2, 2026: 1.25},
         current_year=2026,
     )
 
@@ -41,71 +160,42 @@ def test_annual_history_attaches_sp500_proxy_ratios_for_completed_years():
     assert rows[2].sp500_annual_return_ratio is None
 ```
 
-In the existing `valid_annual` dict inside `test_growth_history_models_reject_extra_and_non_finite_values`, add:
+Extend `valid_annual` with:
 
 ```python
 "sp500_annual_return_ratio": None,
 ```
 
-Then add:
+and assert non-finite rejection:
 
 ```python
 with pytest.raises(ValidationError):
     GrowthAnnualHistoryRow(**{**valid_annual, "sp500_annual_return_ratio": float("inf")})
 ```
 
-- [ ] **Step 2: Write the failing endpoint test**
+Add endpoint tests:
 
-Add a route-level test in `backend/tests/test_growth_history.py` that creates a `VOO` asset and price snapshots, then confirms only completed years get the proxy value.
+```python
+def test_sp500_proxy_price_endpoint_upserts_prices(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 125})
+    update_response = client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 130})
+    list_response = client.get("/api/growth/sp500-proxy-prices")
+
+    assert response.status_code == 200
+    assert update_response.status_code == 200
+    assert update_response.json()["price"] == 130
+    assert list_response.status_code == 200
+    assert [(row["year"], row["price"]) for row in list_response.json()] == [(2025, 130)]
+```
 
 ```python
 def test_get_annual_history_includes_sp500_proxy_for_completed_years(tmp_path):
     client = create_test_client(tmp_path)
-    db = connect(client.app.state.db_path)
-    try:
-        asset_id = create_asset(
-            db,
-            symbol="VOO",
-            name="Vanguard S&P 500 ETF",
-            type="stock_etf",
-            currency="USD",
-            market="US",
-            is_listed=True,
-            instrument_type="ETF",
-        )
-        insert_price_snapshot(
-            db,
-            asset_id=asset_id,
-            source="manual",
-            price=100,
-            currency="USD",
-            price_krw=100,
-            status="ok",
-            fetched_at="2024-12-31T23:59:00+00:00",
-        )
-        insert_price_snapshot(
-            db,
-            asset_id=asset_id,
-            source="manual",
-            price=120,
-            currency="USD",
-            price_krw=120,
-            status="ok",
-            fetched_at="2025-12-31T23:59:00+00:00",
-        )
-        insert_price_snapshot(
-            db,
-            asset_id=asset_id,
-            source="manual",
-            price=150,
-            currency="USD",
-            price_krw=150,
-            status="ok",
-            fetched_at="2026-12-31T23:59:00+00:00",
-        )
-        db.commit()
-    finally:
-        db.close()
+    client.put("/api/growth/sp500-proxy-prices/2024", json={"price": 100})
+    client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 120})
+    client.put("/api/growth/sp500-proxy-prices/2026", json={"price": 150})
     for year, month_number, net_worth in [
         (2024, 12, 1_000_000),
         (2025, 12, 1_200_000),
@@ -129,12 +219,13 @@ def test_get_annual_history_includes_sp500_proxy_for_completed_years(tmp_path):
     assert rows[2]["sp500_annual_return_ratio"] is None
 ```
 
-Import helpers at the top of the test file:
+In `backend/tests/test_api.py`, assert new OpenAPI paths and response field:
 
 ```python
-from portfolio_app.db import connect
-from portfolio_app.repositories import create_asset
-from portfolio_app.services.market_data import insert_price_snapshot
+assert "/api/growth/sp500-proxy-prices" in paths
+assert "/api/growth/sp500-proxy-prices/{year}" in paths
+annual_component = schema["components"]["schemas"]["GrowthAnnualHistoryRow"]
+assert "sp500_annual_return_ratio" in annual_component["properties"]
 ```
 
 - [ ] **Step 3: Run backend tests and verify RED**
@@ -142,12 +233,38 @@ from portfolio_app.services.market_data import insert_price_snapshot
 Run:
 
 ```bash
-.venv/bin/python -m pytest backend/tests/test_growth_history.py backend/tests/test_api.py -q
+.venv/bin/python -m pytest backend/tests/test_db.py backend/tests/test_growth_history.py backend/tests/test_api.py -q
 ```
 
-Expected: fail because `sp500_annual_return_ratio` and the new `build_annual_history` parameters do not exist yet.
+Expected: fail because schema version 13, `sp500_proxy_prices`, repository helpers, model field, and API endpoints do not exist yet.
 
-- [ ] **Step 4: Implement the model and pure annual assembly**
+- [ ] **Step 4: Implement schema and migration**
+
+In `backend/src/portfolio_app/schema.sql`, add:
+
+```sql
+create table if not exists sp500_proxy_prices (
+  id integer primary key,
+  year integer not null check (year >= 2000 and year <= 2099),
+  proxy_symbol text not null default 'VOO' check (proxy_symbol = 'VOO'),
+  price real not null check (price > 0),
+  currency text not null default 'USD' check (currency = 'USD'),
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  unique(proxy_symbol, year)
+);
+
+create index if not exists idx_sp500_proxy_prices_symbol_year
+on sp500_proxy_prices(proxy_symbol, year);
+```
+
+In `backend/src/portfolio_app/migrations.py`:
+
+- set `SCHEMA_VERSION = 13`
+- add `_migrate_from_12_to_13()` that executes schema statements and inserts version 13
+- call it from `migrate()` when `version == 12`
+
+- [ ] **Step 5: Implement model, repository, service, and route**
 
 In `backend/src/portfolio_app/models.py`, add:
 
@@ -155,168 +272,69 @@ In `backend/src/portfolio_app/models.py`, add:
 sp500_annual_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 ```
 
-to `GrowthAnnualHistoryRow`.
-
-In `backend/src/portfolio_app/services/growth_history.py`, change `build_annual_history` to accept:
+to `GrowthAnnualHistoryRow`, and add:
 
 ```python
-def build_annual_history(
-    rows: Iterable[GrowthMonthInput],
-    *,
-    sp500_annual_return_ratios: dict[int, float] | None = None,
-    current_year: int | None = None,
-) -> list[GrowthAnnualHistoryRow]:
+class Sp500ProxyPriceRow(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    year: int = Field(ge=2000, le=2099)
+    proxy_symbol: str = Field(pattern="^VOO$")
+    price: float = Field(gt=0, allow_inf_nan=False)
+    currency: str = Field(pattern="^USD$")
+    created_at: str
+    updated_at: str
 ```
 
-Inside the loop, set:
+In `backend/src/portfolio_app/repositories.py`, add `fetch_sp500_proxy_price`, `fetch_sp500_proxy_prices`, `upsert_sp500_proxy_price`, and `fetch_sp500_proxy_annual_return_ratios` helpers using `sp500_proxy_prices`.
 
-```python
-proxy_ratios = sp500_annual_return_ratios or {}
-sp500_annual_return_ratio = (
-    None if current_year is not None and row.year >= current_year else proxy_ratios.get(row.year)
-)
-```
+In `backend/src/portfolio_app/services/growth_history.py`, extend `build_annual_history()` with optional `sp500_annual_return_ratios` and `current_year`, and set `sp500_annual_return_ratio` to `None` for `row.year >= current_year`.
 
-and pass `sp500_annual_return_ratio=sp500_annual_return_ratio` into `GrowthAnnualHistoryRow`.
+In `backend/src/portfolio_app/api/growth_history.py`, add:
 
-- [ ] **Step 5: Implement repository proxy lookup**
+- `Sp500ProxyPriceUpsert` payload with `price: float = Field(gt=0, allow_inf_nan=False)`
+- `GET /sp500-proxy-prices`
+- `PUT /sp500-proxy-prices/{year}`
+- annual history wiring that calls `fetch_sp500_proxy_annual_return_ratios(..., current_year=date.today().year)`
 
-In `backend/src/portfolio_app/repositories.py`, add:
-
-```python
-def fetch_price_snapshot_at_or_before(
-    db: sqlite3.Connection,
-    *,
-    symbol: str,
-    market: str,
-    fetched_at: str,
-) -> sqlite3.Row | None:
-    return db.execute(
-        """
-        select ps.*
-        from price_snapshots ps
-        join assets a on a.id = ps.asset_id
-        where upper(a.symbol) = upper(?)
-          and a.market = ?
-          and ps.status in ('ok', 'manual', 'stale')
-          and ps.fetched_at <= ?
-        order by ps.fetched_at desc, ps.id desc
-        limit 1
-        """,
-        (symbol, market, fetched_at),
-    ).fetchone()
-```
-
-Then add:
-
-```python
-def fetch_sp500_proxy_annual_return_ratios(
-    db: sqlite3.Connection,
-    *,
-    years: list[int],
-    current_year: int,
-    proxy_symbol: str = "VOO",
-    proxy_market: str = "US",
-) -> dict[int, float]:
-    ratios: dict[int, float] = {}
-    for year in sorted(set(years)):
-        if year >= current_year:
-            continue
-        start = fetch_price_snapshot_at_or_before(
-            db,
-            symbol=proxy_symbol,
-            market=proxy_market,
-            fetched_at=f"{year - 1}-12-31T23:59:59+00:00",
-        )
-        end = fetch_price_snapshot_at_or_before(
-            db,
-            symbol=proxy_symbol,
-            market=proxy_market,
-            fetched_at=f"{year}-12-31T23:59:59+00:00",
-        )
-        if start is None or end is None:
-            continue
-        start_price = float(start["price"])
-        if start_price <= 0:
-            continue
-        ratios[year] = float(end["price"]) / start_price
-    return ratios
-```
-
-- [ ] **Step 6: Wire endpoint to proxy lookup**
-
-In `backend/src/portfolio_app/api/growth_history.py`, import:
-
-```python
-from datetime import date
-```
-
-and `fetch_sp500_proxy_annual_return_ratios`.
-
-Change `_build_annual_history` to accept `sp500_annual_return_ratios` and call:
-
-```python
-return build_annual_history(
-    rows,
-    sp500_annual_return_ratios=sp500_annual_return_ratios,
-    current_year=date.today().year,
-)
-```
-
-In `list_growth_annual_history`, fetch month inputs once, build the years list, call `fetch_sp500_proxy_annual_return_ratios`, and pass the result into `_build_annual_history`.
-
-- [ ] **Step 7: Update OpenAPI test expectation**
-
-In `backend/tests/test_api.py`, extend the growth annual schema assertion to check that the component has the new field:
-
-```python
-annual_component = schema["components"]["schemas"]["GrowthAnnualHistoryRow"]
-assert "sp500_annual_return_ratio" in annual_component["properties"]
-```
-
-- [ ] **Step 8: Run backend tests and verify GREEN**
+- [ ] **Step 6: Run backend tests and verify GREEN**
 
 Run:
 
 ```bash
-.venv/bin/python -m pytest backend/tests/test_growth_history.py backend/tests/test_api.py -q
+.venv/bin/python -m pytest backend/tests/test_db.py backend/tests/test_growth_history.py backend/tests/test_api.py -q
 ```
 
-Expected: all selected tests pass.
+Expected: all selected backend tests pass.
 
-- [ ] **Step 9: Commit backend work**
+- [ ] **Step 7: Commit backend work**
 
 Run:
 
 ```bash
-git add backend/src/portfolio_app/models.py backend/src/portfolio_app/repositories.py backend/src/portfolio_app/services/growth_history.py backend/src/portfolio_app/api/growth_history.py backend/tests/test_growth_history.py backend/tests/test_api.py
+git add backend/src/portfolio_app/schema.sql backend/src/portfolio_app/migrations.py backend/src/portfolio_app/models.py backend/src/portfolio_app/repositories.py backend/src/portfolio_app/services/growth_history.py backend/src/portfolio_app/api/growth_history.py backend/tests/test_db.py backend/tests/test_growth_history.py backend/tests/test_api.py
 git diff --cached --stat
 git diff --cached --name-status
-git commit -m "feat: add sp500 annual proxy growth"
+git commit -m "feat: add sp500 proxy price history"
 ```
 
-### Task 2: Frontend Annual Table Column
+### Task 2: Frontend Annual Column And Proxy Price Form
 
 **Files:**
 - Modify: `frontend/src/types.ts`
 - Modify: `frontend/src/components/GrowthHistoryPage.tsx`
 - Test: `frontend/tests/growth-history-page.test.mjs`
 
-- [ ] **Step 1: Write the failing frontend source test**
+- [ ] **Step 1: Write failing frontend source test**
 
-In `frontend/tests/growth-history-page.test.mjs`, add assertions:
+In `frontend/tests/growth-history-page.test.mjs`, add assertions for:
 
 ```javascript
 assert.ok(pageSource.includes("S&P 500 연 성장률"), "Page should show the S&P 500 annual growth column")
-assert.ok(
-  pageSource.includes("sp500_annual_return_ratio") &&
-    pageSource.includes("formatReturnPercent(row.sp500_annual_return_ratio)"),
-  "Page should render S&P 500 annual proxy returns as percentages",
-)
-assert.ok(
-  pageSource.includes("getReturnToneClass(row.sp500_annual_return_ratio)"),
-  "Page should apply return colors to S&P 500 annual proxy returns",
-)
+assert.ok(pageSource.includes("/api/growth/sp500-proxy-prices"), "Page should save S&P 500 proxy prices")
+assert.ok(pageSource.includes("sp500_annual_return_ratio"), "Page should render S&P 500 annual proxy returns")
+assert.ok(pageSource.includes("formatReturnPercent(row.sp500_annual_return_ratio)"), "Page should format proxy returns as percentages")
+assert.ok(pageSource.includes("getReturnToneClass(row.sp500_annual_return_ratio)"), "Page should color proxy returns")
 ```
 
 - [ ] **Step 2: Run frontend tests and verify RED**
@@ -327,25 +345,35 @@ Run:
 cd frontend && npm test
 ```
 
-Expected: fail because the annual table does not render `sp500_annual_return_ratio`.
+Expected: fail because the page does not render or save S&P 500 proxy prices.
 
-- [ ] **Step 3: Implement frontend type and table column**
+- [ ] **Step 3: Implement frontend type and controls**
 
-In `frontend/src/types.ts`, add to `GrowthAnnualHistoryRow`:
+In `frontend/src/types.ts`, add:
 
 ```ts
 sp500_annual_return_ratio: number | null
 ```
 
-In `frontend/src/components/GrowthHistoryPage.tsx`, add the header after `연 수익률` or next to the annual return columns:
+to `GrowthAnnualHistoryRow`, and define:
+
+```ts
+export type Sp500ProxyPriceRow = {
+  year: number
+  proxy_symbol: "VOO"
+  price: number
+  currency: "USD"
+  created_at: string
+  updated_at: string
+}
+```
+
+In `GrowthHistoryPage.tsx`, add compact state for `sp500ProxyForm`, a `handleSubmitSp500ProxyPrice` function that calls `apiPut<Sp500ProxyPriceRow>("/api/growth/sp500-proxy-prices/${year}", { price })`, then reloads annual history for the selected account.
+
+Add a compact form labelled `S&P 500 프록시` with year and VOO year-end price inputs. Add the annual table header and body cell:
 
 ```tsx
 <th className="numeric-cell">S&P 500 연 성장률</th>
-```
-
-Add the body cell:
-
-```tsx
 <td className={`numeric-cell ${getReturnToneClass(row.sp500_annual_return_ratio)}`}>
   {formatReturnPercent(row.sp500_annual_return_ratio)}
 </td>
@@ -382,7 +410,7 @@ git commit -m "feat: show sp500 annual proxy growth"
 Run:
 
 ```bash
-.venv/bin/python -m pytest backend/tests/test_growth_history.py backend/tests/test_api.py -q
+.venv/bin/python -m pytest backend/tests/test_db.py backend/tests/test_growth_history.py backend/tests/test_api.py -q
 ```
 
 Expected: all selected backend tests pass.
