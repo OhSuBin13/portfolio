@@ -276,15 +276,15 @@ def test_sp500_proxy_price_endpoint_upserts_prices(tmp_path):
     assert update_response.status_code == 200
     assert update_response.json()["price"] == 130
     assert list_response.status_code == 200
-    assert [(row["year"], row["price"]) for row in list_response.json()] == [(2025, 130)]
+    prices = {row["year"]: row["price"] for row in list_response.json()}
+    assert prices[2021] == 436.57
+    assert prices[2025] == 130
 
 
 def test_get_annual_history_includes_sp500_proxy_for_completed_years(tmp_path):
     client = create_test_client(tmp_path)
-    client.put("/api/growth/sp500-proxy-prices/2024", json={"price": 100})
-    client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 120})
-    client.put("/api/growth/sp500-proxy-prices/2026", json={"price": 150})
     for year, month_number, net_worth in [
+        (2023, 12, 900_000),
         (2024, 12, 1_000_000),
         (2025, 12, 1_200_000),
         (2026, 6, 1_500_000),
@@ -302,9 +302,10 @@ def test_get_annual_history_includes_sp500_proxy_for_completed_years(tmp_path):
 
     assert response.status_code == 200
     rows = response.json()
-    assert rows[0]["sp500_annual_return_ratio"] is None
-    assert rows[1]["sp500_annual_return_ratio"] == pytest.approx(1.2)
-    assert rows[2]["sp500_annual_return_ratio"] is None
+    assert rows[0]["sp500_annual_return_ratio"] == pytest.approx(436.80 / 351.34)
+    assert rows[1]["sp500_annual_return_ratio"] == pytest.approx(538.81 / 436.80)
+    assert rows[2]["sp500_annual_return_ratio"] == pytest.approx(627.13 / 538.81)
+    assert rows[3]["sp500_annual_return_ratio"] is None
 
 
 def test_growth_history_is_isolated_by_account_seq(tmp_path):

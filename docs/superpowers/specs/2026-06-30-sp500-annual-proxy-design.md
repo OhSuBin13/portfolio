@@ -35,7 +35,7 @@ Initial seed data:
 | 2024 | 2024-12-31 | 538.81 |
 | 2025 | 2025-12-31 | 627.13 |
 
-These values come from Nasdaq historical data for `VOO`, queried for 2021-12-01 through 2025-12-31. The stored source label is `nasdaq`.
+These values come from Nasdaq historical data for `VOO`, queried for 2021-12-01 through 2025-12-31.
 
 ## Calculation
 
@@ -58,16 +58,16 @@ The annual history endpoint remains `/api/growth/annual-history`.
 
 Implementation will keep growth-history assembly in `services/growth_history.py`, with a small repository query for ETF proxy prices. The route will fetch the annual proxy map and pass it into `build_annual_history`.
 
-Schema version `13` will add `sp500_proxy_prices`:
+Schema version `13` adds `sp500_proxy_prices`, and schema version `14` seeds or backfills the initial VOO prices:
 
 - one row per `proxy_symbol` and `year`
 - `price > 0`
 - `year` between 2000 and 2099
 - default `proxy_symbol = 'VOO'`
 - default `currency = 'USD'`
-- seeded 2021 through 2025 VOO year-end close prices
+- seeded 2021 through 2025 VOO year-end close prices with `insert or ignore`, so user-edited prices are not overwritten
 
-The annual history response derives S&P 500 growth from these saved rows. No proxy-price editing API is included in this change; that can be added later if maintaining future annual prices through the UI becomes necessary.
+The annual history response derives S&P 500 growth from these saved rows. `GET /api/growth/sp500-proxy-prices` and `PUT /api/growth/sp500-proxy-prices/{year}` provide the maintenance path for future annual proxy prices.
 
 ## Frontend Shape
 
@@ -86,7 +86,8 @@ Backend tests will cover:
 - Current calendar year returns `null` even if a price exists.
 - Missing proxy price data returns `null`.
 - Schema migration creates `sp500_proxy_prices` in fresh and v12 databases.
-- Fresh and migrated schemas seed 2021 through 2025 VOO year-end close prices.
+- Fresh schemas and v13→v14 migration seed 2021 through 2025 VOO year-end close prices.
+- Existing user-edited proxy prices are preserved during seed backfill.
 
 Frontend source tests will cover:
 

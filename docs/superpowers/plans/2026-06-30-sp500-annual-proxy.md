@@ -4,7 +4,7 @@
 
 **Goal:** Add `S&P 500 연 성장률` to `Growth Annual History` using seeded `VOO` annual proxy prices for 2021 through 2025, while hiding the value for the unfinished current year.
 
-**Architecture:** Add a small Toss-only-compatible `sp500_proxy_prices` table instead of restoring removed local ledger tables. The fresh schema and v12 migration seed 2021 through 2025 VOO year-end close prices. The annual history endpoint derives a year-to-ratio map from the seed table and passes that map into the existing annual history assembly. The frontend renders the new annual column.
+**Architecture:** Add a small Toss-only-compatible `sp500_proxy_prices` table instead of restoring removed local ledger tables. The fresh schema seeds 2021 through 2025 VOO year-end close prices, and the v13→v14 migration backfills those seed rows into existing databases without overwriting user-edited prices. The annual history endpoint derives a year-to-ratio map from the seed table and passes that map into the existing annual history assembly. The frontend renders the new annual column.
 
 **Tech Stack:** FastAPI, Pydantic v2, SQLite, pytest, React, TypeScript, Vite, Node source-inspection tests.
 
@@ -41,17 +41,18 @@ Add:
 def assert_seeded_sp500_proxy_prices(db: sqlite3.Connection) -> None:
     rows = db.execute(
         """
-        select year, price_date, price, source
+        select year, price
         from sp500_proxy_prices
+        where year between 2021 and 2025
         order by year
         """
     ).fetchall()
-    assert [(row["year"], row["price_date"], row["price"], row["source"]) for row in rows] == [
-        (2021, "2021-12-31", 436.57, "nasdaq"),
-        (2022, "2022-12-30", 351.34, "nasdaq"),
-        (2023, "2023-12-29", 436.80, "nasdaq"),
-        (2024, "2024-12-31", 538.81, "nasdaq"),
-        (2025, "2025-12-31", 627.13, "nasdaq"),
+    assert [(row["year"], row["price"]) for row in rows] == [
+        (2021, 436.57),
+        (2022, 351.34),
+        (2023, 436.80),
+        (2024, 538.81),
+        (2025, 627.13),
     ]
 ```
 
@@ -65,9 +66,7 @@ def assert_sp500_proxy_prices_contract(db: sqlite3.Connection) -> None:
         "year",
         "proxy_symbol",
         "price",
-        "price_date",
         "currency",
-        "source",
         "created_at",
         "updated_at",
     }
@@ -75,10 +74,10 @@ def assert_sp500_proxy_prices_contract(db: sqlite3.Connection) -> None:
 
     db.execute(
         """
-        insert into sp500_proxy_prices(year, price, price_date, source)
-        values (?, ?, ?, ?)
+        insert into sp500_proxy_prices(year, price)
+        values (?, ?)
         """,
-        (2026, 500.0, "2026-12-31", "manual"),
+        (2026, 500.0),
     )
     row = db.execute("select * from sp500_proxy_prices where year = 2026").fetchone()
     assert row["proxy_symbol"] == "VOO"
@@ -86,13 +85,13 @@ def assert_sp500_proxy_prices_contract(db: sqlite3.Connection) -> None:
 
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "insert into sp500_proxy_prices(year, price, price_date, source) values (?, ?, ?, ?)",
-            (2026, 510.0, "2026-12-31", "manual"),
+            "insert into sp500_proxy_prices(year, price) values (?, ?)",
+            (2026, 510.0),
         )
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "insert into sp500_proxy_prices(year, price, price_date, source) values (?, ?, ?, ?)",
-            (2027, 0, "2027-12-31", "manual"),
+            "insert into sp500_proxy_prices(year, price) values (?, ?)",
+            (2027, 0),
         )
 ```
 
@@ -103,7 +102,7 @@ def test_sp500_proxy_prices_contract_in_fresh_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
 
-    assert migration_versions(db) == [13]
+    assert migration_versions(db) == [14]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
 
@@ -138,7 +137,7 @@ def test_migrate_from_v12_adds_sp500_proxy_prices_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [12, 13]
+    assert migration_versions(db) == [12, 13, 14]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
 ```
@@ -249,7 +248,7 @@ Run:
 .venv/bin/python -m pytest backend/tests/test_db.py backend/tests/test_growth_history.py backend/tests/test_api.py -q
 ```
 
-Expected: fail because schema version 13, `sp500_proxy_prices`, seed rows, repository helpers, and model field do not exist yet.
+Expected: fail because schema version 13 and the 2021~2025 VOO seed rows do not exist yet.
 
 - [ ] **Step 4: Implement schema and migration**
 
@@ -261,9 +260,7 @@ create table if not exists sp500_proxy_prices (
   year integer not null check (year >= 2000 and year <= 2099),
   proxy_symbol text not null default 'VOO' check (proxy_symbol = 'VOO'),
   price real not null check (price > 0),
-  price_date text not null,
   currency text not null default 'USD' check (currency = 'USD'),
-  source text not null,
   created_at text not null default current_timestamp,
   updated_at text not null default current_timestamp,
   unique(proxy_symbol, year)
@@ -272,20 +269,20 @@ create table if not exists sp500_proxy_prices (
 create index if not exists idx_sp500_proxy_prices_symbol_year
 on sp500_proxy_prices(proxy_symbol, year);
 
-insert or ignore into sp500_proxy_prices(year, price_date, price, source)
+insert or ignore into sp500_proxy_prices(year, price)
 values
-  (2021, '2021-12-31', 436.57, 'nasdaq'),
-  (2022, '2022-12-30', 351.34, 'nasdaq'),
-  (2023, '2023-12-29', 436.80, 'nasdaq'),
-  (2024, '2024-12-31', 538.81, 'nasdaq'),
-  (2025, '2025-12-31', 627.13, 'nasdaq');
+  (2021, 436.57),
+  (2022, 351.34),
+  (2023, 436.80),
+  (2024, 538.81),
+  (2025, 627.13);
 ```
 
 In `backend/src/portfolio_app/migrations.py`:
 
-- set `SCHEMA_VERSION = 13`
-- add `_migrate_from_12_to_13()` that executes schema statements and inserts version 13
-- call it from `migrate()` when `version == 12`
+- set `SCHEMA_VERSION = 14`
+- add `_migrate_from_13_to_14()` that executes schema statements and inserts version 14
+- call it from `migrate()` when `version == 13`
 
 - [ ] **Step 5: Implement model, repository, service, and route**
 

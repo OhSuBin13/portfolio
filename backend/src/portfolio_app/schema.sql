@@ -119,3 +119,11 @@ create table if not exists sp500_proxy_prices (
 
 create index if not exists idx_sp500_proxy_prices_symbol_year
 on sp500_proxy_prices(proxy_symbol, year);
+
+insert or ignore into sp500_proxy_prices(year, price)
+values
+  (2021, 436.57),
+  (2022, 351.34),
+  (2023, 436.80),
+  (2024, 538.81),
+  (2025, 627.13);

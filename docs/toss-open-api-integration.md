@@ -59,13 +59,16 @@ SQLite tables that remain in the fresh schema:
 - `toss_order_import_runs`
 - `toss_orders`
 - `growth_month_history`
+- `sp500_proxy_prices`
 
 The app no longer creates source-of-truth local tables for Toss brokerage
 accounts, assets, holdings, transactions, market price snapshots, or growth
 snapshots. Migration v10 drops the old local ledger tables and preserves
 survivor data such as goals, backups, settings, and FX rates. Migration v11 adds
 the Toss order-history import cache tables. Migration v12 adds
-`growth_month_history`.
+`growth_month_history`. Migration v13 adds `sp500_proxy_prices`; migration v14
+seeds 2021~2025 VOO year-end prices without overwriting existing user-edited
+proxy prices.
 
 Imported Toss order history is read-only historical data. It does not mutate
 holdings, replace the removed `/api/transactions` command path, drive current
@@ -80,6 +83,10 @@ monthly net worth and monthly dividend values in `growth_month_history`;
 `GET /api/growth/annual-history` derives annual history from the latest saved
 month in each year. These records are not local holdings, transaction rollups, or
 old `portfolio_snapshots`.
+
+S&P 500 annual growth is derived from the global `sp500_proxy_prices` VOO proxy
+price table, not from Toss holdings. The current unfinished calendar year keeps
+that benchmark field blank.
 
 ## 4. Summary Behavior
 
@@ -110,7 +117,9 @@ for the selected Toss account.
 
 The Growth History page uses the same selected Toss account. It lets the user
 manually save month-level net worth and dividend values, then displays monthly
-history plus annual history derived from those saved month rows.
+history plus annual history derived from those saved month rows. Annual history
+also includes the seeded VOO-based `S&P 500 연 성장률` benchmark for completed
+years.
 
 The order-history page loads imported orders from the local read-only cache and
 can start an order-history import for the selected Toss account. OPEN order
