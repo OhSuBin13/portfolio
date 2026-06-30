@@ -136,7 +136,9 @@ a read-only local cache and does not drive holdings valuation.
 ## 논리적 참조
 
 `goals`는 다른 테이블을 직접 참조하지 않습니다. 목표 진행률은 런타임에
-Toss holdings와 Toss USD/KRW 환율로 만든 `PortfolioSummary`와 비교해 산출됩니다.
+Toss holdings, Toss buying power, Toss USD/KRW 환율로 만든 `PortfolioSummary`와
+비교해 산출됩니다.
 
-`fx_rates`도 FK를 갖지 않습니다. Toss summary 계산에서 USD 보유자산의 KRW
-평가가 필요할 때 Toss FX provider가 반환한 환율을 사용할 수 있습니다.
+`fx_rates`도 FK를 갖지 않습니다. Toss summary 계산에서 USD 보유자산이나 USD
+buying power의 KRW 평가가 필요할 때 Toss FX provider가 반환한 환율을 사용할
+수 있습니다.

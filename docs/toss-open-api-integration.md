@@ -35,10 +35,12 @@ ledger features.
 | Imported order-history list | Local SQLite cache populated from `GET /api/v1/orders` | `GET /api/toss/orders?account_seq=...` |
 | Order detail parsing | `GET /api/v1/orders/{orderId}` with `X-Tossinvest-Account` | Backend provider/parser boundary |
 | USD/KRW valuation | `GET /api/v1/exchange-rate` | `GET /api/summary?account_seq=...` |
+| Buying power | `GET /api/v1/buying-power` with `X-Tossinvest-Account` and `currency=KRW\|USD` | `GET /api/toss/buying-power?account_seq=...`, `GET /api/summary?account_seq=...` |
 | OAuth token | `POST /oauth2/token` | Backend-only provider boundary |
 
 All Toss credentials stay on the backend. The frontend only receives normalized
-account, holding, order-history, summary, goal, and backup response models.
+account, holding, buying-power, order-history, summary, goal, and backup
+response models.
 
 ## 3. Local Persistence Boundary
 
@@ -61,7 +63,9 @@ the Toss order-history import cache tables.
 Imported Toss order history is read-only historical data. It does not mutate
 holdings, replace the removed `/api/transactions` command path, drive current
 holdings valuation, or create growth snapshots. Current holdings and valuation
-still come from live Toss holdings plus Toss USD/KRW FX data.
+still come from live Toss holdings plus Toss-derived buying power, with KRW
+buying power treated as cash and USD buying power converted through the same
+Toss USD/KRW FX rate used for USD holdings.
 
 ## 4. Summary Behavior
 
@@ -72,18 +76,23 @@ portfolio summary from those live holdings:
 
 - KRW holdings contribute their Toss market value directly.
 - USD holdings require a Toss USD/KRW FX rate and are converted to KRW.
+- KRW and USD buying power are fetched live for the selected account.
+- KRW buying power contributes directly to cash.
+- USD buying power is converted with the same Toss USD/KRW rate used for USD
+  holdings.
 - Gross assets and net worth are equal for this slice because local debt is no
   longer modeled.
 - Monthly income is `0` because local transaction-derived income has been
   removed.
-- Goal progress is still local and is calculated against the Toss-derived
-  summary.
+- Goal progress is calculated against Toss holdings plus converted buying power.
 
 ## 5. Frontend Behavior
 
 The dashboard and holdings page load Toss accounts first, keep a selected
-`account_seq`, and request account-scoped holdings or summary data. The holdings
-page is read-only.
+`account_seq`, and request account-scoped holdings, buying power, or summary
+data. The dashboard includes Toss-derived buying power in summary values and
+goal progress. The holdings page is read-only and displays KRW/USD buying power
+for the selected Toss account.
 
 The order-history page loads imported orders from the local read-only cache and
 can start an order-history import for the selected Toss account. OPEN order

@@ -24,8 +24,8 @@ PORTFOLIO_TOSS_SECRET_KEY=...
 ```
 
 The backend owns all Toss API calls. The frontend calls local API routes such as
-`/api/toss/accounts`, `/api/toss/holdings`, `/api/toss/order-imports`,
-`/api/toss/orders`, and `/api/summary`.
+`/api/toss/accounts`, `/api/toss/holdings`, `/api/toss/buying-power`,
+`/api/toss/order-imports`, `/api/toss/orders`, and `/api/summary`.
 
 Backups are created on startup and then run automatically while the backend is
 running. The default periodic backup interval is 1 hour and can be changed with
@@ -54,8 +54,9 @@ The frontend uses `http://127.0.0.1:8000` as the default API base. Set
   `goals`, `backups`, `toss_order_import_runs`, and `toss_orders`.
 - Imported Toss order history is read-only. It does not update current holdings,
   drive dashboard valuation, or recreate the removed local transaction ledger.
-- Dashboard valuation uses live Toss holdings for the selected account plus
-  Toss USD/KRW FX data when USD holdings are present.
+- Dashboard valuation uses live Toss holdings for the selected account,
+  Toss-derived buying power, and Toss USD/KRW FX data when USD holdings or USD
+  buying power are present.
 - Do not commit database files, backup files, API keys, `node_modules`, or build outputs.
 
 ## Verification
@@ -80,8 +81,10 @@ npm run lint
 
 1. Configure Toss Open API credentials on the backend and start the backend.
 2. Start the frontend and open the dashboard.
-3. Select a Toss account and confirm Toss-derived holdings and summary values load.
-4. Open `보유자산` to inspect the selected account's Toss stock/ETF holdings.
+3. Select a Toss account and confirm Toss-derived holdings, buying power, and
+   summary values load.
+4. Open `보유자산` to inspect the selected account's Toss stock/ETF holdings and
+   Toss-derived KRW/USD buying power.
 5. Open `주문내역` and import OPEN Toss order history for the selected account.
 6. Review imported orders from the local read-only cache. CLOSED imports may fail
    if Toss reports `closed-not-supported`.
