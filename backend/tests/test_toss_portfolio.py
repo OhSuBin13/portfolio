@@ -840,6 +840,56 @@ async def test_toss_brokerage_provider_fetches_holdings(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_toss_brokerage_provider_fetches_buying_power(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "5000000"}},
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    buying_power = await provider.fetch_buying_power("acct-1", "KRW")
+
+    assert buying_power.currency == "KRW"
+    assert buying_power.cash_buying_power == 5_000_000
+    request = httpx_mock.get_requests()[1]
+    assert request.headers["authorization"] == "Bearer token-123"
+    assert request.headers["x-tossinvest-account"] == "acct-1"
+    assert request.url.params["currency"] == "KRW"
+
+
+@pytest.mark.asyncio
+async def test_toss_brokerage_provider_rejects_buying_power_currency_mismatch(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "3500.5"}},
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    with pytest.raises(ValueError, match="매수 가능 금액 통화"):
+        await provider.fetch_buying_power("acct-1", "USD")
+
+
+@pytest.mark.asyncio
 async def test_toss_brokerage_provider_rejects_malformed_holding_item(httpx_mock):
     httpx_mock.add_response(
         method="POST",

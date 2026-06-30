@@ -39,6 +39,12 @@ class TossHolding:
 
 
 @dataclass(frozen=True)
+class TossBuyingPower:
+    currency: Currency
+    cash_buying_power: float
+
+
+@dataclass(frozen=True)
 class TossOrderExecution:
     filled_quantity: str
     average_filled_price: str | None
@@ -229,6 +235,33 @@ class TossBrokerageProvider:
             holdings.append(_parse_holding(item))
         return holdings
 
+    async def fetch_buying_power(
+        self,
+        account_seq: str,
+        currency: Currency,
+    ) -> TossBuyingPower:
+        token = await self._token()
+        requested_currency = currency.strip().upper()
+        if requested_currency not in {"KRW", "USD"}:
+            raise ValueError("Toss 매수 가능 금액 통화는 KRW 또는 USD여야 합니다.")
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await request_with_toss_retry(
+                client,
+                "GET",
+                f"{self.base_url}/api/v1/buying-power",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-tossinvest-account": account_seq,
+                },
+                params={"currency": requested_currency},
+                sleep=self._sleep,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        return _parse_buying_power(payload, requested_currency)
+
     async def fetch_orders(
         self,
         account_seq: str,
@@ -401,6 +434,29 @@ def _parse_order(item: dict[str, Any]) -> TossOrder:
     )
 
 
+def _parse_buying_power(payload: Any, requested_currency: str) -> TossBuyingPower:
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if not isinstance(result, dict):
+        raise ValueError("Toss 응답에서 매수 가능 금액을 찾을 수 없습니다.")
+
+    currency = _required_text(
+        result.get("currency"),
+        "Toss 매수 가능 금액 통화가 필요합니다.",
+    ).upper()
+    if currency not in {"KRW", "USD"}:
+        raise ValueError("Toss 매수 가능 금액 통화는 KRW 또는 USD여야 합니다.")
+    if currency != requested_currency:
+        raise ValueError("Toss 매수 가능 금액 통화가 요청 통화와 일치하지 않습니다.")
+
+    return TossBuyingPower(
+        currency=currency,
+        cash_buying_power=_non_negative_number(
+            result.get("cashBuyingPower"),
+            "Toss 매수 가능 금액은 0 이상이어야 합니다.",
+        ),
+    )
+
+
 def _parse_holding(item: dict[str, Any]) -> TossHolding:
     market, currency = _market_currency_pair(item)
 
@@ -465,5 +521,15 @@ def _positive_number(value: Any, message: str) -> float:
     except (TypeError, ValueError) as exc:
         raise ValueError(message) from exc
     if not math.isfinite(number) or number <= 0:
+        raise ValueError(message)
+    return number
+
+
+def _non_negative_number(value: Any, message: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(message) from exc
+    if not math.isfinite(number) or number < 0:
         raise ValueError(message)
     return number
