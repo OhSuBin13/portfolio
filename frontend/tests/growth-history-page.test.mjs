@@ -15,6 +15,10 @@ const pageSource = readFileSync(pageFile, "utf8")
 assert.ok(pageSource.includes("/api/growth/month-history"), "Page should load month history")
 assert.ok(pageSource.includes("/api/growth/annual-history"), "Page should load annual history")
 assert.ok(pageSource.includes("monthly_dividend_krw"), "Page should submit monthly dividend history")
+assert.ok(pageSource.includes("apiDelete"), "Page should delete month history rows")
+assert.ok(pageSource.includes("수정"), "Page should expose month history edit controls")
+assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
+assert.ok(pageSource.includes("handleEditMonth"), "Page should copy selected month rows into the form")
 assert.ok(pageSource.includes("순자산을 입력하세요."), "Page should reject blank net worth")
 assert.ok(
   pageSource.includes("selectedAccountSeqRef") &&

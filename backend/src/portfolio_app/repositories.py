@@ -550,6 +550,26 @@ def upsert_growth_month_history(
     return row
 
 
+def delete_growth_month_history(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    year: int,
+    month: int,
+) -> bool:
+    cursor = db.execute(
+        """
+        delete from growth_month_history
+        where account_seq = ?
+          and year = ?
+          and month = ?
+        """,
+        (account_seq, year, month),
+    )
+    db.commit()
+    return cursor.rowcount > 0
+
+
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
     rows = db.execute(
         """

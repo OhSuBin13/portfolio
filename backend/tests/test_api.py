@@ -107,6 +107,7 @@ def test_openapi_exposes_growth_history_contract(tmp_path):
     schema = response.json()
     paths = schema["paths"]
     put_month = paths["/api/growth/month-history/{year}/{month}"]["put"]
+    delete_month = paths["/api/growth/month-history/{year}/{month}"]["delete"]
     get_months = paths["/api/growth/month-history"]["get"]
     get_annual = paths["/api/growth/annual-history"]["get"]
 
@@ -117,6 +118,8 @@ def test_openapi_exposes_growth_history_contract(tmp_path):
     assert put_month["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/GrowthMonthHistoryRow"
     }
+    assert delete_month["tags"] == ["growth"]
+    assert delete_month["responses"]["204"]["description"] == "Successful Response"
 
     month_schema = get_months["responses"]["200"]["content"]["application/json"]["schema"]
     assert month_schema["type"] == "array"

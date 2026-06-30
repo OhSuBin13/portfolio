@@ -386,7 +386,7 @@ button {
 }
 
 .growth-table {
-  min-width: 920px;
+  min-width: 1040px;
 }
 
 .growth-entry-grid {
@@ -755,6 +755,35 @@ select:focus {
 .data-table .numeric-cell {
   text-align: right;
   white-space: nowrap;
+}
+
+.table-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.table-actions button {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.table-actions button:hover,
+.table-actions button:focus-visible {
+  background: #eef2f7;
+  outline: none;
+}
+
+.table-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 @media (max-width: 1100px) {

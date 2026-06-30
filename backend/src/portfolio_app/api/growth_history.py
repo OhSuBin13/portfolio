@@ -8,6 +8,7 @@ from portfolio_app.api import get_db
 from portfolio_app.api.toss_portfolio import normalize_account_seq
 from portfolio_app.models import GrowthAnnualHistoryRow, GrowthMonthHistoryRow
 from portfolio_app.repositories import (
+    delete_growth_month_history,
     fetch_growth_month_history_rows,
     upsert_growth_month_history,
 )
@@ -103,6 +104,30 @@ def upsert_growth_month_history_endpoint(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="저장된 월간 성장 기록을 찾을 수 없습니다.",
     )
+
+
+@router.delete(
+    "/month-history/{year}/{month}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_growth_month_history_endpoint(
+    db: Db,
+    year: YearPath,
+    month: MonthPath,
+    account_seq: AccountSeq,
+) -> None:
+    normalized_account_seq = normalize_account_seq(account_seq)
+    deleted = delete_growth_month_history(
+        db,
+        account_seq=normalized_account_seq,
+        year=year,
+        month=month,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="삭제할 월간 성장 기록을 찾을 수 없습니다.",
+        )
 
 
 @router.get("/month-history", response_model=list[GrowthMonthHistoryRow])

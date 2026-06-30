@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { apiGet, apiPut } from "../api"
+import { apiDelete, apiGet, apiPut } from "../api"
 import type {
   GrowthAnnualHistoryRow,
   GrowthMonthHistoryRow,
@@ -32,6 +32,7 @@ const parseRequiredNumber = (value: string) => Number(normalizeNumericInput(valu
 
 const buildAccountQuery = (path: string, accountSeq: string) =>
   `${path}?account_seq=${encodeURIComponent(accountSeq)}`
+const monthRowKey = (row: GrowthMonthHistoryRow) => `${row.account_seq}:${row.year}:${row.month}`
 
 export function GrowthHistoryPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
@@ -40,6 +41,7 @@ export function GrowthHistoryPage() {
   const [monthHistory, setMonthHistory] = useState<GrowthMonthHistoryRow[]>([])
   const [annualHistory, setAnnualHistory] = useState<GrowthAnnualHistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [deletingKey, setDeletingKey] = useState("")
   const [saving, setSaving] = useState(false)
   const [fillingSummary, setFillingSummary] = useState(false)
   const [form, setForm] = useState<GrowthForm>(initialForm)
@@ -178,6 +180,56 @@ export function GrowthHistoryPage() {
       }
     } finally {
       setFillingSummary(false)
+    }
+  }
+
+  const handleEditMonth = (row: GrowthMonthHistoryRow) => {
+    setForm({
+      year: String(row.year),
+      month: String(row.month),
+      netWorthKrw: String(row.net_worth_krw),
+      monthlyDividendKrw: String(row.monthly_dividend_krw),
+    })
+    setMessage("선택한 월 기록을 불러왔습니다.")
+    setHistoryError("")
+  }
+
+  const handleDeleteMonth = async (row: GrowthMonthHistoryRow) => {
+    const requestAccountSeq = selectedAccountSeq
+    if (!requestAccountSeq) {
+      setHistoryError("계좌를 선택하세요.")
+      return
+    }
+
+    if (!window.confirm(`${row.year}년 ${row.month}월 성장 기록을 삭제할까요?`)) {
+      return
+    }
+
+    const targetKey = monthRowKey(row)
+    setMessage("")
+    setHistoryError("")
+    setDeletingKey(targetKey)
+
+    try {
+      await apiDelete(
+        buildAccountQuery(`/api/growth/month-history/${row.year}/${row.month}`, requestAccountSeq),
+      )
+      if (requestAccountSeq !== selectedAccountSeqRef.current) {
+        return
+      }
+      const history = await loadHistory(requestAccountSeq)
+      if (requestAccountSeq !== selectedAccountSeqRef.current) {
+        return
+      }
+      setMonthHistory(history.monthRows)
+      setAnnualHistory(history.annualRows)
+      setMessage("성장 기록을 삭제했습니다.")
+    } catch (err) {
+      if (requestAccountSeq === selectedAccountSeqRef.current) {
+        setHistoryError(getErrorMessage(err))
+      }
+    } finally {
+      setDeletingKey((current) => (current === targetKey ? "" : current))
     }
   }
 
@@ -383,11 +435,12 @@ export function GrowthHistoryPage() {
                   <th className="numeric-cell">평균 수익률</th>
                   <th className="numeric-cell">수익률</th>
                   <th className="numeric-cell">누적배당</th>
+                  <th className="numeric-cell">관리</th>
                 </tr>
               </thead>
               <tbody>
                 {monthHistory.map((row) => (
-                  <tr key={`${row.account_seq}:${row.year}:${row.month}`}>
+                  <tr key={monthRowKey(row)}>
                     <td>{row.year}</td>
                     <td>{row.month}</td>
                     <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
@@ -395,6 +448,20 @@ export function GrowthHistoryPage() {
                     <td className="numeric-cell">{formatRatio(row.average_return_ratio)}</td>
                     <td className="numeric-cell">{formatRatio(row.monthly_return_ratio)}</td>
                     <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
+                    <td className="numeric-cell">
+                      <div className="table-actions">
+                        <button onClick={() => handleEditMonth(row)} type="button">
+                          수정
+                        </button>
+                        <button
+                          disabled={deletingKey === monthRowKey(row)}
+                          onClick={() => handleDeleteMonth(row)}
+                          type="button"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

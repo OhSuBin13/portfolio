@@ -72,6 +72,7 @@ def put_month(
             "/api/growth/month-history/2026/6",
             {"json": {"net_worth_krw": 1_000_000, "monthly_dividend_krw": 10_000}},
         ),
+        ("delete", "/api/growth/month-history/2026/6", {}),
     ],
 )
 def test_growth_history_endpoints_require_account_seq(tmp_path, method, path, kwargs):
@@ -123,6 +124,61 @@ def test_put_month_history_upserts_row_from_payload(tmp_path):
     assert len(list_response.json()) == 1
     assert list_response.json()[0]["net_worth_krw"] == 1_250_000.0
     assert list_response.json()[0]["monthly_dividend_krw"] == 15_000.0
+
+
+def test_delete_month_history_removes_account_row_and_recomputes_history(tmp_path):
+    client = create_test_client(tmp_path)
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=5,
+        net_worth_krw=1_000_000,
+        monthly_dividend_krw=10_000,
+    )
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=6,
+        net_worth_krw=1_250_000,
+        monthly_dividend_krw=20_000,
+    )
+    put_month(
+        client,
+        account_seq="acct-2",
+        year=2026,
+        month_number=6,
+        net_worth_krw=2_000_000,
+        monthly_dividend_krw=30_000,
+    )
+
+    response = client.delete(
+        "/api/growth/month-history/2026/6",
+        params={"account_seq": "acct-1"},
+    )
+    month_response = client.get(
+        "/api/growth/month-history",
+        params={"account_seq": "acct-1"},
+    )
+    other_account_response = client.get(
+        "/api/growth/month-history",
+        params={"account_seq": "acct-2"},
+    )
+    missing_response = client.delete(
+        "/api/growth/month-history/2026/7",
+        params={"account_seq": "acct-1"},
+    )
+
+    assert response.status_code == 204
+    assert month_response.status_code == 200
+    assert [(row["year"], row["month"]) for row in month_response.json()] == [(2026, 5)]
+    assert month_response.json()[0]["cumulative_dividend_krw"] == 10_000.0
+    assert other_account_response.status_code == 200
+    assert [(row["year"], row["month"]) for row in other_account_response.json()] == [
+        (2026, 6)
+    ]
+    assert missing_response.status_code == 404
 
 
 def test_get_month_history_returns_computed_rows_for_account(tmp_path):
