@@ -377,6 +377,64 @@ def test_toss_holdings_endpoint_rejects_blank_account_seq(tmp_path):
     assert response.json()["detail"] == "Toss 계좌 식별자를 입력해 주세요."
 
 
+def test_toss_candles_endpoint_returns_provider_candles(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_optional=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/candles",
+        match_params={"symbol": "005930", "interval": "1d", "limit": "2"},
+        json={
+            "result": {
+                "items": [
+                    {
+                        "timestamp": "2026-06-29T00:00:00+09:00",
+                        "openPrice": "70000",
+                        "highPrice": "76000",
+                        "lowPrice": "69000",
+                        "closePrice": "75000",
+                        "volume": "123456",
+                    }
+                ]
+            }
+        },
+        is_optional=True,
+    )
+
+    response = client.get("/api/toss/candles?symbol=%20005930%20&interval=1d&limit=2")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "symbol": "005930",
+            "timestamp": "2026-06-29T00:00:00+09:00",
+            "open": 70000.0,
+            "high": 76000.0,
+            "low": 69000.0,
+            "close": 75000.0,
+            "volume": 123456.0,
+        }
+    ]
+
+
+def test_toss_candles_endpoint_rejects_blank_symbol(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/toss/candles?symbol=%20%20")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Toss 캔들 조회 종목 심볼을 입력해 주세요."
+
+
 def test_toss_order_import_endpoint_imports_open_orders(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,
