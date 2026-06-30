@@ -1,7 +1,7 @@
 # Toss Securities Open API Integration
 
-Date: 2026-06-29
-Status: Toss-only brokerage portfolio slice implemented
+Date: 2026-06-30
+Status: Toss-only brokerage portfolio slice with manual Growth History implemented
 
 ## 1. Product Direction
 
@@ -24,6 +24,11 @@ Removed behavior:
 Known limitation: Toss holdings currently cover KR/US stock holdings, not the
 app's former cash, savings, debt, manual adjustment, or full personal-finance
 ledger features.
+
+The new Growth History screen is separate from that removed local-ledger model.
+It stores Toss-account-scoped manual monthly history and derives annual history
+from those monthly entries. It does not recreate transaction-derived growth,
+local holdings, or old portfolio snapshots.
 
 ## 2. Toss APIs In Use
 
@@ -53,12 +58,14 @@ SQLite tables that remain in the fresh schema:
 - `backups`
 - `toss_order_import_runs`
 - `toss_orders`
+- `growth_month_history`
 
 The app no longer creates source-of-truth local tables for Toss brokerage
 accounts, assets, holdings, transactions, market price snapshots, or growth
 snapshots. Migration v10 drops the old local ledger tables and preserves
 survivor data such as goals, backups, settings, and FX rates. Migration v11 adds
-the Toss order-history import cache tables.
+the Toss order-history import cache tables. Migration v12 adds
+`growth_month_history`.
 
 Imported Toss order history is read-only historical data. It does not mutate
 holdings, replace the removed `/api/transactions` command path, drive current
@@ -66,6 +73,13 @@ holdings valuation, or create growth snapshots. Current holdings and valuation
 still come from live Toss holdings plus Toss-derived buying power, with KRW
 buying power treated as cash and USD buying power converted through the same
 Toss USD/KRW FX rate used for USD holdings.
+
+Growth History is local, manual, and scoped by Toss `account_seq`. Users record
+monthly net worth and monthly dividend values in `growth_month_history`;
+`GET /api/growth/month-history` returns the account's monthly history, and
+`GET /api/growth/annual-history` derives annual history from the latest saved
+month in each year. These records are not local holdings, transaction rollups, or
+old `portfolio_snapshots`.
 
 ## 4. Summary Behavior
 
@@ -94,6 +108,10 @@ data. The dashboard includes Toss-derived buying power in summary values and
 goal progress. The holdings page is read-only and displays KRW/USD buying power
 for the selected Toss account.
 
+The Growth History page uses the same selected Toss account. It lets the user
+manually save month-level net worth and dividend values, then displays monthly
+history plus annual history derived from those saved month rows.
+
 The order-history page loads imported orders from the local read-only cache and
 can start an order-history import for the selected Toss account. OPEN order
 imports are supported through the Toss order list API. CLOSED imports can fail
@@ -101,9 +119,9 @@ while the Toss OpenAPI reports `closed-not-supported`; the app records the faile
 import run and surfaces the provider failure instead of assuming closed history
 is available.
 
-The app no longer mounts transaction entry, growth history, local market-sync
-status, local account creation, local asset creation, or initial balance setup
-views.
+The app no longer mounts transaction entry, transaction-derived growth history,
+local market-sync status, local account creation, local asset creation, or
+initial balance setup views.
 
 ## 6. Error Handling
 
@@ -144,7 +162,6 @@ These areas are outside the current Toss-only brokerage slice:
   current `closed-not-supported` behavior.
 - Cash, savings, debt, and non-stock products.
 - Local manual onboarding or adjustment flows.
-- A new growth-history model based on a future durable snapshot source.
 
 If any of those features return, they need a new product and schema design
 instead of reusing the removed local ledger path.
