@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
-import type { TossAccount, TossHolding } from "../types"
+import type { TossAccount, TossBuyingPower, TossHolding } from "../types"
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -22,10 +22,12 @@ export function HoldingsPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
   const [selectedAccountSeq, setSelectedAccountSeq] = useState("")
   const [holdings, setHoldings] = useState<TossHolding[]>([])
+  const [buyingPower, setBuyingPower] = useState<TossBuyingPower[]>([])
   const [accountsLoaded, setAccountsLoaded] = useState(false)
   const [holdingsLoading, setHoldingsLoading] = useState(false)
   const [accountsError, setAccountsError] = useState("")
   const [holdingsError, setHoldingsError] = useState("")
+  const [buyingPowerError, setBuyingPowerError] = useState("")
 
   useEffect(() => {
     let ignore = false
@@ -47,6 +49,8 @@ export function HoldingsPage() {
         })
         if (accountData.length === 0) {
           setHoldings([])
+          setBuyingPower([])
+          setBuyingPowerError("")
         }
       })
       .catch((err) => {
@@ -56,6 +60,8 @@ export function HoldingsPage() {
 
         setAccounts([])
         setHoldings([])
+        setBuyingPower([])
+        setBuyingPowerError("")
         setSelectedAccountSeq("")
         setAccountsLoaded(true)
         setAccountsError(getErrorMessage(err))
@@ -79,21 +85,37 @@ export function HoldingsPage() {
       }
 
       setHoldingsLoading(true)
-      apiGet<TossHolding[]>(
-        `/api/toss/holdings?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
-      )
-        .then((holdingData) => {
+      setHoldings([])
+      setHoldingsError("")
+      setBuyingPower([])
+      setBuyingPowerError("")
+      Promise.allSettled([
+        apiGet<TossHolding[]>(
+          `/api/toss/holdings?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
+        ),
+        apiGet<TossBuyingPower[]>(
+          `/api/toss/buying-power?account_seq=${encodeURIComponent(selectedAccountSeq)}`,
+        ),
+      ])
+        .then(([holdingResult, buyingPowerResult]) => {
           if (ignore) {
             return
           }
 
-          setHoldings(holdingData)
-          setHoldingsError("")
-        })
-        .catch((err) => {
-          if (!ignore) {
+          if (holdingResult.status === "fulfilled") {
+            setHoldings(holdingResult.value)
+            setHoldingsError("")
+          } else {
             setHoldings([])
-            setHoldingsError(getErrorMessage(err))
+            setHoldingsError(getErrorMessage(holdingResult.reason))
+          }
+
+          if (buyingPowerResult.status === "fulfilled") {
+            setBuyingPower(buyingPowerResult.value)
+            setBuyingPowerError("")
+          } else {
+            setBuyingPower([])
+            setBuyingPowerError(getErrorMessage(buyingPowerResult.reason))
           }
         })
         .finally(() => {
@@ -119,6 +141,7 @@ export function HoldingsPage() {
 
       {accountsError && <div className="error">{accountsError}</div>}
       {holdingsError && <div className="error">{holdingsError}</div>}
+      {buyingPowerError && <div className="error">{buyingPowerError}</div>}
 
       <section className="panel form-panel">
         <div className="section-heading">
@@ -156,6 +179,41 @@ export function HoldingsPage() {
             {accountsLoaded
               ? "Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요."
               : "Toss 계좌를 불러오는 중입니다."}
+          </p>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <h3>매수 가능 금액</h3>
+          <span>{buyingPower.length.toLocaleString("ko-KR")}개 통화</span>
+        </div>
+        {buyingPower.length > 0 ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>통화</th>
+                  <th className="numeric-cell">현금 기반 매수 가능 금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buyingPower.map((row) => (
+                  <tr key={row.currency}>
+                    <td>{row.currency}</td>
+                    <td className="numeric-cell">
+                      {formatMoney(row.cash_buying_power, row.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="empty-state">
+            {holdingsLoading
+              ? "Toss 매수 가능 금액을 불러오는 중입니다."
+              : "선택한 Toss 계좌의 매수 가능 금액이 없습니다."}
           </p>
         )}
       </section>

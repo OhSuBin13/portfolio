@@ -7,9 +7,49 @@ const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", impor
 
 assert.ok(source.includes("/api/toss/accounts"), "Holdings page should load Toss brokerage accounts")
 assert.ok(source.includes("/api/toss/holdings"), "Holdings page should load Toss holdings")
+assert.ok(source.includes("/api/toss/buying-power"), "Holdings page should load Toss buying power")
+assert.ok(source.includes("TossBuyingPower"), "Holdings page should type Toss buying power")
 assert.ok(source.includes("Toss 보유자산"), "Holdings page should present Toss holdings")
+assert.ok(source.includes("매수 가능 금액"), "Holdings page should show buying power")
+assert.ok(source.includes("cash_buying_power"), "Holdings page should render raw buying power amounts")
 assert.ok(source.includes("account_seq"), "Holdings page should use Toss account sequence identifiers")
 assert.ok(source.includes("readOnly"), "Holdings page should not present manual ledger writes")
+
+const selectedAccountFetchStart = source.indexOf("if (!selectedAccountSeq)")
+const selectedAccountHoldingsClear = source.indexOf("setHoldings([])", selectedAccountFetchStart)
+const selectedAccountHoldingsErrorClear = source.indexOf('setHoldingsError("")', selectedAccountFetchStart)
+const selectedAccountBuyingPowerClear = source.indexOf("setBuyingPower([])", selectedAccountFetchStart)
+const selectedAccountFetchRequest = source.indexOf("Promise.allSettled([", selectedAccountFetchStart)
+assert.ok(
+  selectedAccountFetchStart >= 0 &&
+    selectedAccountHoldingsClear > selectedAccountFetchStart &&
+    selectedAccountHoldingsClear < selectedAccountFetchRequest,
+  "Holdings page should clear holdings before fetching a newly selected account",
+)
+assert.ok(
+  selectedAccountFetchStart >= 0 &&
+    selectedAccountHoldingsErrorClear > selectedAccountFetchStart &&
+    selectedAccountHoldingsErrorClear < selectedAccountFetchRequest,
+  "Holdings page should clear holdings errors before fetching a newly selected account",
+)
+assert.ok(
+  selectedAccountFetchStart >= 0 &&
+    selectedAccountBuyingPowerClear > selectedAccountFetchStart &&
+    selectedAccountBuyingPowerClear < selectedAccountFetchRequest,
+  "Holdings page should clear buying power before fetching a newly selected account",
+)
+assert.ok(
+  source.includes("buyingPowerError") && source.includes("setBuyingPowerError"),
+  "Holdings page should track buying-power errors separately",
+)
+assert.ok(
+  source.includes("Promise.allSettled(["),
+  "Holdings page should isolate holdings and buying-power fetch failures",
+)
+assert.ok(
+  source.includes("holdingResult.status") && source.includes("buyingPowerResult.status"),
+  "Holdings page should handle holdings and buying-power results independently",
+)
 
 for (const removedEndpoint of ["/api/" + "accounts", "/api/" + "assets", "/api/" + "transactions"]) {
   assert.ok(!source.includes(removedEndpoint), `${removedEndpoint} should not be used by Toss-only holdings`)
