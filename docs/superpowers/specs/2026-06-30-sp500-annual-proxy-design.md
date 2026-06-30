@@ -16,14 +16,26 @@ The current unfinished calendar year must not display this value.
 
 The value is a return ratio, consistent with the existing growth history contract. The frontend will format it with the same percent-change display used for portfolio annual returns.
 
-The app will also expose `Sp500ProxyPriceRow` for maintaining the annual proxy price source:
+The app will store annual VOO proxy prices internally in `sp500_proxy_prices`:
 
 - `year: int`
 - `proxy_symbol: "VOO"`
-- `price: float`
+- `price: float` (unadjusted Close/Last for the final trading day of the year)
 - `currency: "USD"`
 - `created_at: str`
 - `updated_at: str`
+
+Initial seed data:
+
+| Year | Final trading day | VOO close |
+| --- | --- | ---: |
+| 2021 | 2021-12-31 | 436.57 |
+| 2022 | 2022-12-30 | 351.34 |
+| 2023 | 2023-12-29 | 436.80 |
+| 2024 | 2024-12-31 | 538.81 |
+| 2025 | 2025-12-31 | 627.13 |
+
+These values come from Nasdaq historical data for `VOO`, queried for 2021-12-01 through 2025-12-31. The stored source label is `nasdaq`.
 
 ## Calculation
 
@@ -53,13 +65,9 @@ Schema version `13` will add `sp500_proxy_prices`:
 - `year` between 2000 and 2099
 - default `proxy_symbol = 'VOO'`
 - default `currency = 'USD'`
+- seeded 2021 through 2025 VOO year-end close prices
 
-The growth API will expose:
-
-- `GET /api/growth/sp500-proxy-prices`
-- `PUT /api/growth/sp500-proxy-prices/{year}`
-
-The PUT endpoint stores the annual VOO year-end price. The annual history response derives S&P 500 growth from these saved rows.
+The annual history response derives S&P 500 growth from these saved rows. No proxy-price editing API is included in this change; that can be added later if maintaining future annual prices through the UI becomes necessary.
 
 ## Frontend Shape
 
@@ -68,8 +76,6 @@ The PUT endpoint stores the annual VOO year-end price. The annual history respon
 - `S&P 500 연 성장률`
 
 The cell uses existing return percent formatting and positive/negative color classes. Current-year rows and missing proxy data render as `-`.
-
-The page also gets a compact `S&P 500 프록시` form for entering the VOO year-end price by year. Saving a proxy price refreshes annual history.
 
 ## Testing
 
@@ -80,11 +86,10 @@ Backend tests will cover:
 - Current calendar year returns `null` even if a price exists.
 - Missing proxy price data returns `null`.
 - Schema migration creates `sp500_proxy_prices` in fresh and v12 databases.
-- Proxy price API validates and persists positive prices.
+- Fresh and migrated schemas seed 2021 through 2025 VOO year-end close prices.
 
 Frontend source tests will cover:
 
 - The new column label exists.
 - The new field is rendered through the return formatter.
 - The existing return-tone classes apply to the new column.
-- The proxy price form calls the proxy price API and refreshes annual history after saving.
