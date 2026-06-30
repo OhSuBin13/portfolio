@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -6,11 +7,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from portfolio_app.api import get_db
 from portfolio_app.api.toss_portfolio import normalize_account_seq
-from portfolio_app.models import GrowthAnnualHistoryRow, GrowthMonthHistoryRow
+from portfolio_app.models import (
+    GrowthAnnualHistoryRow,
+    GrowthMonthHistoryRow,
+    Sp500ProxyPriceRow,
+)
 from portfolio_app.repositories import (
     delete_growth_month_history,
     fetch_growth_month_history_rows,
+    fetch_sp500_proxy_annual_return_ratios,
+    fetch_sp500_proxy_prices,
     upsert_growth_month_history,
+    upsert_sp500_proxy_price,
 )
 from portfolio_app.services.growth_history import (
     GrowthMonthInput,
@@ -30,6 +38,12 @@ class GrowthMonthHistoryUpsert(BaseModel):
 
     net_worth_krw: float = Field(ge=0, allow_inf_nan=False)
     monthly_dividend_krw: float = Field(ge=0, allow_inf_nan=False)
+
+
+class Sp500ProxyPriceUpsert(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    price: float = Field(gt=0, allow_inf_nan=False)
 
 
 def _month_input_from_row(row: sqlite3.Row) -> GrowthMonthInput:
@@ -67,14 +81,32 @@ def _build_month_history(
 
 def _build_annual_history(
     rows: list[GrowthMonthInput],
+    *,
+    sp500_annual_return_ratios: dict[int, float] | None = None,
+    current_year: int | None = None,
 ) -> list[GrowthAnnualHistoryRow]:
     try:
-        return build_annual_history(rows)
+        return build_annual_history(
+            rows,
+            sp500_annual_return_ratios=sp500_annual_return_ratios,
+            current_year=current_year,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+
+
+def _sp500_proxy_price_from_row(row: sqlite3.Row) -> Sp500ProxyPriceRow:
+    return Sp500ProxyPriceRow(
+        year=int(row["year"]),
+        proxy_symbol=str(row["proxy_symbol"]),
+        price=float(row["price"]),
+        currency=str(row["currency"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
 
 
 @router.put("/month-history/{year}/{month}", response_model=GrowthMonthHistoryRow)
@@ -141,12 +173,36 @@ def list_growth_month_history(
     )
 
 
+@router.get("/sp500-proxy-prices", response_model=list[Sp500ProxyPriceRow])
+def list_sp500_proxy_prices(db: Db) -> list[Sp500ProxyPriceRow]:
+    return [_sp500_proxy_price_from_row(row) for row in fetch_sp500_proxy_prices(db)]
+
+
+@router.put("/sp500-proxy-prices/{year}", response_model=Sp500ProxyPriceRow)
+def upsert_sp500_proxy_price_endpoint(
+    payload: Sp500ProxyPriceUpsert,
+    db: Db,
+    year: YearPath,
+) -> Sp500ProxyPriceRow:
+    row = upsert_sp500_proxy_price(db, year=year, price=payload.price)
+    return _sp500_proxy_price_from_row(row)
+
+
 @router.get("/annual-history", response_model=list[GrowthAnnualHistoryRow])
 def list_growth_annual_history(
     db: Db,
     account_seq: AccountSeq,
 ) -> list[GrowthAnnualHistoryRow]:
     normalized_account_seq = normalize_account_seq(account_seq)
+    month_inputs = _month_inputs_for_account(db, account_seq=normalized_account_seq)
+    current_year = date.today().year
+    sp500_annual_return_ratios = fetch_sp500_proxy_annual_return_ratios(
+        db,
+        years=[row.year for row in month_inputs],
+        current_year=current_year,
+    )
     return _build_annual_history(
-        _month_inputs_for_account(db, account_seq=normalized_account_seq)
+        month_inputs,
+        sp500_annual_return_ratios=sp500_annual_return_ratios,
+        current_year=current_year,
     )

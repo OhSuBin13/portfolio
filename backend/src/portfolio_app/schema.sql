@@ -105,3 +105,17 @@ create table if not exists growth_month_history (
 
 create index if not exists idx_growth_month_history_account_period
 on growth_month_history(account_seq, year, month);
+
+create table if not exists sp500_proxy_prices (
+  id integer primary key,
+  year integer not null check (year >= 2000 and year <= 2099),
+  proxy_symbol text not null default 'VOO' check (proxy_symbol = 'VOO'),
+  price real not null check (price > 0),
+  currency text not null default 'USD' check (currency = 'USD'),
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  unique(proxy_symbol, year)
+);
+
+create index if not exists idx_sp500_proxy_prices_symbol_year
+on sp500_proxy_prices(proxy_symbol, year);

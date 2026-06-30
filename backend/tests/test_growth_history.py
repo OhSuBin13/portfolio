@@ -265,6 +265,48 @@ def test_get_annual_history_returns_derived_rows_for_account(tmp_path):
     assert rows[2]["average_return_ratio"] == pytest.approx(1.45)
 
 
+def test_sp500_proxy_price_endpoint_upserts_prices(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 125})
+    update_response = client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 130})
+    list_response = client.get("/api/growth/sp500-proxy-prices")
+
+    assert response.status_code == 200
+    assert update_response.status_code == 200
+    assert update_response.json()["price"] == 130
+    assert list_response.status_code == 200
+    assert [(row["year"], row["price"]) for row in list_response.json()] == [(2025, 130)]
+
+
+def test_get_annual_history_includes_sp500_proxy_for_completed_years(tmp_path):
+    client = create_test_client(tmp_path)
+    client.put("/api/growth/sp500-proxy-prices/2024", json={"price": 100})
+    client.put("/api/growth/sp500-proxy-prices/2025", json={"price": 120})
+    client.put("/api/growth/sp500-proxy-prices/2026", json={"price": 150})
+    for year, month_number, net_worth in [
+        (2024, 12, 1_000_000),
+        (2025, 12, 1_200_000),
+        (2026, 6, 1_500_000),
+    ]:
+        put_month(
+            client,
+            account_seq="acct-1",
+            year=year,
+            month_number=month_number,
+            net_worth_krw=net_worth,
+            monthly_dividend_krw=0,
+        )
+
+    response = client.get("/api/growth/annual-history", params={"account_seq": "acct-1"})
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows[0]["sp500_annual_return_ratio"] is None
+    assert rows[1]["sp500_annual_return_ratio"] == pytest.approx(1.2)
+    assert rows[2]["sp500_annual_return_ratio"] is None
+
+
 def test_growth_history_is_isolated_by_account_seq(tmp_path):
     client = create_test_client(tmp_path)
     put_month(
@@ -451,6 +493,22 @@ def test_annual_history_uses_latest_month_per_year_and_adjacent_year_returns():
     assert rows[2].average_return_ratio == pytest.approx((ratio_2025 + ratio_2026) / 2)
 
 
+def test_annual_history_attaches_sp500_proxy_ratios_for_completed_years():
+    rows = build_annual_history(
+        [
+            month(2024, 12, 1_000_000),
+            month(2025, 12, 1_250_000),
+            month(2026, 6, 1_500_000),
+        ],
+        sp500_annual_return_ratios={2025: 1.2, 2026: 1.25},
+        current_year=2026,
+    )
+
+    assert rows[0].sp500_annual_return_ratio is None
+    assert rows[1].sp500_annual_return_ratio == pytest.approx(1.2)
+    assert rows[2].sp500_annual_return_ratio is None
+
+
 def test_annual_history_missing_previous_calendar_year_has_no_return_ratio():
     rows = build_annual_history(
         [
@@ -493,8 +551,11 @@ def test_growth_history_models_reject_extra_and_non_finite_values():
         "net_worth_krw": 1_000_000.0,
         "annual_return_ratio": None,
         "average_return_ratio": None,
+        "sp500_annual_return_ratio": None,
     }
     with pytest.raises(ValidationError):
         GrowthAnnualHistoryRow(**valid_annual, unexpected=True)
     with pytest.raises(ValidationError):
         GrowthAnnualHistoryRow(**{**valid_annual, "annual_return_ratio": float("inf")})
+    with pytest.raises(ValidationError):
+        GrowthAnnualHistoryRow(**{**valid_annual, "sp500_annual_return_ratio": float("inf")})

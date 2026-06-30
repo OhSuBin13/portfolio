@@ -72,6 +72,8 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
         "/api/growth/month-history",
         "/api/growth/month-history/{year}/{month}",
         "/api/growth/annual-history",
+        "/api/growth/sp500-proxy-prices",
+        "/api/growth/sp500-proxy-prices/{year}",
         "/api/goals",
         "/api/backups",
     } <= paths
@@ -110,6 +112,8 @@ def test_openapi_exposes_growth_history_contract(tmp_path):
     delete_month = paths["/api/growth/month-history/{year}/{month}"]["delete"]
     get_months = paths["/api/growth/month-history"]["get"]
     get_annual = paths["/api/growth/annual-history"]["get"]
+    get_sp500_proxy_prices = paths["/api/growth/sp500-proxy-prices"]["get"]
+    put_sp500_proxy_price = paths["/api/growth/sp500-proxy-prices/{year}"]["put"]
 
     assert put_month["tags"] == ["growth"]
     assert put_month["requestBody"]["content"]["application/json"]["schema"] == {
@@ -128,6 +132,17 @@ def test_openapi_exposes_growth_history_contract(tmp_path):
     annual_schema = get_annual["responses"]["200"]["content"]["application/json"]["schema"]
     assert annual_schema["type"] == "array"
     assert annual_schema["items"] == {"$ref": "#/components/schemas/GrowthAnnualHistoryRow"}
+    annual_component = schema["components"]["schemas"]["GrowthAnnualHistoryRow"]
+    assert "sp500_annual_return_ratio" in annual_component["properties"]
+
+    sp500_proxy_schema = get_sp500_proxy_prices["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert sp500_proxy_schema["type"] == "array"
+    assert sp500_proxy_schema["items"] == {"$ref": "#/components/schemas/Sp500ProxyPriceRow"}
+    assert put_sp500_proxy_price["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/Sp500ProxyPriceRow"
+    }
 
     account_seq_parameter = {
         "name": "account_seq",

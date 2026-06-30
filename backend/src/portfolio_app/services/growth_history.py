@@ -53,9 +53,15 @@ def build_month_history(rows: Iterable[GrowthMonthInput]) -> list[GrowthMonthHis
     return history
 
 
-def build_annual_history(rows: Iterable[GrowthMonthInput]) -> list[GrowthAnnualHistoryRow]:
+def build_annual_history(
+    rows: Iterable[GrowthMonthInput],
+    *,
+    sp500_annual_return_ratios: dict[int, float] | None = None,
+    current_year: int | None = None,
+) -> list[GrowthAnnualHistoryRow]:
     latest_months = _latest_months_by_year(_normalized_rows(rows))
     history: list[GrowthAnnualHistoryRow] = []
+    proxy_ratios = sp500_annual_return_ratios or {}
 
     for account_seq, account_rows in groupby(latest_months, key=attrgetter("account_seq")):
         previous: GrowthMonthInput | None = None
@@ -64,6 +70,11 @@ def build_annual_history(rows: Iterable[GrowthMonthInput]) -> list[GrowthAnnualH
 
         for row in account_rows:
             annual_return_ratio = _return_ratio_for_adjacent_year(row, previous)
+            sp500_annual_return_ratio = (
+                None
+                if current_year is not None and row.year >= current_year
+                else proxy_ratios.get(row.year)
+            )
             if annual_return_ratio is not None:
                 return_sum += annual_return_ratio
                 return_count += 1
@@ -77,6 +88,7 @@ def build_annual_history(rows: Iterable[GrowthMonthInput]) -> list[GrowthAnnualH
                     net_worth_krw=float(row.net_worth_krw),
                     annual_return_ratio=annual_return_ratio,
                     average_return_ratio=_average(return_sum, return_count),
+                    sp500_annual_return_ratio=sp500_annual_return_ratio,
                 )
             )
             previous = row

@@ -112,6 +112,18 @@ class GrowthAnnualHistoryRow(BaseModel):
     net_worth_krw: float = Field(ge=0, allow_inf_nan=False)
     annual_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     average_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    sp500_annual_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+
+class Sp500ProxyPriceRow(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    year: int = Field(ge=2000, le=2099)
+    proxy_symbol: str = Field(pattern="^VOO$")
+    price: float = Field(gt=0, allow_inf_nan=False)
+    currency: str = Field(pattern="^USD$")
+    created_at: str
+    updated_at: str
 
 
 class AssetAllocation(BaseModel):

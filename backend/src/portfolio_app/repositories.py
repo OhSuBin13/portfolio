@@ -570,6 +570,88 @@ def delete_growth_month_history(
     return cursor.rowcount > 0
 
 
+def fetch_sp500_proxy_price(
+    db: sqlite3.Connection,
+    *,
+    year: int,
+    proxy_symbol: str = "VOO",
+) -> sqlite3.Row | None:
+    return db.execute(
+        """
+        select *
+        from sp500_proxy_prices
+        where proxy_symbol = ?
+          and year = ?
+        """,
+        (proxy_symbol, year),
+    ).fetchone()
+
+
+def fetch_sp500_proxy_prices(
+    db: sqlite3.Connection,
+    *,
+    proxy_symbol: str = "VOO",
+) -> list[sqlite3.Row]:
+    return db.execute(
+        """
+        select *
+        from sp500_proxy_prices
+        where proxy_symbol = ?
+        order by year
+        """,
+        (proxy_symbol,),
+    ).fetchall()
+
+
+def upsert_sp500_proxy_price(
+    db: sqlite3.Connection,
+    *,
+    year: int,
+    price: float,
+    proxy_symbol: str = "VOO",
+    commit: bool = True,
+) -> sqlite3.Row:
+    db.execute(
+        """
+        insert into sp500_proxy_prices(year, proxy_symbol, price)
+        values (?, ?, ?)
+        on conflict(proxy_symbol, year)
+        do update set price = excluded.price,
+                      updated_at = current_timestamp
+        """,
+        (year, proxy_symbol, price),
+    )
+    if commit:
+        db.commit()
+    row = fetch_sp500_proxy_price(db, year=year, proxy_symbol=proxy_symbol)
+    if row is None:
+        raise RuntimeError("저장된 S&P 500 프록시 가격을 찾을 수 없습니다.")
+    return row
+
+
+def fetch_sp500_proxy_annual_return_ratios(
+    db: sqlite3.Connection,
+    *,
+    years: list[int],
+    current_year: int,
+    proxy_symbol: str = "VOO",
+) -> dict[int, float]:
+    prices = {
+        int(row["year"]): float(row["price"])
+        for row in fetch_sp500_proxy_prices(db, proxy_symbol=proxy_symbol)
+    }
+    ratios: dict[int, float] = {}
+    for year in sorted(set(years)):
+        if year >= current_year:
+            continue
+        start_price = prices.get(year - 1)
+        end_price = prices.get(year)
+        if start_price is None or end_price is None or start_price <= 0:
+            continue
+        ratios[year] = end_price / start_price
+    return ratios
+
+
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
     rows = db.execute(
         """
