@@ -2,6 +2,7 @@ import { useState } from "react"
 import { AppShell } from "./components/AppShell"
 import { Dashboard } from "./components/Dashboard"
 import { GoalsPage } from "./components/GoalsPage"
+import { GrowthHistoryPage } from "./components/GrowthHistoryPage"
 import { HoldingsPage } from "./components/HoldingsPage"
 import { OrderHistoryPage } from "./components/OrderHistoryPage"
 import { SettingsPage } from "./components/SettingsPage"
@@ -14,6 +15,7 @@ export default function App() {
       {active === "dashboard" && <Dashboard />}
       {active === "holdings" && <HoldingsPage />}
       {active === "orders" && <OrderHistoryPage />}
+      {active === "growth" && <GrowthHistoryPage />}
       {active === "goals" && <GoalsPage />}
       {active === "settings" && <SettingsPage />}
     </AppShell>

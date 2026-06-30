@@ -105,6 +105,29 @@ export type GoalProgress = {
   remaining_krw: number
 }
 
+export type GrowthMonthHistoryRow = {
+  account_seq: string
+  year: number
+  month: number
+  net_worth_krw: number
+  monthly_dividend_krw: number
+  monthly_return_ratio: number | null
+  average_return_ratio: number | null
+  cumulative_dividend_krw: number
+  created_at: string
+  updated_at: string
+}
+
+export type GrowthAnnualHistoryRow = {
+  account_seq: string
+  year: number
+  display_year: string
+  source_month: number
+  net_worth_krw: number
+  annual_return_ratio: number | null
+  average_return_ratio: number | null
+}
+
 export type BackupRecord = {
   path: string
   reason: string

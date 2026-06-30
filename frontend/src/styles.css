@@ -389,6 +389,12 @@ button {
   min-width: 920px;
 }
 
+.growth-entry-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .signed-positive {
   color: #b91c1c;
   font-weight: 700;
@@ -790,6 +796,7 @@ select:focus {
   .dashboard-header,
   .growth-header,
   .form-grid,
+  .growth-entry-grid,
   .field-row,
   .field-row.triple {
     grid-template-columns: 1fr;
