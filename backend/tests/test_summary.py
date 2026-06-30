@@ -39,6 +39,8 @@ def test_summary_endpoint_documents_typed_response_model(tmp_path):
         }
     ]
     assert "asset_mix" in summary_response["properties"]
+    assert "buying_power" in summary_response["properties"]
+    assert "buying_power_total_krw" in summary_response["properties"]
     assert summary_response["properties"]["asset_allocations"]["items"] == {
         "$ref": "#/components/schemas/TossAssetAllocation"
     }
@@ -101,6 +103,16 @@ def test_summary_endpoint_uses_toss_krw_holdings(tmp_path, httpx_mock):
             }
         },
     )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "0"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "0"}},
+    )
 
     response = client.get("/api/summary?account_seq=acct-1")
 
@@ -157,6 +169,16 @@ def test_summary_endpoint_fetches_toss_fx_for_usd_holdings(tmp_path, httpx_mock)
     )
     httpx_mock.add_response(
         method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "0"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "0"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
         url=(
             "https://openapi.tossinvest.com/api/v1/exchange-rate"
             "?baseCurrency=USD&quoteCurrency=KRW"
@@ -189,6 +211,80 @@ def test_summary_endpoint_fetches_toss_fx_for_usd_holdings(tmp_path, httpx_mock)
             "percent": 100.0,
         }
     ]
+
+
+def test_summary_endpoint_includes_buying_power_in_goal_progress(tmp_path, httpx_mock):
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    import sqlite3
+
+    from portfolio_app.services import goals as goal_service
+
+    db = sqlite3.connect(settings.database_path)
+    db.row_factory = sqlite3.Row
+    try:
+        goal_service.create_goal(
+            db,
+            name="순자산 목표",
+            type="net_worth",
+            target_amount_krw=1_000_000,
+        )
+    finally:
+        db.close()
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_reusable=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        json={"result": {"items": []}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "500000"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "100"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/exchange-rate"
+            "?baseCurrency=USD&quoteCurrency=KRW"
+        ),
+        json={
+            "result": {
+                "baseCurrency": "USD",
+                "quoteCurrency": "KRW",
+                "rate": "1400",
+                "validFrom": "2026-06-30T09:00:00+09:00",
+            }
+        },
+    )
+
+    response = client.get("/api/summary?account_seq=acct-1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["net_worth_krw"] == 640000.0
+    assert payload["buying_power_total_krw"] == 640000.0
+    assert payload["asset_mix"] == {"cash": 100.0}
+    assert payload["goal_progress"][0]["current_amount_krw"] == 640000.0
+    assert payload["goal_progress"][0]["remaining_krw"] == 360000.0
 
 
 def test_summary_endpoint_maps_provider_http_errors_to_502_without_secrets(

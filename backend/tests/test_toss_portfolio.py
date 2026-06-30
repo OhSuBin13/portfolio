@@ -15,6 +15,7 @@ from portfolio_app.services.market_data import (
 )
 from portfolio_app.services.toss_portfolio import (
     TossBrokerageProvider,
+    TossBuyingPower,
     TossHolding,
     build_toss_summary,
     fetch_toss_summary,
@@ -966,14 +967,69 @@ def test_build_toss_summary_uses_toss_holdings_and_fx_rate():
     ]
 
 
+def test_build_toss_summary_includes_buying_power_in_totals_and_asset_mix():
+    holdings = [
+        TossHolding(
+            symbol="005930",
+            name="삼성전자",
+            market="KR",
+            currency="KRW",
+            quantity=10,
+            average_purchase_price=70000,
+            last_price=75000,
+            market_value=750000,
+        )
+    ]
+    buying_power = [
+        TossBuyingPower(currency="KRW", cash_buying_power=250000),
+        TossBuyingPower(currency="USD", cash_buying_power=100),
+    ]
+
+    result = build_toss_summary(
+        holdings,
+        buying_power=buying_power,
+        usd_krw_rate=1400,
+    )
+
+    assert result.summary.net_worth_krw == 1_140_000
+    assert result.summary.gross_assets_krw == 1_140_000
+    assert result.summary.buying_power_total_krw == 390_000
+    assert [row.model_dump() for row in result.summary.buying_power] == [
+        {"currency": "KRW", "cash_buying_power": 250000.0, "value_krw": 250000.0},
+        {"currency": "USD", "cash_buying_power": 100.0, "value_krw": 140000.0},
+    ]
+    assert result.asset_mix == {
+        "cash": 34.21052631578947,
+        "stock_etf": 65.78947368421053,
+    }
+    assert result.asset_allocations[0]["percent"] == 65.78947368421053
+
+
 class StubTossBrokerageProvider:
-    def __init__(self, holdings: list[TossHolding]) -> None:
+    def __init__(
+        self,
+        holdings: list[TossHolding],
+        buying_powers: dict[str, float] | None = None,
+    ) -> None:
         self.holdings = holdings
+        self.buying_powers = buying_powers or {"KRW": 0, "USD": 0}
         self.requested_accounts: list[str] = []
+        self.requested_buying_power: list[tuple[str, str]] = []
 
     async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
         self.requested_accounts.append(account_seq)
         return self.holdings
+
+    async def fetch_buying_power(
+        self,
+        account_seq: str,
+        currency: str,
+    ) -> TossBuyingPower:
+        self.requested_buying_power.append((account_seq, currency))
+        return TossBuyingPower(
+            currency=currency,
+            cash_buying_power=self.buying_powers[currency],
+        )
 
 
 def test_toss_accounts_cache_returns_entry_until_ttl_expires():
@@ -1083,6 +1139,22 @@ async def test_fetch_toss_summary_does_not_fetch_fx_for_krw_only_holdings():
     assert provider.requested_accounts == ["12345"]
     assert fx_provider.calls == []
     assert result.summary.net_worth_krw == 750000
+
+
+@pytest.mark.asyncio
+async def test_fetch_toss_summary_fetches_fx_for_usd_buying_power_without_usd_holdings():
+    provider = StubTossBrokerageProvider([], {"KRW": 1000, "USD": 10})
+    fx_provider = StubFxProvider()
+
+    result = await fetch_toss_summary("acct-1", provider, fx_provider=fx_provider)
+
+    assert result.summary.net_worth_krw == 15_000
+    assert result.summary.usd_krw_rate == 1400
+    assert fx_provider.calls == [("USD", "KRW")]
+    assert provider.requested_buying_power == [
+        ("acct-1", "KRW"),
+        ("acct-1", "USD"),
+    ]
 
 
 @pytest.mark.asyncio

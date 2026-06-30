@@ -35,6 +35,14 @@ class HoldingValue(BaseModel):
     value_krw: float = Field(ge=0, allow_inf_nan=False)
 
 
+class BuyingPower(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    currency: Currency
+    cash_buying_power: float = Field(ge=0, allow_inf_nan=False)
+    value_krw: float = Field(ge=0, allow_inf_nan=False)
+
+
 class PortfolioSummary(BaseModel):
     model_config = ConfigDict(strict=True)
 
@@ -42,6 +50,8 @@ class PortfolioSummary(BaseModel):
     gross_assets_krw: float = Field(ge=0, allow_inf_nan=False)
     debt_krw: float = Field(ge=0, allow_inf_nan=False)
     monthly_income_krw: float = Field(ge=0, allow_inf_nan=False)
+    buying_power: list[BuyingPower] = Field(default_factory=list)
+    buying_power_total_krw: float = Field(default=0, ge=0, allow_inf_nan=False)
     usd_krw_rate: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     usd_krw_change_percent: float | None = Field(default=None, allow_inf_nan=False)
 

@@ -8,7 +8,13 @@ from urllib.parse import quote
 
 import httpx
 
-from portfolio_app.models import Currency, PortfolioSummary, TossAssetAllocation, TossMarket
+from portfolio_app.models import (
+    BuyingPower,
+    Currency,
+    PortfolioSummary,
+    TossAssetAllocation,
+    TossMarket,
+)
 from portfolio_app.services.market_data import (
     FxRateProvider,
     Sleep,
@@ -140,8 +146,15 @@ class TossAccountsCache:
             return list(accounts)
 
 
-class TossHoldingProvider(Protocol):
+class TossSummaryProvider(Protocol):
     async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
+        pass
+
+    async def fetch_buying_power(
+        self,
+        account_seq: str,
+        currency: Currency,
+    ) -> TossBuyingPower:
         pass
 
 
@@ -340,9 +353,14 @@ class TossBrokerageProvider:
 def build_toss_summary(
     holdings: list[TossHolding],
     *,
+    buying_power: list[TossBuyingPower] | None = None,
     usd_krw_rate: float | None,
 ) -> TossSummaryResult:
-    if any(holding.currency == "USD" for holding in holdings):
+    buying_power_rows = buying_power or []
+    needs_usd_rate = any(holding.currency == "USD" for holding in holdings) or any(
+        row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power_rows
+    )
+    if needs_usd_rate:
         rate = _positive_number(usd_krw_rate, "USD 보유자산에는 USD/KRW 환율이 필요합니다.")
     else:
         rate = usd_krw_rate
@@ -354,8 +372,27 @@ def build_toss_summary(
             value_krw = holding.market_value * float(rate)
         allocation_values.append((holding, value_krw))
 
-    total_krw = sum(value_krw for _, value_krw in allocation_values)
-    asset_mix = {"stock_etf": 100.0} if total_krw > 0 else {}
+    buying_power_values: list[BuyingPower] = []
+    for row in buying_power_rows:
+        value_krw = row.cash_buying_power
+        if row.currency == "USD":
+            value_krw = row.cash_buying_power * float(rate) if row.cash_buying_power > 0 else 0
+        buying_power_values.append(
+            BuyingPower(
+                currency=row.currency,
+                cash_buying_power=row.cash_buying_power,
+                value_krw=value_krw,
+            )
+        )
+
+    holdings_total_krw = sum(value_krw for _, value_krw in allocation_values)
+    buying_power_total_krw = sum(row.value_krw for row in buying_power_values)
+    total_krw = holdings_total_krw + buying_power_total_krw
+    asset_mix = {}
+    if buying_power_total_krw > 0 and total_krw > 0:
+        asset_mix["cash"] = buying_power_total_krw / total_krw * 100
+    if holdings_total_krw > 0 and total_krw > 0:
+        asset_mix["stock_etf"] = holdings_total_krw / total_krw * 100
     asset_allocations = [
         TossAssetAllocation(
             asset_key=f"{holding.market}:{holding.symbol}",
@@ -377,6 +414,8 @@ def build_toss_summary(
             gross_assets_krw=total_krw,
             debt_krw=0,
             monthly_income_krw=0,
+            buying_power=buying_power_values,
+            buying_power_total_krw=buying_power_total_krw,
             usd_krw_rate=rate,
         ),
         asset_mix=asset_mix,
@@ -386,17 +425,27 @@ def build_toss_summary(
 
 async def fetch_toss_summary(
     account_seq: str,
-    provider: TossHoldingProvider,
+    provider: TossSummaryProvider,
     fx_provider: FxRateProvider | None = None,
 ) -> TossSummaryResult:
     holdings = await provider.fetch_holdings(account_seq)
+    buying_power = [
+        await provider.fetch_buying_power(account_seq, "KRW"),
+        await provider.fetch_buying_power(account_seq, "USD"),
+    ]
     usd_krw_rate: float | None = None
-    if any(holding.currency == "USD" for holding in holdings):
+    if any(holding.currency == "USD" for holding in holdings) or any(
+        row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power
+    ):
         resolved_fx_provider = fx_provider or default_fx_rate_provider()
         usd_krw_rate = (
             await resolved_fx_provider.fetch_rate("USD", "KRW")
         ).rate
-    return build_toss_summary(holdings, usd_krw_rate=usd_krw_rate)
+    return build_toss_summary(
+        holdings,
+        buying_power=buying_power,
+        usd_krw_rate=usd_krw_rate,
+    )
 
 
 def _parse_order(item: dict[str, Any]) -> TossOrder:
