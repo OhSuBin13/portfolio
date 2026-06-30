@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs"
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
 const pageFile = new URL("../src/components/GrowthHistoryPage.tsx", import.meta.url)
+const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
 
 assert.ok(appSource.includes('active === "growth"'), "App should mount growth history")
 assert.ok(shellSource.includes('id: "growth"'), "AppShell should use the growth nav id")
@@ -29,6 +30,25 @@ assert.ok(
   pageSource.includes("latestMonthHistoryKey") &&
     pageSource.includes("formatLatestMonthAverageReturn(row)"),
   "Page should show average return only on the latest month row",
+)
+assert.ok(
+  pageSource.includes("latestAnnualHistoryKey") &&
+    pageSource.includes("formatLatestAnnualAverageReturn(row)"),
+  "Page should show annual average return only on the latest annual row",
+)
+assert.ok(
+  pageSource.includes("getReturnToneClass") &&
+    pageSource.includes("value > 1") &&
+    pageSource.includes("value < 1"),
+  "Page should classify positive and negative returns from stored ratios",
+)
+assert.ok(
+  pageSource.includes("return-tone-positive") && pageSource.includes("return-tone-negative"),
+  "Page should apply return tone classes to return cells",
+)
+assert.ok(
+  stylesSource.includes(".return-tone-positive") && stylesSource.includes(".return-tone-negative"),
+  "Styles should define positive and negative return colors",
 )
 assert.ok(pageSource.includes("순자산을 입력하세요."), "Page should reject blank net worth")
 assert.ok(

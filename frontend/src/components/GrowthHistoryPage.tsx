@@ -42,6 +42,23 @@ const parseRequiredNumber = (value: string) => Number(normalizeNumericInput(valu
 const buildAccountQuery = (path: string, accountSeq: string) =>
   `${path}?account_seq=${encodeURIComponent(accountSeq)}`
 const monthRowKey = (row: GrowthMonthHistoryRow) => `${row.account_seq}:${row.year}:${row.month}`
+const annualRowKey = (row: GrowthAnnualHistoryRow) =>
+  `${row.account_seq}:${row.year}:${row.source_month}`
+const getReturnToneClass = (value: number | null) => {
+  if (value === null) {
+    return ""
+  }
+
+  if (value > 1) {
+    return "return-tone-positive"
+  }
+
+  if (value < 1) {
+    return "return-tone-negative"
+  }
+
+  return ""
+}
 
 export function GrowthHistoryPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
@@ -175,6 +192,24 @@ export function GrowthHistoryPage() {
   const latestMonthHistoryKey = latestMonthHistoryRow ? monthRowKey(latestMonthHistoryRow) : ""
   const formatLatestMonthAverageReturn = (row: GrowthMonthHistoryRow) =>
     monthRowKey(row) === latestMonthHistoryKey ? formatReturnPercent(row.average_return_ratio) : "-"
+  const getLatestMonthAverageReturnToneClass = (row: GrowthMonthHistoryRow) =>
+    monthRowKey(row) === latestMonthHistoryKey ? getReturnToneClass(row.average_return_ratio) : ""
+  const latestAnnualHistoryRow = annualHistory.reduce<GrowthAnnualHistoryRow | null>(
+    (latest, row) =>
+      latest === null ||
+      row.year > latest.year ||
+      (row.year === latest.year && row.source_month > latest.source_month)
+        ? row
+        : latest,
+    null,
+  )
+  const latestAnnualHistoryKey = latestAnnualHistoryRow ? annualRowKey(latestAnnualHistoryRow) : ""
+  const formatLatestAnnualAverageReturn = (row: GrowthAnnualHistoryRow) =>
+    annualRowKey(row) === latestAnnualHistoryKey
+      ? formatReturnPercent(row.average_return_ratio)
+      : "-"
+  const getLatestAnnualAverageReturnToneClass = (row: GrowthAnnualHistoryRow) =>
+    annualRowKey(row) === latestAnnualHistoryKey ? getReturnToneClass(row.average_return_ratio) : ""
 
   const handleFillCurrentNetWorth = async () => {
     const requestAccountSeq = selectedAccountSeq
@@ -466,8 +501,12 @@ export function GrowthHistoryPage() {
                     <td>{row.month}</td>
                     <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
                     <td className="numeric-cell">{formatKrw(row.monthly_dividend_krw)}</td>
-                    <td className="numeric-cell">{formatLatestMonthAverageReturn(row)}</td>
-                    <td className="numeric-cell">{formatReturnPercent(row.monthly_return_ratio)}</td>
+                    <td className={`numeric-cell ${getLatestMonthAverageReturnToneClass(row)}`}>
+                      {formatLatestMonthAverageReturn(row)}
+                    </td>
+                    <td className={`numeric-cell ${getReturnToneClass(row.monthly_return_ratio)}`}>
+                      {formatReturnPercent(row.monthly_return_ratio)}
+                    </td>
                     <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
                     <td className="numeric-cell">
                       <div className="table-actions">
@@ -511,11 +550,15 @@ export function GrowthHistoryPage() {
               </thead>
               <tbody>
                 {annualHistory.map((row) => (
-                  <tr key={`${row.account_seq}:${row.year}:${row.source_month}`}>
+                  <tr key={annualRowKey(row)}>
                     <td>{row.display_year}</td>
                     <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
-                    <td className="numeric-cell">{formatReturnPercent(row.average_return_ratio)}</td>
-                    <td className="numeric-cell">{formatReturnPercent(row.annual_return_ratio)}</td>
+                    <td className={`numeric-cell ${getLatestAnnualAverageReturnToneClass(row)}`}>
+                      {formatLatestAnnualAverageReturn(row)}
+                    </td>
+                    <td className={`numeric-cell ${getReturnToneClass(row.annual_return_ratio)}`}>
+                      {formatReturnPercent(row.annual_return_ratio)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
