@@ -87,6 +87,33 @@ class GrowthHistoryRow(BaseModel):
     cumulative_growth_rate: float | None = Field(default=None, allow_inf_nan=False)
 
 
+class GrowthMonthHistoryRow(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    account_seq: str = Field(min_length=1)
+    year: int = Field(ge=2000, le=2099)
+    month: int = Field(ge=1, le=12)
+    net_worth_krw: float = Field(ge=0, allow_inf_nan=False)
+    monthly_dividend_krw: float = Field(ge=0, allow_inf_nan=False)
+    monthly_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    average_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cumulative_dividend_krw: float = Field(ge=0, allow_inf_nan=False)
+    created_at: str
+    updated_at: str
+
+
+class GrowthAnnualHistoryRow(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    account_seq: str = Field(min_length=1)
+    year: int = Field(ge=2000, le=2099)
+    display_year: str = Field(pattern=r"^\d{2}$")
+    source_month: int = Field(ge=1, le=12)
+    net_worth_krw: float = Field(ge=0, allow_inf_nan=False)
+    annual_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    average_return_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+
 class AssetAllocation(BaseModel):
     model_config = ConfigDict(strict=True)
 
