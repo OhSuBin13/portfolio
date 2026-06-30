@@ -479,6 +479,77 @@ def fetch_growth_cashflow_rows(
     ]
 
 
+def fetch_growth_month_history_row(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    year: int,
+    month: int,
+) -> sqlite3.Row | None:
+    return db.execute(
+        """
+        select *
+        from growth_month_history
+        where account_seq = ?
+          and year = ?
+          and month = ?
+        """,
+        (account_seq, year, month),
+    ).fetchone()
+
+
+def fetch_growth_month_history_rows(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+) -> list[sqlite3.Row]:
+    return db.execute(
+        """
+        select *
+        from growth_month_history
+        where account_seq = ?
+        order by year, month
+        """,
+        (account_seq,),
+    ).fetchall()
+
+
+def upsert_growth_month_history(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    year: int,
+    month: int,
+    net_worth_krw: float,
+    monthly_dividend_krw: float,
+    commit: bool = True,
+) -> sqlite3.Row:
+    db.execute(
+        """
+        insert into growth_month_history(
+          account_seq, year, month, net_worth_krw, monthly_dividend_krw
+        )
+        values (?, ?, ?, ?, ?)
+        on conflict(account_seq, year, month)
+        do update set net_worth_krw = excluded.net_worth_krw,
+                      monthly_dividend_krw = excluded.monthly_dividend_krw,
+                      updated_at = current_timestamp
+        """,
+        (account_seq, year, month, net_worth_krw, monthly_dividend_krw),
+    )
+    if commit:
+        db.commit()
+    row = fetch_growth_month_history_row(
+        db,
+        account_seq=account_seq,
+        year=year,
+        month=month,
+    )
+    if row is None:
+        raise RuntimeError("저장된 월간 성장 기록을 찾을 수 없습니다.")
+    return row
+
+
 def fetch_summary_holding_rows(db: sqlite3.Connection) -> list[SummaryHoldingRow]:
     rows = db.execute(
         """

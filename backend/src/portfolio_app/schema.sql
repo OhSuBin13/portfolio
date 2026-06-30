@@ -90,3 +90,18 @@ on toss_orders(account_seq, order_status, ordered_at desc, id desc);
 
 create index if not exists idx_toss_orders_account_symbol
 on toss_orders(account_seq, symbol, ordered_at desc, id desc);
+
+create table if not exists growth_month_history (
+  id integer primary key,
+  account_seq text not null,
+  year integer not null check (year >= 2000 and year <= 2099),
+  month integer not null check (month >= 1 and month <= 12),
+  net_worth_krw real not null check (net_worth_krw >= 0),
+  monthly_dividend_krw real not null default 0 check (monthly_dividend_krw >= 0),
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  unique(account_seq, year, month)
+);
+
+create index if not exists idx_growth_month_history_account_period
+on growth_month_history(account_seq, year, month);

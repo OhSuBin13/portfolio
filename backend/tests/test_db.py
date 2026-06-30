@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from portfolio_app import migrations
+from portfolio_app import migrations, repositories
 from portfolio_app.db import connect
 from portfolio_app.migrations import migrate
 
@@ -14,15 +14,20 @@ TOSS_ONLY_TABLES = {
     "settings",
     "toss_order_import_runs",
     "toss_orders",
+    "growth_month_history",
 }
 TOSS_ORDER_INDEXES = {
     "idx_toss_orders_account_ordered_at",
     "idx_toss_orders_account_status",
     "idx_toss_orders_account_symbol",
 }
+GROWTH_MONTH_HISTORY_INDEXES = {
+    "idx_growth_month_history_account_period",
+}
 TOSS_ONLY_INDEXES = {
     "idx_fx_rates_summary_pair_latest",
     *TOSS_ORDER_INDEXES,
+    *GROWTH_MONTH_HISTORY_INDEXES,
 }
 REMOVED_LOCAL_LEDGER_TABLES = {
     "accounts",
@@ -118,6 +123,64 @@ def create_toss_only_survivor_tables(db: sqlite3.Connection) -> None:
           value text not null,
           updated_at text not null default current_timestamp
         );
+        """
+    )
+
+
+def create_v11_toss_order_history_tables(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        create table toss_order_import_runs (
+          id integer primary key,
+          account_seq text not null,
+          status_filter text not null check (status_filter in ('OPEN','CLOSED')),
+          symbol_filter text,
+          from_date text,
+          to_date text,
+          run_status text not null check (run_status in ('running','success','failed')),
+          imported_count integer not null default 0 check (imported_count >= 0),
+          error_message text not null default '',
+          started_at text not null default current_timestamp,
+          completed_at text
+        );
+
+        create table toss_orders (
+          id integer primary key,
+          account_seq text not null,
+          order_id text not null,
+          symbol text not null,
+          side text not null,
+          order_type text not null,
+          time_in_force text not null,
+          order_status text not null,
+          price text,
+          quantity text not null,
+          order_amount text,
+          currency text not null,
+          ordered_at text not null,
+          canceled_at text,
+          filled_quantity text not null,
+          average_filled_price text,
+          filled_amount text,
+          commission text,
+          tax text,
+          filled_at text,
+          settlement_date text,
+          raw_json text not null,
+          import_run_id integer references toss_order_import_runs(id) on delete set null,
+          imported_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp,
+          unique(account_seq, order_id)
+        );
+
+        create index idx_toss_orders_account_ordered_at
+        on toss_orders(account_seq, ordered_at desc, id desc);
+
+        create index idx_toss_orders_account_status
+        on toss_orders(account_seq, order_status, ordered_at desc, id desc);
+
+        create index idx_toss_orders_account_symbol
+        on toss_orders(account_seq, symbol, ordered_at desc, id desc);
         """
     )
 
@@ -492,12 +555,55 @@ def assert_toss_order_history_contract(db: sqlite3.Connection) -> None:
             insert_toss_order(db, values)
 
 
+def assert_growth_month_history_contract(db: sqlite3.Connection) -> None:
+    assert "growth_month_history" in table_names(db)
+    assert column_names(db, "growth_month_history") == {
+        "id",
+        "account_seq",
+        "year",
+        "month",
+        "net_worth_krw",
+        "monthly_dividend_krw",
+        "created_at",
+        "updated_at",
+    }
+    assert index_names(db) >= GROWTH_MONTH_HISTORY_INDEXES
+
+    db.execute(
+        """
+        insert into growth_month_history(account_seq, year, month, net_worth_krw)
+        values (?, ?, ?, ?)
+        """,
+        ("account-1", 2026, 6, 1_000_000),
+    )
+    row = db.execute(
+        """
+        select *
+        from growth_month_history
+        where account_seq = ? and year = ? and month = ?
+        """,
+        ("account-1", 2026, 6),
+    ).fetchone()
+    assert row["monthly_dividend_krw"] == 0
+    assert row["created_at"] is not None
+    assert row["updated_at"] is not None
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            """
+            insert into growth_month_history(account_seq, year, month, net_worth_krw)
+            values (?, ?, ?, ?)
+            """,
+            ("account-1", 2026, 6, 2_000_000),
+        )
+
+
 def test_migrate_creates_toss_only_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
 
     migrate(db)
 
-    assert migration_versions(db) == [11]
+    assert migration_versions(db) == [12]
     assert_toss_only_schema(db)
 
 
@@ -506,7 +612,7 @@ def test_migrate_creates_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [11]
+    assert migration_versions(db) == [12]
     assert {
         "toss_order_import_runs",
         "toss_orders",
@@ -519,6 +625,97 @@ def test_toss_order_history_contract_in_fresh_schema(tmp_path):
     migrate(db)
 
     assert_toss_order_history_contract(db)
+
+
+def test_growth_month_history_contract_in_fresh_schema(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert migration_versions(db) == [12]
+    assert_growth_month_history_contract(db)
+
+
+def test_growth_month_history_repository_helpers_upsert_and_fetch(tmp_path):
+    db_path = tmp_path / "portfolio.sqlite"
+    db = connect(db_path)
+    migrate(db)
+
+    june = repositories.upsert_growth_month_history(
+        db,
+        account_seq="account-1",
+        year=2026,
+        month=6,
+        net_worth_krw=1_000_000,
+        monthly_dividend_krw=12_500,
+    )
+    repositories.upsert_growth_month_history(
+        db,
+        account_seq="account-1",
+        year=2026,
+        month=5,
+        net_worth_krw=900_000,
+        monthly_dividend_krw=7_500,
+    )
+    repositories.upsert_growth_month_history(
+        db,
+        account_seq="account-2",
+        year=2026,
+        month=4,
+        net_worth_krw=500_000,
+        monthly_dividend_krw=2_500,
+    )
+    updated_june = repositories.upsert_growth_month_history(
+        db,
+        account_seq="account-1",
+        year=2026,
+        month=6,
+        net_worth_krw=1_100_000,
+        monthly_dividend_krw=15_000,
+    )
+
+    read_db = connect(db_path)
+    fetched_june = repositories.fetch_growth_month_history_row(
+        read_db,
+        account_seq="account-1",
+        year=2026,
+        month=6,
+    )
+    rows = repositories.fetch_growth_month_history_rows(read_db, account_seq="account-1")
+
+    assert updated_june["id"] == june["id"]
+    assert fetched_june["net_worth_krw"] == 1_100_000
+    assert fetched_june["monthly_dividend_krw"] == 15_000
+    assert [(row["year"], row["month"]) for row in rows] == [(2026, 5), (2026, 6)]
+    assert [row["account_seq"] for row in rows] == ["account-1", "account-1"]
+
+
+def test_growth_month_history_upsert_can_defer_transaction_commit(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    db.execute("begin")
+    saved = repositories.upsert_growth_month_history(
+        db,
+        account_seq="account-1",
+        year=2026,
+        month=7,
+        net_worth_krw=1_200_000,
+        monthly_dividend_krw=20_000,
+        commit=False,
+    )
+    assert saved["net_worth_krw"] == 1_200_000
+
+    db.rollback()
+
+    assert (
+        repositories.fetch_growth_month_history_row(
+            db,
+            account_seq="account-1",
+            year=2026,
+            month=7,
+        )
+        is None
+    )
 
 
 def test_migrate_keeps_fx_rate_contract_in_fresh_schema(tmp_path):
@@ -594,7 +791,7 @@ def test_migrate_from_v9_drops_local_ledger_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [9, 10, 11]
+    assert migration_versions(db) == [9, 10, 11, 12]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     assert db.execute("select count(*) from goals").fetchone()[0] == 1
@@ -610,7 +807,7 @@ def test_migrate_from_v10_adds_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [10, 11]
+    assert migration_versions(db) == [10, 11, 12]
     assert {
         "toss_order_import_runs",
         "toss_orders",
@@ -628,6 +825,19 @@ def test_migrate_from_v10_adds_toss_order_history_contract(tmp_path):
     migrate(db)
 
     assert_toss_order_history_contract(db)
+
+
+def test_migrate_from_v11_adds_growth_month_history_table(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 11)
+    create_toss_only_survivor_tables(db)
+    create_v11_toss_order_history_tables(db)
+    db.commit()
+
+    migrate(db)
+
+    assert migration_versions(db) == [11, 12]
+    assert_growth_month_history_contract(db)
 
 
 def test_migrate_from_v10_rolls_back_partial_v11_schema_when_schema_application_fails(
@@ -716,7 +926,7 @@ def test_migrate_upgrades_version_7_database_to_v11_and_preserves_goals(tmp_path
     migrate(db)
 
     row = db.execute("select * from goals where id = 42").fetchone()
-    assert migration_versions(db) == [7, 8, 9, 10, 11]
+    assert migration_versions(db) == [7, 8, 9, 10, 11, 12]
     assert_toss_only_schema(db)
     assert row["target_amount_krw"] == 100_000_000
     with pytest.raises(sqlite3.IntegrityError):
@@ -788,7 +998,7 @@ def test_migrate_upgrades_version_4_database_to_v11_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11]
+    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11, 12]
     assert_toss_only_schema(db)
 
 
@@ -841,7 +1051,7 @@ def test_migrate_upgrades_version_1_database_to_v11_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     with pytest.raises(sqlite3.IntegrityError):
@@ -860,7 +1070,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [11]
+    assert migration_versions(db) == [12]
     assert_toss_only_schema(db)
 
 
@@ -870,12 +1080,12 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [11]
+    assert migration_versions(db) == [12]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
-    create_schema_migrations(db, 12)
+    create_schema_migrations(db, 13)
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):
