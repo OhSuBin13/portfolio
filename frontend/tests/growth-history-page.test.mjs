@@ -17,9 +17,9 @@ assert.ok(pageSource.includes("/api/growth/month-history"), "Page should load mo
 assert.ok(pageSource.includes("/api/growth/annual-history"), "Page should load annual history")
 assert.ok(pageSource.includes("monthly_dividend_krw"), "Page should submit monthly dividend history")
 assert.ok(pageSource.includes("apiDelete"), "Page should delete month history rows")
-assert.ok(pageSource.includes("수정"), "Page should expose month history edit controls")
+assert.ok(!/>\s*수정\s*</.test(pageSource), "Page should not render month history edit controls")
 assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
-assert.ok(pageSource.includes("handleEditMonth"), "Page should copy selected month rows into the form")
+assert.ok(!pageSource.includes("handleEditMonth"), "Page should not keep month history edit handlers")
 assert.ok(pageSource.includes("formatReturnPercent"), "Page should format returns as percentages")
 assert.ok(
   pageSource.includes("(value - 1) * 100"),

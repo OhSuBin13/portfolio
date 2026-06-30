@@ -251,17 +251,6 @@ export function GrowthHistoryPage() {
     }
   }
 
-  const handleEditMonth = (row: GrowthMonthHistoryRow) => {
-    setForm({
-      year: String(row.year),
-      month: String(row.month),
-      netWorthKrw: String(row.net_worth_krw),
-      monthlyDividendKrw: String(row.monthly_dividend_krw),
-    })
-    setMessage("선택한 월 기록을 불러왔습니다.")
-    setHistoryError("")
-  }
-
   const handleDeleteMonth = async (row: GrowthMonthHistoryRow) => {
     const requestAccountSeq = selectedAccountSeq
     if (!requestAccountSeq) {
@@ -604,9 +593,6 @@ export function GrowthHistoryPage() {
                     <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
                     <td className="numeric-cell">
                       <div className="table-actions">
-                        <button onClick={() => handleEditMonth(row)} type="button">
-                          수정
-                        </button>
                         <button
                           disabled={deletingKey === monthRowKey(row)}
                           onClick={() => handleDeleteMonth(row)}
