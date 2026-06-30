@@ -44,6 +44,7 @@ def test_registered_api_surface_includes_toss_orders_not_transactions():
     }
 
     assert "/api/toss/orders" in registered_paths
+    assert "/api/toss/buying-power" in registered_paths
     assert "/api/transactions" not in registered_paths
 
 

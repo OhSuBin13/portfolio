@@ -24,6 +24,7 @@ from portfolio_app.services.toss_portfolio import (
     TossAccount,
     TossAccountsCache,
     TossBrokerageProvider,
+    TossBuyingPower,
     TossHolding,
 )
 
@@ -53,6 +54,13 @@ class TossHoldingResponse(BaseModel):
     average_purchase_price: float = Field(ge=0, allow_inf_nan=False)
     last_price: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     market_value: float = Field(ge=0, allow_inf_nan=False)
+
+
+class TossBuyingPowerResponse(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    currency: Currency
+    cash_buying_power: float = Field(ge=0, allow_inf_nan=False)
 
 
 def toss_http_error_detail(exc: httpx.HTTPError) -> str:
@@ -110,6 +118,13 @@ def _holding_response(holding: TossHolding) -> TossHoldingResponse:
         average_purchase_price=holding.average_purchase_price,
         last_price=holding.last_price,
         market_value=holding.market_value,
+    )
+
+
+def _buying_power_response(row: TossBuyingPower) -> TossBuyingPowerResponse:
+    return TossBuyingPowerResponse(
+        currency=row.currency,
+        cash_buying_power=row.cash_buying_power,
     )
 
 
@@ -226,3 +241,29 @@ async def list_toss_holdings(
         ) from exc
 
     return [_holding_response(holding) for holding in holdings]
+
+
+@router.get("/buying-power", response_model=list[TossBuyingPowerResponse])
+async def list_toss_buying_power(
+    request: Request,
+    account_seq: AccountSeq,
+) -> list[TossBuyingPowerResponse]:
+    normalized_account_seq = normalize_account_seq(account_seq)
+    provider = _provider(request)
+    try:
+        rows = [
+            await provider.fetch_buying_power(normalized_account_seq, "KRW"),
+            await provider.fetch_buying_power(normalized_account_seq, "USD"),
+        ]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=toss_http_error_detail(exc),
+        ) from exc
+
+    return [_buying_power_response(row) for row in rows]

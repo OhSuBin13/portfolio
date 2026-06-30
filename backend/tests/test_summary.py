@@ -287,6 +287,38 @@ def test_summary_endpoint_includes_buying_power_in_goal_progress(tmp_path, httpx
     assert payload["goal_progress"][0]["remaining_krw"] == 360000.0
 
 
+def test_toss_buying_power_endpoint_returns_krw_and_usd(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_reusable=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "5000000"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "3500.5"}},
+    )
+
+    response = client.get("/api/toss/buying-power?account_seq=acct-1")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"currency": "KRW", "cash_buying_power": 5000000.0},
+        {"currency": "USD", "cash_buying_power": 3500.5},
+    ]
+
+
 def test_summary_endpoint_maps_provider_http_errors_to_502_without_secrets(
     tmp_path,
     httpx_mock,
