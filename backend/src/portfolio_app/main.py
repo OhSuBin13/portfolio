@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from portfolio_app.api import (
     backups,
     goals,
+    growth_history,
     summary,
     toss_portfolio,
 )
@@ -98,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(summary.router)
     app.include_router(toss_portfolio.router)
+    app.include_router(growth_history.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
 

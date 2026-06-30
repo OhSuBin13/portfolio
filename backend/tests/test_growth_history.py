@@ -1,6 +1,9 @@
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from portfolio_app.config import Settings
+from portfolio_app.main import create_app
 from portfolio_app.models import GrowthAnnualHistoryRow, GrowthMonthHistoryRow
 from portfolio_app.services.growth_history import (
     GrowthMonthInput,
@@ -26,6 +29,221 @@ def month(
         created_at=f"{year}-{month_number:02d}-created",
         updated_at=f"{year}-{month_number:02d}-updated",
     )
+
+
+def create_test_client(tmp_path) -> TestClient:
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+        toss_api_key="",
+        toss_secret_key="",
+        backup_enabled=False,
+    )
+    return TestClient(create_app(settings=settings))
+
+
+def put_month(
+    client: TestClient,
+    *,
+    account_seq: str,
+    year: int,
+    month_number: int,
+    net_worth_krw: float,
+    monthly_dividend_krw: float,
+):
+    return client.put(
+        f"/api/growth/month-history/{year}/{month_number}",
+        params={"account_seq": account_seq},
+        json={
+            "net_worth_krw": net_worth_krw,
+            "monthly_dividend_krw": monthly_dividend_krw,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [
+        ("get", "/api/growth/month-history", {}),
+        ("get", "/api/growth/annual-history", {}),
+        (
+            "put",
+            "/api/growth/month-history/2026/6",
+            {"json": {"net_worth_krw": 1_000_000, "monthly_dividend_krw": 10_000}},
+        ),
+    ],
+)
+def test_growth_history_endpoints_require_account_seq(tmp_path, method, path, kwargs):
+    client = create_test_client(tmp_path)
+
+    response = client.request(method, path, **kwargs)
+
+    assert response.status_code == 400
+    assert "account_seq" in str(response.json()["detail"])
+
+
+def test_put_month_history_upserts_row_from_payload(tmp_path):
+    client = create_test_client(tmp_path)
+
+    first_response = put_month(
+        client,
+        account_seq=" acct-1 ",
+        year=2026,
+        month_number=6,
+        net_worth_krw=1_000_000,
+        monthly_dividend_krw=10_000,
+    )
+    second_response = put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=6,
+        net_worth_krw=1_250_000,
+        monthly_dividend_krw=15_000,
+    )
+    list_response = client.get(
+        "/api/growth/month-history",
+        params={"account_seq": "acct-1"},
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["account_seq"] == "acct-1"
+    assert second_response.status_code == 200
+    body = second_response.json()
+    assert body["account_seq"] == "acct-1"
+    assert body["year"] == 2026
+    assert body["month"] == 6
+    assert body["net_worth_krw"] == 1_250_000.0
+    assert body["monthly_dividend_krw"] == 15_000.0
+    assert body["monthly_return_ratio"] is None
+    assert body["average_return_ratio"] is None
+    assert body["cumulative_dividend_krw"] == 15_000.0
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+    assert list_response.json()[0]["net_worth_krw"] == 1_250_000.0
+    assert list_response.json()[0]["monthly_dividend_krw"] == 15_000.0
+
+
+def test_get_month_history_returns_computed_rows_for_account(tmp_path):
+    client = create_test_client(tmp_path)
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=7,
+        net_worth_krw=1_500_000,
+        monthly_dividend_krw=30_000,
+    )
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=5,
+        net_worth_krw=1_000_000,
+        monthly_dividend_krw=10_000,
+    )
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=6,
+        net_worth_krw=1_250_000,
+        monthly_dividend_krw=20_000,
+    )
+
+    response = client.get("/api/growth/month-history", params={"account_seq": "acct-1"})
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert [(row["year"], row["month"]) for row in rows] == [
+        (2026, 5),
+        (2026, 6),
+        (2026, 7),
+    ]
+    assert rows[0]["cumulative_dividend_krw"] == 10_000.0
+    assert rows[0]["monthly_return_ratio"] is None
+    assert rows[0]["average_return_ratio"] is None
+    assert rows[1]["cumulative_dividend_krw"] == 30_000.0
+    assert rows[1]["monthly_return_ratio"] == pytest.approx(1.25)
+    assert rows[1]["average_return_ratio"] == pytest.approx(1.25)
+    assert rows[2]["cumulative_dividend_krw"] == 60_000.0
+    assert rows[2]["monthly_return_ratio"] == pytest.approx(1.2)
+    assert rows[2]["average_return_ratio"] == pytest.approx(1.225)
+
+
+def test_get_annual_history_returns_derived_rows_for_account(tmp_path):
+    client = create_test_client(tmp_path)
+    for year, month_number, net_worth in [
+        (2024, 12, 1_000_000),
+        (2025, 11, 1_200_000),
+        (2025, 12, 1_400_000),
+        (2026, 6, 2_100_000),
+    ]:
+        put_month(
+            client,
+            account_seq="acct-1",
+            year=year,
+            month_number=month_number,
+            net_worth_krw=net_worth,
+            monthly_dividend_krw=0,
+        )
+
+    response = client.get("/api/growth/annual-history", params={"account_seq": "acct-1"})
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert [
+        (row["year"], row["display_year"], row["source_month"], row["net_worth_krw"])
+        for row in rows
+    ] == [
+        (2024, "24", 12, 1_000_000.0),
+        (2025, "25", 12, 1_400_000.0),
+        (2026, "26", 6, 2_100_000.0),
+    ]
+    assert rows[0]["annual_return_ratio"] is None
+    assert rows[0]["average_return_ratio"] is None
+    assert rows[1]["annual_return_ratio"] == pytest.approx(1.4)
+    assert rows[1]["average_return_ratio"] == pytest.approx(1.4)
+    assert rows[2]["annual_return_ratio"] == pytest.approx(1.5)
+    assert rows[2]["average_return_ratio"] == pytest.approx(1.45)
+
+
+def test_growth_history_is_isolated_by_account_seq(tmp_path):
+    client = create_test_client(tmp_path)
+    put_month(
+        client,
+        account_seq="acct-1",
+        year=2026,
+        month_number=6,
+        net_worth_krw=1_000_000,
+        monthly_dividend_krw=10_000,
+    )
+    put_month(
+        client,
+        account_seq="acct-2",
+        year=2026,
+        month_number=6,
+        net_worth_krw=2_000_000,
+        monthly_dividend_krw=20_000,
+    )
+
+    month_response = client.get(
+        "/api/growth/month-history",
+        params={"account_seq": "acct-2"},
+    )
+    annual_response = client.get(
+        "/api/growth/annual-history",
+        params={"account_seq": "acct-2"},
+    )
+
+    assert month_response.status_code == 200
+    assert annual_response.status_code == 200
+    assert [row["account_seq"] for row in month_response.json()] == ["acct-2"]
+    assert month_response.json()[0]["net_worth_krw"] == 2_000_000.0
+    assert month_response.json()[0]["cumulative_dividend_krw"] == 20_000.0
+    assert [row["account_seq"] for row in annual_response.json()] == ["acct-2"]
+    assert annual_response.json()[0]["net_worth_krw"] == 2_000_000.0
 
 
 def test_month_history_uses_adjacent_month_return_ratios_and_running_averages():

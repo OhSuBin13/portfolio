@@ -26,6 +26,8 @@ def test_main_registers_toss_portfolio_instead_of_local_ledger_routers():
 
     assert "toss_portfolio" in source
     assert "app.include_router(toss_portfolio.router)" in source
+    assert "growth_history" in source
+    assert "app.include_router(growth_history.router)" in source
     assert "app.include_router(accounts.router)" not in source
     assert "app.include_router(assets.router)" not in source
     assert "app.include_router(transactions.router)" not in source

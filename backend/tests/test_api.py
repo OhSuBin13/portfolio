@@ -35,6 +35,19 @@ def assert_korean_validation_error(response, expected_text):
     assert "Unable to parse input string" not in detail_text
 
 
+def mock_zero_buying_power(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "0"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "0"}},
+    )
+
+
 def test_health_returns_ok():
     client = TestClient(create_app())
 
@@ -56,6 +69,9 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
         "/api/summary",
         "/api/toss/accounts",
         "/api/toss/holdings",
+        "/api/growth/month-history",
+        "/api/growth/month-history/{year}/{month}",
+        "/api/growth/annual-history",
         "/api/goals",
         "/api/backups",
     } <= paths
@@ -80,6 +96,45 @@ def test_openapi_exposes_toss_only_portfolio_paths(tmp_path):
             "schema": {"type": "string", "minLength": 1, "title": "Account Seq"},
         }
     ]
+
+
+def test_openapi_exposes_growth_history_contract(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    paths = schema["paths"]
+    put_month = paths["/api/growth/month-history/{year}/{month}"]["put"]
+    get_months = paths["/api/growth/month-history"]["get"]
+    get_annual = paths["/api/growth/annual-history"]["get"]
+
+    assert put_month["tags"] == ["growth"]
+    assert put_month["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/GrowthMonthHistoryUpsert"
+    }
+    assert put_month["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/GrowthMonthHistoryRow"
+    }
+
+    month_schema = get_months["responses"]["200"]["content"]["application/json"]["schema"]
+    assert month_schema["type"] == "array"
+    assert month_schema["items"] == {"$ref": "#/components/schemas/GrowthMonthHistoryRow"}
+
+    annual_schema = get_annual["responses"]["200"]["content"]["application/json"]["schema"]
+    assert annual_schema["type"] == "array"
+    assert annual_schema["items"] == {"$ref": "#/components/schemas/GrowthAnnualHistoryRow"}
+
+    account_seq_parameter = {
+        "name": "account_seq",
+        "in": "query",
+        "required": True,
+        "schema": {"type": "string", "minLength": 1, "title": "Account Seq"},
+    }
+    assert account_seq_parameter in get_months["parameters"]
+    assert account_seq_parameter in get_annual["parameters"]
+    assert account_seq_parameter in put_month["parameters"]
 
 
 def test_openapi_exposes_toss_order_history_paths(tmp_path):
@@ -408,6 +463,7 @@ def test_summary_endpoint_uses_toss_account_seq(tmp_path, httpx_mock):
         },
         is_optional=True,
     )
+    mock_zero_buying_power(httpx_mock)
     httpx_mock.add_response(
         method="GET",
         url=(
@@ -504,6 +560,7 @@ def test_toss_endpoints_share_app_auth_client(tmp_path, httpx_mock):
             }
         },
     )
+    mock_zero_buying_power(httpx_mock)
     httpx_mock.add_response(
         method="GET",
         url=(
@@ -559,6 +616,7 @@ def test_summary_endpoint_returns_empty_snapshot(tmp_path, httpx_mock):
         url="https://openapi.tossinvest.com/api/v1/holdings",
         json={"result": {"items": []}},
     )
+    mock_zero_buying_power(httpx_mock)
 
     response = client.get("/api/summary?account_seq=acct-1")
 
@@ -584,6 +642,7 @@ def test_summary_allows_local_frontend_cors_origin(tmp_path, httpx_mock):
         url="https://openapi.tossinvest.com/api/v1/holdings",
         json={"result": {"items": []}},
     )
+    mock_zero_buying_power(httpx_mock)
 
     response = client.get(
         "/api/summary?account_seq=acct-1",
