@@ -78,6 +78,7 @@ export function GrowthHistoryPage() {
   const [annualHistory, setAnnualHistory] = useState<GrowthAnnualHistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [deletingKey, setDeletingKey] = useState("")
+  const [activeMonthManagementKey, setActiveMonthManagementKey] = useState("")
   const [saving, setSaving] = useState(false)
   const [savingSp500Proxy, setSavingSp500Proxy] = useState(false)
   const [fillingSummary, setFillingSummary] = useState(false)
@@ -160,6 +161,7 @@ export function GrowthHistoryPage() {
 
         setHistoryLoading(true)
         setHistoryError("")
+        setActiveMonthManagementKey("")
         setMonthHistory([])
         setAnnualHistory([])
         return loadHistory(requestAccountSeq)
@@ -280,6 +282,7 @@ export function GrowthHistoryPage() {
       }
       setMonthHistory(history.monthRows)
       setAnnualHistory(history.annualRows)
+      setActiveMonthManagementKey((current) => (current === targetKey ? "" : current))
       setMessage("성장 기록을 삭제했습니다.")
     } catch (err) {
       if (requestAccountSeq === selectedAccountSeqRef.current) {
@@ -578,32 +581,48 @@ export function GrowthHistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {monthHistory.map((row) => (
-                  <tr key={monthRowKey(row)}>
-                    <td>{row.year}</td>
-                    <td>{row.month}</td>
-                    <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
-                    <td className="numeric-cell">{formatKrw(row.monthly_dividend_krw)}</td>
-                    <td className={`numeric-cell ${getLatestMonthAverageReturnToneClass(row)}`}>
-                      {formatLatestMonthAverageReturn(row)}
-                    </td>
-                    <td className={`numeric-cell ${getReturnToneClass(row.monthly_return_ratio)}`}>
-                      {formatReturnPercent(row.monthly_return_ratio)}
-                    </td>
-                    <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
-                    <td className="numeric-cell">
-                      <div className="table-actions">
-                        <button
-                          disabled={deletingKey === monthRowKey(row)}
-                          onClick={() => handleDeleteMonth(row)}
-                          type="button"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {monthHistory.map((row) => {
+                  const rowKey = monthRowKey(row)
+                  const isManagingMonthRow = activeMonthManagementKey === rowKey
+
+                  return (
+                    <tr key={rowKey}>
+                      <td>{row.year}</td>
+                      <td>{row.month}</td>
+                      <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
+                      <td className="numeric-cell">{formatKrw(row.monthly_dividend_krw)}</td>
+                      <td className={`numeric-cell ${getLatestMonthAverageReturnToneClass(row)}`}>
+                        {formatLatestMonthAverageReturn(row)}
+                      </td>
+                      <td className={`numeric-cell ${getReturnToneClass(row.monthly_return_ratio)}`}>
+                        {formatReturnPercent(row.monthly_return_ratio)}
+                      </td>
+                      <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
+                      <td className="numeric-cell">
+                        <div className="table-actions">
+                          <button
+                            aria-pressed={isManagingMonthRow}
+                            onClick={() =>
+                              setActiveMonthManagementKey((currentKey) =>
+                                currentKey === rowKey ? "" : rowKey,
+                              )
+                            }
+                            type="button"
+                          >
+                            관리
+                          </button>
+                          <button
+                            disabled={!isManagingMonthRow || deletingKey === rowKey}
+                            onClick={() => handleDeleteMonth(row)}
+                            type="button"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

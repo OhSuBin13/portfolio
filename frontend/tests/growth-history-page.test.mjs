@@ -18,6 +18,19 @@ assert.ok(pageSource.includes("/api/growth/annual-history"), "Page should load a
 assert.ok(pageSource.includes("monthly_dividend_krw"), "Page should submit monthly dividend history")
 assert.ok(pageSource.includes("apiDelete"), "Page should delete month history rows")
 assert.ok(!/>\s*수정\s*</.test(pageSource), "Page should not render month history edit controls")
+assert.ok(
+  /<button[\s\S]*?>\s*관리\s*<\/button>/.test(pageSource),
+  "Page should expose month row management controls",
+)
+assert.ok(
+  pageSource.includes("activeMonthManagementKey") &&
+    pageSource.includes("setActiveMonthManagementKey"),
+  "Page should track which month row is in management mode",
+)
+assert.ok(
+  pageSource.includes("disabled={!isManagingMonthRow || deletingKey === rowKey}"),
+  "Page should disable delete until the row management button is active",
+)
 assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
 assert.ok(!pageSource.includes("handleEditMonth"), "Page should not keep month history edit handlers")
 assert.ok(pageSource.includes("formatReturnPercent"), "Page should format returns as percentages")
