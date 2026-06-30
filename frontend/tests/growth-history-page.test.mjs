@@ -20,16 +20,26 @@ assert.ok(pageSource.includes("apiDelete"), "Page should delete month history ro
 assert.ok(!/>\s*수정\s*</.test(pageSource), "Page should not render month history edit controls")
 assert.ok(
   /<button[\s\S]*?>\s*관리\s*<\/button>/.test(pageSource),
-  "Page should expose month row management controls",
+  "Page should expose a month history management control",
 )
 assert.ok(
-  pageSource.includes("activeMonthManagementKey") &&
-    pageSource.includes("setActiveMonthManagementKey"),
-  "Page should track which month row is in management mode",
+  pageSource.includes("isMonthDeleteMode") &&
+    pageSource.includes("setIsMonthDeleteMode"),
+  "Page should track a single month history delete mode",
 )
 assert.ok(
-  pageSource.includes("disabled={!isManagingMonthRow || deletingKey === rowKey}"),
-  "Page should disable delete until the row management button is active",
+  !pageSource.includes("activeMonthManagementKey") &&
+    !pageSource.includes("isManagingMonthRow"),
+  "Page should not track management mode per month row",
+)
+assert.ok(
+  pageSource.includes("{isMonthDeleteMode && <th className=\"numeric-cell\">삭제</th>}"),
+  "Page should hide the delete column before management mode is active",
+)
+assert.ok(
+  pageSource.includes("{isMonthDeleteMode && (") &&
+    pageSource.includes("handleDeleteMonth(row)"),
+  "Page should render delete buttons only while management mode is active",
 )
 assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
 assert.ok(!pageSource.includes("handleEditMonth"), "Page should not keep month history edit handlers")

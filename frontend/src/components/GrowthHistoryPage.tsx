@@ -78,7 +78,7 @@ export function GrowthHistoryPage() {
   const [annualHistory, setAnnualHistory] = useState<GrowthAnnualHistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [deletingKey, setDeletingKey] = useState("")
-  const [activeMonthManagementKey, setActiveMonthManagementKey] = useState("")
+  const [isMonthDeleteMode, setIsMonthDeleteMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savingSp500Proxy, setSavingSp500Proxy] = useState(false)
   const [fillingSummary, setFillingSummary] = useState(false)
@@ -161,7 +161,7 @@ export function GrowthHistoryPage() {
 
         setHistoryLoading(true)
         setHistoryError("")
-        setActiveMonthManagementKey("")
+        setIsMonthDeleteMode(false)
         setMonthHistory([])
         setAnnualHistory([])
         return loadHistory(requestAccountSeq)
@@ -282,7 +282,6 @@ export function GrowthHistoryPage() {
       }
       setMonthHistory(history.monthRows)
       setAnnualHistory(history.annualRows)
-      setActiveMonthManagementKey((current) => (current === targetKey ? "" : current))
       setMessage("성장 기록을 삭제했습니다.")
     } catch (err) {
       if (requestAccountSeq === selectedAccountSeqRef.current) {
@@ -563,7 +562,19 @@ export function GrowthHistoryPage() {
       <section className="panel">
         <div className="section-heading">
           <h3>Growth Month History</h3>
-          <span>{monthHistory.length.toLocaleString("ko-KR")}개월</span>
+          <div className="section-heading-actions">
+            <span>{monthHistory.length.toLocaleString("ko-KR")}개월</span>
+            {monthHistory.length > 0 && (
+              <button
+                aria-pressed={isMonthDeleteMode}
+                className="secondary-button compact-button"
+                onClick={() => setIsMonthDeleteMode((current) => !current)}
+                type="button"
+              >
+                관리
+              </button>
+            )}
+          </div>
         </div>
         {monthHistory.length > 0 ? (
           <div className="table-wrap">
@@ -577,13 +588,12 @@ export function GrowthHistoryPage() {
                   <th className="numeric-cell">평균 수익률</th>
                   <th className="numeric-cell">수익률</th>
                   <th className="numeric-cell">누적배당</th>
-                  <th className="numeric-cell">관리</th>
+                  {isMonthDeleteMode && <th className="numeric-cell">삭제</th>}
                 </tr>
               </thead>
               <tbody>
                 {monthHistory.map((row) => {
                   const rowKey = monthRowKey(row)
-                  const isManagingMonthRow = activeMonthManagementKey === rowKey
 
                   return (
                     <tr key={rowKey}>
@@ -598,28 +608,19 @@ export function GrowthHistoryPage() {
                         {formatReturnPercent(row.monthly_return_ratio)}
                       </td>
                       <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
-                      <td className="numeric-cell">
-                        <div className="table-actions">
-                          <button
-                            aria-pressed={isManagingMonthRow}
-                            onClick={() =>
-                              setActiveMonthManagementKey((currentKey) =>
-                                currentKey === rowKey ? "" : rowKey,
-                              )
-                            }
-                            type="button"
-                          >
-                            관리
-                          </button>
-                          <button
-                            disabled={!isManagingMonthRow || deletingKey === rowKey}
-                            onClick={() => handleDeleteMonth(row)}
-                            type="button"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      </td>
+                      {isMonthDeleteMode && (
+                        <td className="numeric-cell">
+                          <div className="table-actions">
+                            <button
+                              disabled={deletingKey === rowKey}
+                              onClick={() => handleDeleteMonth(row)}
+                              type="button"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}

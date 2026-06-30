@@ -253,6 +253,14 @@ button {
   font-size: 12px;
 }
 
+.section-heading-actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .mix-list {
   display: grid;
   gap: 8px;
