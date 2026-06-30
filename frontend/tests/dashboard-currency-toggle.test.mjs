@@ -19,6 +19,22 @@ assert.match(
   /asset_allocations:\s*AssetAllocation\[\]/,
   "PortfolioSummary should expose asset allocation rows",
 )
+assert.match(types, /export type TossBuyingPower/, "Frontend should type raw Toss buying power rows")
+assert.match(
+  types,
+  /export type SummaryBuyingPower/,
+  "Frontend should type summary buying power rows with KRW conversion",
+)
+assert.match(
+  types,
+  /buying_power:\s*SummaryBuyingPower\[\]/,
+  "PortfolioSummary should expose converted buying power rows",
+)
+assert.match(
+  types,
+  /buying_power_total_krw:\s*number/,
+  "PortfolioSummary should expose buying power converted to KRW",
+)
 assert.match(types, /export type TossAccount/, "Dashboard should type Toss brokerage accounts")
 assert.match(types, /account_seq:\s*string/, "Toss accounts should expose account_seq")
 assert.match(types, /asset_key:\s*string/, "Asset allocations should use Toss asset keys")
@@ -44,7 +60,17 @@ assert.ok(
   source.includes("/api/summary?account_seq="),
   "Dashboard should fetch summary for the selected Toss account",
 )
+assert.ok(!source.includes("/api/toss/buying-power"), "Dashboard should not fetch buying power separately")
 assert.ok(source.includes("encodeURIComponent(selectedAccountSeq)"), "Dashboard should encode account_seq")
+const selectedSummaryFetchStart = source.indexOf("if (!selectedAccountSeq)")
+const selectedSummaryClear = source.indexOf("setSummary(emptySummary)", selectedSummaryFetchStart)
+const selectedSummaryFetchRequest = source.indexOf("apiGet<PortfolioSummary>", selectedSummaryFetchStart)
+assert.ok(
+  selectedSummaryFetchStart >= 0 &&
+    selectedSummaryClear > selectedSummaryFetchStart &&
+    selectedSummaryClear < selectedSummaryFetchRequest,
+  "Dashboard should clear the previous account summary before fetching a newly selected account",
+)
 assert.ok(source.includes("계좌가 없어 요약을 불러오지 않았습니다."), "Dashboard should show an empty account state")
 assert.ok(!source.includes("summary.usd_krw_change_percent"), "Dashboard should not render USD/KRW daily movement")
 assert.ok(!source.includes("전일대비"), "Dashboard should hide daily FX movement")
@@ -56,6 +82,29 @@ assert.ok(!source.includes("getFxChangeDirection"), "Dashboard should not calcul
 assert.ok(source.includes("Toss API 인증 정보를 설정"), "Missing FX message should mention Toss credentials")
 assert.ok(!source.includes("시세 동기화 후"), "Missing FX message should not refer to manual sync")
 assert.ok(source.includes("getAllocationSegments"), "Dashboard should derive allocation segments from asset mix")
+assert.ok(source.includes("buying_power: []"), "Empty summary should initialize buying power rows")
+assert.ok(source.includes("buying_power_total_krw: 0"), "Empty summary should initialize buying power")
+assert.ok(source.includes("매수 가능 금액"), "Dashboard should render buying power")
+assert.ok(
+  source.includes("summary.buying_power_total_krw"),
+  "Dashboard should read buying power from the summary response",
+)
+assert.ok(
+  source.includes("assetMix.cash"),
+  "Dashboard allocation segments should include cash from buying power",
+)
+assert.ok(
+  source.includes("const stockSegments = assetAllocations.map"),
+  "Dashboard should derive ticker allocation segments before adding cash",
+)
+assert.ok(
+  source.includes("value: positivePercent(assetMix.cash)"),
+  "Dashboard should include cash from asset_mix in allocation segments",
+)
+assert.ok(
+  source.includes("normalizeAllocationSegments([...stockSegments, cashSegment, otherSegment])"),
+  "Dashboard should normalize ticker, cash, and other allocation segments together",
+)
 assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
 assert.ok(source.includes("주식/ETF"), "Dashboard should label the stock/ETF allocation")
 assert.ok(source.includes("allocationSegments"), "Dashboard should render allocation segments")
@@ -86,6 +135,7 @@ for (const field of [
   "summary.net_worth_krw",
   "summary.monthly_income_krw",
   "summary.gross_assets_krw",
+  "summary.buying_power_total_krw",
   "summary.debt_krw",
   "row.current_amount_krw",
   "row.remaining_krw",

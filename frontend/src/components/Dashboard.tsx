@@ -11,6 +11,8 @@ const emptySummary: PortfolioSummary = {
   usd_krw_change_percent: null,
   asset_mix: {},
   asset_allocations: [],
+  buying_power: [],
+  buying_power_total_krw: 0,
   goal_progress: [],
 }
 
@@ -125,14 +127,28 @@ const getAllocationSegments = (assetMix: Record<string, number>, assetAllocation
     return getFallbackAllocationSegments(assetMix)
   }
 
-  return normalizeAllocationSegments(
-    assetAllocations.map((allocation, index) => ({
-      color: stockAllocationColors[index % stockAllocationColors.length],
-      key: allocation.asset_key,
-      label: allocation.symbol || allocation.name,
-      value: positivePercent(allocation.percent),
-    })),
-  )
+  const stockSegments = assetAllocations.map((allocation, index) => ({
+    color: stockAllocationColors[index % stockAllocationColors.length],
+    key: allocation.asset_key,
+    label: allocation.symbol || allocation.name,
+    value: positivePercent(allocation.percent),
+  }))
+  const cashSegment = {
+    color: allocationColors.cash,
+    key: "cash",
+    label: "현금",
+    value: positivePercent(assetMix.cash),
+  }
+  const otherSegment = {
+    color: allocationColors.other,
+    key: "other",
+    label: "기타",
+    value: Object.entries(assetMix)
+      .filter(([type]) => type !== "stock_etf" && type !== "cash")
+      .reduce((sum, [, value]) => sum + positivePercent(value), 0),
+  }
+
+  return normalizeAllocationSegments([...stockSegments, cashSegment, otherSegment])
 }
 const pointOnPie = (percent: number, radius: number) => {
   const angle = (percent * 3.6 - 90) * (Math.PI / 180)
@@ -297,6 +313,7 @@ export function Dashboard() {
       }
 
       setSummaryLoading(true)
+      setSummary(emptySummary)
       apiGet<PortfolioSummary>(`/api/summary?account_seq=${encodeURIComponent(selectedAccountSeq)}`)
         .then((summaryData) => {
           if (ignore) {
@@ -425,6 +442,12 @@ export function Dashboard() {
             <article className="panel metric-panel">
               <span>총자산</span>
               <strong>{formatCurrency(summary.gross_assets_krw, displayCurrency, summary.usd_krw_rate)}</strong>
+            </article>
+            <article className="panel metric-panel">
+              <span>매수 가능 금액</span>
+              <strong>
+                {formatCurrency(summary.buying_power_total_krw, displayCurrency, summary.usd_krw_rate)}
+              </strong>
             </article>
             <article className="panel metric-panel">
               <span>부채</span>

@@ -10,6 +10,15 @@ export type AssetAllocation = {
   percent: number
 }
 
+export type TossBuyingPower = {
+  currency: "KRW" | "USD"
+  cash_buying_power: number
+}
+
+export type SummaryBuyingPower = TossBuyingPower & {
+  value_krw: number
+}
+
 export type PortfolioSummary = {
   net_worth_krw: number
   gross_assets_krw: number
@@ -19,6 +28,8 @@ export type PortfolioSummary = {
   usd_krw_change_percent: number | null
   asset_mix: Record<string, number>
   asset_allocations: AssetAllocation[]
+  buying_power: SummaryBuyingPower[]
+  buying_power_total_krw: number
   goal_progress: GoalProgress[]
 }
 

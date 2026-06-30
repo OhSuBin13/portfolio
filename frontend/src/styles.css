@@ -200,7 +200,7 @@ button {
 .summary-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: 2fr repeat(3, minmax(150px, 1fr));
+  grid-template-columns: minmax(240px, 1.6fr) repeat(4, minmax(130px, 1fr));
 }
 
 .panel {
@@ -749,6 +749,16 @@ select:focus {
 .data-table .numeric-cell {
   text-align: right;
   white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-grid .hero-panel {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {
