@@ -8,6 +8,7 @@ type Props = {
 
 const navItems = [
   { id: "dashboard", label: "대시보드", icon: BarChart3 },
+  { id: "charts", label: "차트", icon: BarChart3 },
   { id: "holdings", label: "보유자산", icon: Database },
   { id: "orders", label: "주문내역", icon: ReceiptText },
   { id: "growth", label: "성장기록", icon: TrendingUp },

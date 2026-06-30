@@ -51,6 +51,16 @@ export type TossHolding = {
   market_value: number
 }
 
+export type TossCandle = {
+  symbol: string
+  timestamp: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
 export type TossOrder = {
   id: number
   account_seq: string

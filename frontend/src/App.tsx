@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { AppShell } from "./components/AppShell"
+import { ChartsPage } from "./components/ChartsPage"
 import { Dashboard } from "./components/Dashboard"
 import { GoalsPage } from "./components/GoalsPage"
 import { GrowthHistoryPage } from "./components/GrowthHistoryPage"
@@ -13,6 +14,7 @@ export default function App() {
   return (
     <AppShell active={active} onNavigate={setActive}>
       {active === "dashboard" && <Dashboard />}
+      {active === "charts" && <ChartsPage />}
       {active === "holdings" && <HoldingsPage />}
       {active === "orders" && <OrderHistoryPage />}
       {active === "growth" && <GrowthHistoryPage />}
