@@ -126,6 +126,16 @@ export type GrowthAnnualHistoryRow = {
   net_worth_krw: number
   annual_return_ratio: number | null
   average_return_ratio: number | null
+  sp500_annual_return_ratio: number | null
+}
+
+export type Sp500ProxyPriceRow = {
+  year: number
+  proxy_symbol: "VOO"
+  price: number
+  currency: "USD"
+  created_at: string
+  updated_at: string
 }
 
 export type BackupRecord = {

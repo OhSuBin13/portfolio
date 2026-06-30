@@ -50,6 +50,23 @@ assert.ok(
   stylesSource.includes(".return-tone-positive") && stylesSource.includes(".return-tone-negative"),
   "Styles should define positive and negative return colors",
 )
+assert.ok(
+  pageSource.includes("S&P 500 연 성장률"),
+  "Page should show the S&P 500 annual growth column",
+)
+assert.ok(
+  pageSource.includes("/api/growth/sp500-proxy-prices"),
+  "Page should save S&P 500 proxy prices",
+)
+assert.ok(
+  pageSource.includes("sp500_annual_return_ratio") &&
+    pageSource.includes("formatReturnPercent(row.sp500_annual_return_ratio)"),
+  "Page should render S&P 500 annual proxy returns as percentages",
+)
+assert.ok(
+  pageSource.includes("getReturnToneClass(row.sp500_annual_return_ratio)"),
+  "Page should apply return colors to S&P 500 annual proxy returns",
+)
 assert.ok(pageSource.includes("순자산을 입력하세요."), "Page should reject blank net worth")
 assert.ok(
   pageSource.includes("selectedAccountSeqRef") &&

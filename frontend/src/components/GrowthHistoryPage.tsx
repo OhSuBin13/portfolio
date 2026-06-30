@@ -4,6 +4,7 @@ import type {
   GrowthAnnualHistoryRow,
   GrowthMonthHistoryRow,
   PortfolioSummary,
+  Sp500ProxyPriceRow,
   TossAccount,
 } from "../types"
 
@@ -14,12 +15,21 @@ type GrowthForm = {
   monthlyDividendKrw: string
 }
 
+type Sp500ProxyForm = {
+  year: string
+  price: string
+}
+
 const today = new Date()
 const initialForm: GrowthForm = {
   year: String(today.getFullYear()),
   month: String(today.getMonth() + 1),
   netWorthKrw: "",
   monthlyDividendKrw: "",
+}
+const initialSp500ProxyForm: Sp500ProxyForm = {
+  year: String(today.getFullYear() - 1),
+  price: "",
 }
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -69,8 +79,10 @@ export function GrowthHistoryPage() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [deletingKey, setDeletingKey] = useState("")
   const [saving, setSaving] = useState(false)
+  const [savingSp500Proxy, setSavingSp500Proxy] = useState(false)
   const [fillingSummary, setFillingSummary] = useState(false)
   const [form, setForm] = useState<GrowthForm>(initialForm)
+  const [sp500ProxyForm, setSp500ProxyForm] = useState<Sp500ProxyForm>(initialSp500ProxyForm)
   const [message, setMessage] = useState("")
   const [accountsError, setAccountsError] = useState("")
   const [historyError, setHistoryError] = useState("")
@@ -361,6 +373,53 @@ export function GrowthHistoryPage() {
     }
   }
 
+  const handleSubmitSp500ProxyPrice = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setMessage("")
+    setHistoryError("")
+
+    const year = parseRequiredNumber(sp500ProxyForm.year)
+    const priceInput = normalizeNumericInput(sp500ProxyForm.price)
+    const price = Number(priceInput)
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2099) {
+      setHistoryError("S&P 500 프록시 년은 2000부터 2099 사이로 입력하세요.")
+      return
+    }
+
+    if (!priceInput) {
+      setHistoryError("S&P 500 프록시 가격을 입력하세요.")
+      return
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      setHistoryError("S&P 500 프록시 가격은 0보다 큰 숫자로 입력하세요.")
+      return
+    }
+
+    const requestAccountSeq = selectedAccountSeq
+    setSavingSp500Proxy(true)
+
+    try {
+      await apiPut<Sp500ProxyPriceRow>(`/api/growth/sp500-proxy-prices/${year}`, { price })
+      if (requestAccountSeq && requestAccountSeq === selectedAccountSeqRef.current) {
+        const history = await loadHistory(requestAccountSeq)
+        if (requestAccountSeq !== selectedAccountSeqRef.current) {
+          return
+        }
+        setMonthHistory(history.monthRows)
+        setAnnualHistory(history.annualRows)
+      }
+      setMessage("S&P 500 프록시 가격을 저장했습니다.")
+    } catch (err) {
+      if (!requestAccountSeq || requestAccountSeq === selectedAccountSeqRef.current) {
+        setHistoryError(getErrorMessage(err))
+      }
+    } finally {
+      setSavingSp500Proxy(false)
+    }
+  }
+
   return (
     <section className="screen-stack">
       <header className="page-header">
@@ -474,6 +533,41 @@ export function GrowthHistoryPage() {
         {message && <p className="form-message success-text">{message}</p>}
       </form>
 
+      <form className="panel form-panel compact-form" onSubmit={handleSubmitSp500ProxyPrice}>
+        <div className="section-heading">
+          <h3>S&P 500 프록시</h3>
+          <span>VOO / USD</span>
+        </div>
+        <div className="growth-entry-grid">
+          <label>
+            년
+            <input
+              inputMode="numeric"
+              onChange={(event) =>
+                setSp500ProxyForm((prev) => ({ ...prev, year: event.target.value }))
+              }
+              value={sp500ProxyForm.year}
+            />
+          </label>
+          <label>
+            VOO 연말 가격
+            <input
+              inputMode="decimal"
+              onChange={(event) =>
+                setSp500ProxyForm((prev) => ({ ...prev, price: event.target.value }))
+              }
+              placeholder="0"
+              value={sp500ProxyForm.price}
+            />
+          </label>
+        </div>
+        <div className="action-row">
+          <button className="primary-button" disabled={savingSp500Proxy} type="submit">
+            프록시 가격 저장
+          </button>
+        </div>
+      </form>
+
       <section className="panel">
         <div className="section-heading">
           <h3>Growth Month History</h3>
@@ -546,6 +640,7 @@ export function GrowthHistoryPage() {
                   <th className="numeric-cell">순자산</th>
                   <th className="numeric-cell">평균 수익률</th>
                   <th className="numeric-cell">연 수익률</th>
+                  <th className="numeric-cell">S&P 500 연 성장률</th>
                 </tr>
               </thead>
               <tbody>
@@ -558,6 +653,11 @@ export function GrowthHistoryPage() {
                     </td>
                     <td className={`numeric-cell ${getReturnToneClass(row.annual_return_ratio)}`}>
                       {formatReturnPercent(row.annual_return_ratio)}
+                    </td>
+                    <td
+                      className={`numeric-cell ${getReturnToneClass(row.sp500_annual_return_ratio)}`}
+                    >
+                      {formatReturnPercent(row.sp500_annual_return_ratio)}
                     </td>
                   </tr>
                 ))}
