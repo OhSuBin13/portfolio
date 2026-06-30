@@ -19,6 +19,17 @@ assert.ok(pageSource.includes("apiDelete"), "Page should delete month history ro
 assert.ok(pageSource.includes("수정"), "Page should expose month history edit controls")
 assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
 assert.ok(pageSource.includes("handleEditMonth"), "Page should copy selected month rows into the form")
+assert.ok(pageSource.includes("formatReturnPercent"), "Page should format returns as percentages")
+assert.ok(
+  pageSource.includes("(value - 1) * 100"),
+  "Page should convert stored return ratios into percent changes",
+)
+assert.ok(!pageSource.includes("toFixed(4)}x"), "Page should not show returns as ratio multiples")
+assert.ok(
+  pageSource.includes("latestMonthHistoryKey") &&
+    pageSource.includes("formatLatestMonthAverageReturn(row)"),
+  "Page should show average return only on the latest month row",
+)
 assert.ok(pageSource.includes("순자산을 입력하세요."), "Page should reject blank net worth")
 assert.ok(
   pageSource.includes("selectedAccountSeqRef") &&

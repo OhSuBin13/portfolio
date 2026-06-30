@@ -26,7 +26,16 @@ const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : 
 const accountLabel = (account: TossAccount) => `${account.display_name} (${account.account_type})`
 const formatKrw = (value: number) =>
   `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} 원`
-const formatRatio = (value: number | null) => (value === null ? "-" : `${value.toFixed(4)}x`)
+const formatReturnPercent = (value: number | null) => {
+  if (value === null) {
+    return "-"
+  }
+
+  const percent = (value - 1) * 100
+  const rounded = Number(percent.toFixed(2))
+  const normalized = Object.is(rounded, -0) ? 0 : rounded
+  return `${normalized.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`
+}
 const normalizeNumericInput = (value: string) => value.replaceAll(",", "").trim()
 const parseRequiredNumber = (value: string) => Number(normalizeNumericInput(value))
 
@@ -154,6 +163,18 @@ export function GrowthHistoryPage() {
 
   const selectedAccount = accounts.find((account) => account.account_seq === selectedAccountSeq)
   const hasNoAccounts = accountsLoaded && accounts.length === 0
+  const latestMonthHistoryRow = monthHistory.reduce<GrowthMonthHistoryRow | null>(
+    (latest, row) =>
+      latest === null ||
+      row.year > latest.year ||
+      (row.year === latest.year && row.month > latest.month)
+        ? row
+        : latest,
+    null,
+  )
+  const latestMonthHistoryKey = latestMonthHistoryRow ? monthRowKey(latestMonthHistoryRow) : ""
+  const formatLatestMonthAverageReturn = (row: GrowthMonthHistoryRow) =>
+    monthRowKey(row) === latestMonthHistoryKey ? formatReturnPercent(row.average_return_ratio) : "-"
 
   const handleFillCurrentNetWorth = async () => {
     const requestAccountSeq = selectedAccountSeq
@@ -445,8 +466,8 @@ export function GrowthHistoryPage() {
                     <td>{row.month}</td>
                     <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
                     <td className="numeric-cell">{formatKrw(row.monthly_dividend_krw)}</td>
-                    <td className="numeric-cell">{formatRatio(row.average_return_ratio)}</td>
-                    <td className="numeric-cell">{formatRatio(row.monthly_return_ratio)}</td>
+                    <td className="numeric-cell">{formatLatestMonthAverageReturn(row)}</td>
+                    <td className="numeric-cell">{formatReturnPercent(row.monthly_return_ratio)}</td>
                     <td className="numeric-cell">{formatKrw(row.cumulative_dividend_krw)}</td>
                     <td className="numeric-cell">
                       <div className="table-actions">
@@ -493,8 +514,8 @@ export function GrowthHistoryPage() {
                   <tr key={`${row.account_seq}:${row.year}:${row.source_month}`}>
                     <td>{row.display_year}</td>
                     <td className="numeric-cell">{formatKrw(row.net_worth_krw)}</td>
-                    <td className="numeric-cell">{formatRatio(row.average_return_ratio)}</td>
-                    <td className="numeric-cell">{formatRatio(row.annual_return_ratio)}</td>
+                    <td className="numeric-cell">{formatReturnPercent(row.average_return_ratio)}</td>
+                    <td className="numeric-cell">{formatReturnPercent(row.annual_return_ratio)}</td>
                   </tr>
                 ))}
               </tbody>
