@@ -10,6 +10,17 @@ export type TradeMarker = {
   memo: string
 }
 
+export type MarkerPlacementInput = {
+  marker: TradeMarker
+  candleIndex: number
+}
+
+export type MarkerPlacement = MarkerPlacementInput & {
+  xOffset: number
+}
+
+const OVERLAPPING_MARKER_OFFSET_X = 16
+
 const parseOrderDate = (value: string | null) => {
   if (!value) {
     return null
@@ -72,4 +83,26 @@ export const buildTradeMarkers = (
         },
       ]
     })
+}
+
+export const spreadOverlappingMarkers = (
+  markerPlacements: MarkerPlacementInput[],
+): MarkerPlacement[] => {
+  const groupSizes = new Map<number, number>()
+  const groupIndexes = new Map<number, number>()
+
+  markerPlacements.forEach(({ candleIndex }) => {
+    groupSizes.set(candleIndex, (groupSizes.get(candleIndex) ?? 0) + 1)
+  })
+
+  return markerPlacements.map((placement) => {
+    const groupSize = groupSizes.get(placement.candleIndex) ?? 1
+    const groupIndex = groupIndexes.get(placement.candleIndex) ?? 0
+    groupIndexes.set(placement.candleIndex, groupIndex + 1)
+
+    return {
+      ...placement,
+      xOffset: (groupIndex - (groupSize - 1) / 2) * OVERLAPPING_MARKER_OFFSET_X,
+    }
+  })
 }

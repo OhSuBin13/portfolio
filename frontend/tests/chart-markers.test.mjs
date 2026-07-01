@@ -20,10 +20,20 @@ vm.runInNewContext(outputText, {
   },
 })
 
-const { buildTradeMarkers } = module.exports
+const { buildTradeMarkers, spreadOverlappingMarkers } = module.exports
 
 const markerLabels = (orders) =>
   Array.from(buildTradeMarkers(orders, []), (marker) => marker.label)
+
+const marker = (key) => ({
+  key,
+  label: "매수",
+  tone: "buy",
+  timestamp: "2026-04-30T09:00:00Z",
+  price: 100,
+  quantity: "1",
+  memo: "",
+})
 
 const order = ({ order_id, side, filled_quantity, ordered_at }) => ({
   id: Number(order_id),
@@ -66,4 +76,21 @@ assert.deepEqual(
     order({ order_id: "6", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-03T09:00:00Z" }),
   ]),
   ["매수", "Trim", "추가매수"],
+)
+
+assert.deepEqual(
+  spreadOverlappingMarkers([
+    { marker: marker("first"), candleIndex: 3 },
+    { marker: marker("second"), candleIndex: 3 },
+    { marker: marker("third"), candleIndex: 5 },
+  ]).map(({ marker, candleIndex, xOffset }) => ({
+    key: marker.key,
+    candleIndex,
+    xOffset,
+  })),
+  [
+    { key: "first", candleIndex: 3, xOffset: -8 },
+    { key: "second", candleIndex: 3, xOffset: 8 },
+    { key: "third", candleIndex: 5, xOffset: 0 },
+  ],
 )

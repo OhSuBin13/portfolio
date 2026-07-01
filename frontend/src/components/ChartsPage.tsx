@@ -8,7 +8,7 @@ import {
 } from "react"
 import { Calendar, DollarSign, Hash, Plus, Save, StickyNote, Trash2 } from "lucide-react"
 import { apiGet, apiPost } from "../api"
-import { buildTradeMarkers, type TradeMarker } from "../chartMarkers"
+import { buildTradeMarkers, spreadOverlappingMarkers, type TradeMarker } from "../chartMarkers"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
 const CHART_WIDTH = 1040
@@ -276,6 +276,12 @@ function CandleChart({
         return `${command}${xForIndex(point.index).toFixed(2)},${yForPrice(point.value).toFixed(2)}`
       })
       .join(" ")
+  const markerPlacements = spreadOverlappingMarkers(
+    markers.flatMap((marker) => {
+      const candleIndex = markerIndex(candles, marker)
+      return candleIndex >= 0 ? [{ marker, candleIndex }] : []
+    }),
+  )
 
   const handleMarkerKeyDown = (event: KeyboardEvent<SVGGElement>, marker: TradeMarker) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -354,12 +360,8 @@ function CandleChart({
       ))}
 
       <g className="chart-markers">
-        {markers.map((marker) => {
-          const index = markerIndex(candles, marker)
-          if (index < 0) {
-            return null
-          }
-          const x = xForIndex(index)
+        {markerPlacements.map(({ marker, candleIndex, xOffset }) => {
+          const x = xForIndex(candleIndex) + xOffset
           const y = yForPrice(marker.price)
           return (
             <g
