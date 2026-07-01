@@ -830,6 +830,18 @@ select:focus {
   min-width: 0;
 }
 
+.chart-panel-layout {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.chart-panel-layout.memo-expanded {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+
 .candle-summary-grid {
   display: grid;
   gap: 10px;
@@ -1074,6 +1086,162 @@ select:focus {
   width: 12px;
 }
 
+.marker-memo-drawer {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 0;
+  width: 38px;
+}
+
+.chart-panel-layout.memo-expanded .marker-memo-drawer {
+  width: 100%;
+}
+
+.marker-memo-toggle {
+  background: #111827;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  height: 34px;
+  line-height: 1;
+  min-width: 38px;
+  padding: 0 8px;
+}
+
+.marker-memo-toggle:hover,
+.marker-memo-toggle:focus-visible {
+  background: #1f2937;
+  outline: none;
+}
+
+.marker-memo-list-panel {
+  border-left: 1px solid #e2e8f0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-left: 14px;
+  width: 100%;
+}
+
+.marker-memo-list-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.marker-memo-list-heading h4 {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.marker-memo-list-heading span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.marker-memo-list {
+  display: grid;
+  gap: 8px;
+  max-height: 548px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.marker-memo-list-item {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left-width: 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.marker-memo-list-item:hover,
+.marker-memo-list-item:focus-visible,
+.marker-memo-list-item.selected {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  outline: none;
+}
+
+.marker-memo-list-item-buy {
+  border-left-color: #047857;
+}
+
+.marker-memo-list-item-trim {
+  border-left-color: #f59e0b;
+}
+
+.marker-memo-list-item-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.marker-memo-list-item-header time {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.marker-memo-list-badge {
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 7px;
+}
+
+.marker-memo-list-badge-buy {
+  background: #047857;
+}
+
+.marker-memo-list-badge-trim {
+  background: #b45309;
+}
+
+.marker-memo-list-item strong {
+  color: #111827;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.marker-memo-preview {
+  color: #475569;
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.compact-empty {
+  margin: 0;
+  padding: 18px 10px;
+}
+
 .marker-memo-panel {
   display: grid;
   gap: 14px;
@@ -1262,6 +1430,7 @@ textarea:focus {
   .growth-header,
   .form-grid,
   .growth-entry-grid,
+  .chart-panel-layout,
   .candle-summary-grid,
   .chart-settings-grid,
   .marker-detail-grid,
@@ -1277,6 +1446,19 @@ textarea:focus {
 
   .currency-toggle button {
     flex: 1;
+  }
+
+  .marker-memo-list-panel {
+    border-left: 0;
+    border-top: 1px solid #e2e8f0;
+    padding-left: 0;
+    padding-top: 14px;
+  }
+
+  .marker-memo-drawer,
+  .chart-panel-layout.memo-expanded .marker-memo-drawer {
+    justify-items: end;
+    width: 100%;
   }
 
   .order-toolbar {

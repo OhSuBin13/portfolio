@@ -607,6 +607,7 @@ export function ChartsPage() {
   const [showVolume, setShowVolume] = useState(true)
   const [selectedMarkerKey, setSelectedMarkerKey] = useState("")
   const [markerMemoDraft, setMarkerMemoDraft] = useState("")
+  const [memoListExpanded, setMemoListExpanded] = useState(false)
   const [accountsError, setAccountsError] = useState("")
   const [holdingsError, setHoldingsError] = useState("")
   const [candlesError, setCandlesError] = useState("")
@@ -847,6 +848,10 @@ export function ChartsPage() {
     () => buildTradeMarkers(orders, markerMemos),
     [markerMemos, orders],
   )
+  const memoMarkers = useMemo(
+    () => [...tradeMarkers].reverse().filter((marker) => marker.memo.trim()),
+    [tradeMarkers],
+  )
   const selectedMarker = tradeMarkers.find((marker) => marker.key === selectedMarkerKey)
   const latest = visibleChartCandles[visibleChartCandles.length - 1]
   const chartEmptyMessage = holdingsLoading
@@ -979,100 +984,148 @@ export function ChartsPage() {
       {ordersError && <div className="error">{ordersError}</div>}
       {memoError && <div className="error">{memoError}</div>}
 
-      <section className="panel chart-panel">
-        <div className="section-heading chart-heading">
-          <div>
-            <h3>보유 종목 차트</h3>
-            <span>{selectedAccount ? accountLabel(selectedAccount) : "Toss 계좌"}</span>
+      <div className={`chart-panel-layout${memoListExpanded ? " memo-expanded" : ""}`}>
+        <section className="panel chart-panel">
+          <div className="section-heading chart-heading">
+            <div>
+              <h3>보유 종목 차트</h3>
+              <span>{selectedAccount ? accountLabel(selectedAccount) : "Toss 계좌"}</span>
+            </div>
+            <div className="section-heading-actions chart-heading-actions">
+              <label className="chart-period-select">
+                <span>봉</span>
+                <select
+                  value={selectedChartPeriod}
+                  onChange={(event) => setSelectedChartPeriod(event.target.value as ChartPeriod)}
+                >
+                  {chartPeriodOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="chart-symbol-select">
+                <span>보유 종목</span>
+                <select
+                  value={selectedHoldingKey}
+                  disabled={holdings.length === 0}
+                  onChange={(event) => setSelectedHoldingKey(event.target.value)}
+                >
+                  {holdings.map((holding) => (
+                    <option key={holdingKey(holding)} value={holdingKey(holding)}>
+                      {holdingLabel(holding)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
-          <div className="section-heading-actions chart-heading-actions">
-            <label className="chart-period-select">
-              <span>봉</span>
-              <select
-                value={selectedChartPeriod}
-                onChange={(event) => setSelectedChartPeriod(event.target.value as ChartPeriod)}
-              >
-                {chartPeriodOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="chart-symbol-select">
-              <span>보유 종목</span>
-              <select
-                value={selectedHoldingKey}
-                disabled={holdings.length === 0}
-                onChange={(event) => setSelectedHoldingKey(event.target.value)}
-              >
-                {holdings.map((holding) => (
-                  <option key={holdingKey(holding)} value={holdingKey(holding)}>
-                    {holdingLabel(holding)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
 
-        {accounts.length === 0 && accountsLoaded ? (
-          <p className="empty-state">Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요.</p>
-        ) : visibleChartCandles.length > 0 && selectedHolding ? (
-          <div className="candle-chart-area">
-            <div className="candle-summary-grid">
-              <div>
-                <span>종목</span>
-                <strong>{holdingLabel(selectedHolding)}</strong>
+          {accounts.length === 0 && accountsLoaded ? (
+            <p className="empty-state">Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요.</p>
+          ) : visibleChartCandles.length > 0 && selectedHolding ? (
+            <div className="candle-chart-area">
+              <div className="candle-summary-grid">
+                <div>
+                  <span>종목</span>
+                  <strong>{holdingLabel(selectedHolding)}</strong>
+                </div>
+                <div>
+                  <span>종가</span>
+                  <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
+                </div>
+                <div>
+                  <span>고가 / 저가</span>
+                  <strong>
+                    {formatPrice(latest.high, selectedHolding.currency)} /{" "}
+                    {formatPrice(latest.low, selectedHolding.currency)}
+                  </strong>
+                </div>
+                <div>
+                  <span>거래량</span>
+                  <strong>{formatVolume(latest.volume)}</strong>
+                </div>
+                <div>
+                  <span>표시 봉</span>
+                  <strong>{visibleChartCandles.length.toLocaleString("ko-KR")}개</strong>
+                </div>
               </div>
-              <div>
-                <span>종가</span>
-                <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
-              </div>
-              <div>
-                <span>고가 / 저가</span>
-                <strong>
-                  {formatPrice(latest.high, selectedHolding.currency)} /{" "}
-                  {formatPrice(latest.low, selectedHolding.currency)}
-                </strong>
-              </div>
-              <div>
-                <span>거래량</span>
-                <strong>{formatVolume(latest.volume)}</strong>
-              </div>
-              <div>
-                <span>표시 봉</span>
-                <strong>{visibleChartCandles.length.toLocaleString("ko-KR")}개</strong>
+              <div
+                className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
+                onMouseDown={handleChartMouseDown}
+                onMouseLeave={handleChartMouseUp}
+                onMouseMove={handleChartMouseMove}
+                onMouseUp={handleChartMouseUp}
+                onWheel={handleChartWheel}
+              >
+                <CandleChart
+                  candles={visibleChartCandles}
+                  currency={selectedHolding.currency}
+                  movingAverageSourceCandles={chartCandles}
+                  movingAverageConfigs={movingAverageConfigs}
+                  visibleCandleStartIndex={visibleCandleStartIndex}
+                  markers={tradeMarkers}
+                  selectedChartPeriod={selectedChartPeriod}
+                  selectedMarkerKey={selectedMarkerKey}
+                  showVolume={showVolume}
+                  onSelectMarker={selectMarker}
+                />
               </div>
             </div>
-            <div
-              className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
-              onMouseDown={handleChartMouseDown}
-              onMouseLeave={handleChartMouseUp}
-              onMouseMove={handleChartMouseMove}
-              onMouseUp={handleChartMouseUp}
-              onWheel={handleChartWheel}
+          ) : (
+            <p className="empty-state">
+              {accountsLoaded ? chartEmptyMessage : "Toss 계좌를 불러오는 중입니다."}
+            </p>
+          )}
+        </section>
+
+        {visibleChartCandles.length > 0 && selectedHolding && (
+          <div className="marker-memo-drawer">
+            <button
+              aria-expanded={memoListExpanded}
+              aria-label={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
+              className="marker-memo-toggle"
+              onClick={() => setMemoListExpanded((current) => !current)}
+              title={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
+              type="button"
             >
-              <CandleChart
-                candles={visibleChartCandles}
-                currency={selectedHolding.currency}
-                movingAverageSourceCandles={chartCandles}
-                movingAverageConfigs={movingAverageConfigs}
-                visibleCandleStartIndex={visibleCandleStartIndex}
-                markers={tradeMarkers}
-                selectedChartPeriod={selectedChartPeriod}
-                selectedMarkerKey={selectedMarkerKey}
-                showVolume={showVolume}
-                onSelectMarker={selectMarker}
-              />
-            </div>
+              {memoListExpanded ? ">>" : "<<"}
+            </button>
+            {memoListExpanded && (
+              <aside className="marker-memo-list-panel" aria-label="작성된 판단 메모">
+                <div className="marker-memo-list-heading">
+                  <h4>작성된 판단 메모</h4>
+                  <span>{memoMarkers.length.toLocaleString("ko-KR")}건</span>
+                </div>
+                {memoMarkers.length > 0 ? (
+                  <div className="marker-memo-list">
+                    {memoMarkers.map((marker) => (
+                      <button
+                        className={`marker-memo-list-item marker-memo-list-item-${marker.tone}${selectedMarkerKey === marker.key ? " selected" : ""}`}
+                        key={marker.key}
+                        onClick={() => selectMarker(marker)}
+                        type="button"
+                      >
+                        <span className="marker-memo-list-item-header">
+                          <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
+                            {marker.label}
+                          </span>
+                          <time>{formatDateTime(marker.timestamp)}</time>
+                        </span>
+                        <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
+                        <span className="marker-memo-preview">{marker.memo.trim()}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-state compact-empty">작성된 판단 메모가 없습니다.</p>
+                )}
+              </aside>
+            )}
           </div>
-        ) : (
-          <p className="empty-state">
-            {accountsLoaded ? chartEmptyMessage : "Toss 계좌를 불러오는 중입니다."}
-          </p>
         )}
-      </section>
+      </div>
 
       <section className="panel chart-settings-panel">
         <div className="section-heading">

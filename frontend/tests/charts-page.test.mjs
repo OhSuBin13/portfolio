@@ -74,6 +74,20 @@ for (const expectedText of [
   "거래량",
   "chart-markers",
   "markerMemoDraft",
+  "memoMarkers",
+  "memoListExpanded",
+  "setMemoListExpanded",
+  "chart-panel-layout",
+  "memo-expanded",
+  "marker-memo-drawer",
+  "marker-memo-toggle",
+  "marker-memo-list-panel",
+  "marker-memo-list-item",
+  "marker-memo-preview",
+  "작성된 판단 메모 펼치기",
+  "작성된 판단 메모 접기",
+  "작성된 판단 메모",
+  "작성된 판단 메모가 없습니다.",
   "marker-selected-header",
   "marker-detail-grid",
   "marker-note-field",
@@ -200,6 +214,51 @@ assert.ok(
   !source.includes("변화율 {formatChangeRate(chartHoverState.changeRate)}"),
   "Charts page should not show a single standalone hover change rate",
 )
+assert.ok(
+  source.includes("[...tradeMarkers].reverse().filter((marker) => marker.memo.trim())"),
+  "Charts page should build a newest-first list of markers with written memos",
+)
+assert.ok(
+  source.includes("memoMarkers.map((marker) =>"),
+  "Charts page should render the written marker memo list",
+)
+assert.ok(
+  source.includes('onClick={() => selectMarker(marker)}'),
+  "Written marker memo list items should select the marker for editing",
+)
+assert.ok(
+  source.includes('selectedMarkerKey === marker.key ? " selected" : ""'),
+  "Written marker memo list should reflect the selected marker",
+)
+assert.ok(
+  source.includes("const [memoListExpanded, setMemoListExpanded] = useState(false)"),
+  "Written marker memo list should be collapsed by default",
+)
+assert.ok(
+  source.includes("setMemoListExpanded((current) => !current)"),
+  "Written marker memo toggle should switch between expanded and collapsed",
+)
+assert.ok(
+  source.includes('aria-expanded={memoListExpanded}'),
+  "Written marker memo toggle should expose its expanded state",
+)
+assert.ok(
+  source.includes('{memoListExpanded ? ">>" : "<<"}'),
+  "Written marker memo toggle should switch from << to >> when expanded",
+)
+assert.ok(
+  source.includes("{memoListExpanded && ("),
+  "Written marker memo list should only render while expanded",
+)
+assert.match(
+  source,
+  /<div className=\{`chart-panel-layout\$\{memoListExpanded \? " memo-expanded" : ""\}`\}>[\s\S]*?<section className="panel chart-panel">[\s\S]*?<\/section>\s*\{visibleChartCandles\.length > 0 && selectedHolding && \([\s\S]*?<div className="marker-memo-drawer">[\s\S]*?<button[\s\S]*?className="marker-memo-toggle"[\s\S]*?\{memoListExpanded \? ">>" : "<<"}[\s\S]*?\{memoListExpanded && \([\s\S]*?<aside className="marker-memo-list-panel"/,
+  "Written marker memo drawer should stay outside the chart panel and render the list only when expanded",
+)
+assert.ok(
+  !source.includes('className="chart-main-grid"'),
+  "Charts page should not keep the memo list inside the chart panel grid",
+)
 for (const legacyOhlcLabel of ["O {", "· H", "· L", "· C"]) {
   assert.ok(!source.includes(legacyOhlcLabel), `Charts page should not show ${legacyOhlcLabel}`)
 }
@@ -225,6 +284,17 @@ assert.ok(
   !styles.includes(".chart-hover-ohlc-title"),
   "Styles should not keep unused hover OHLC title styling",
 )
+assert.ok(styles.includes(".chart-panel-layout"), "Styles should define chart panel and memo side layout")
+assert.ok(styles.includes(".chart-panel-layout.memo-expanded"), "Styles should define expanded memo drawer layout")
+assert.ok(
+  !styles.includes(".chart-main-grid"),
+  "Styles should not keep the old in-panel chart and memo grid",
+)
+assert.ok(styles.includes(".marker-memo-drawer"), "Styles should define written memo drawer")
+assert.ok(styles.includes(".marker-memo-toggle"), "Styles should define written memo drawer toggle")
+assert.ok(styles.includes(".marker-memo-list-panel"), "Styles should define written memo side panel")
+assert.ok(styles.includes(".marker-memo-list-item"), "Styles should define written memo list items")
+assert.ok(styles.includes(".marker-memo-preview"), "Styles should define written memo previews")
 assert.match(
   styles,
   /\.chart-hover-change-up\s*\{[\s\S]*?fill:\s*#dc2626;/,
