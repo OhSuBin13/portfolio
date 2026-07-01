@@ -859,6 +859,17 @@ select:focus {
   width: 100%;
 }
 
+.candle-chart-viewport {
+  cursor: grab;
+  min-width: 0;
+  overflow: hidden;
+  user-select: none;
+}
+
+.candle-chart-viewport.dragging {
+  cursor: grabbing;
+}
+
 .candle-axis {
   stroke: #cbd5e1;
   stroke-width: 1;

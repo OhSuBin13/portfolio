@@ -1,4 +1,11 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
+import {
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type WheelEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { Plus, Save, Trash2 } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
@@ -12,6 +19,10 @@ const VOLUME_TOP = 360
 const VOLUME_BOTTOM = 452
 const PLOT_LEFT = 62
 const PLOT_RIGHT = 28
+const MIN_VISIBLE_CANDLES = 20
+const ZOOM_IN_RATIO = 0.8
+const ZOOM_OUT_RATIO = 1.25
+const DRAG_PAN_STEP_PIXELS = 36
 
 const chartPeriodOptions = [
   { value: "daily", label: "일봉" },
@@ -32,6 +43,10 @@ type MovingAverageForm = {
   days: string
   color: string
   lineWidth: string
+}
+
+type ChartDragState = {
+  lastX: number
 }
 
 type TradeMarker = {
@@ -228,12 +243,23 @@ const movingAveragePoints = (candles: TossCandle[], days: number) => {
 }
 
 const markerIndex = (candles: TossCandle[], marker: TradeMarker) => {
+  const markerTime = parseDate(marker.timestamp)?.getTime()
+  const firstTime = parseDate(candles[0]?.timestamp ?? "")?.getTime()
+  const lastTime = parseDate(candles[candles.length - 1]?.timestamp ?? "")?.getTime()
+  if (
+    markerTime !== undefined &&
+    firstTime !== undefined &&
+    lastTime !== undefined &&
+    (markerTime < Math.min(firstTime, lastTime) || markerTime > Math.max(firstTime, lastTime))
+  ) {
+    return -1
+  }
+
   const key = dateKey(marker.timestamp)
   const exact = candles.findIndex((candle) => dateKey(candle.timestamp) === key)
   if (exact >= 0) {
     return exact
   }
-  const markerTime = parseDate(marker.timestamp)?.getTime()
   if (markerTime === undefined) {
     return -1
   }
@@ -416,6 +442,9 @@ export function ChartsPage() {
   const [orders, setOrders] = useState<TossOrder[]>([])
   const [markerMemos, setMarkerMemos] = useState<ChartMarkerMemo[]>([])
   const [selectedChartPeriod, setSelectedChartPeriod] = useState<ChartPeriod>("daily")
+  const [chartZoomWindow, setChartZoomWindow] = useState<number | null>(null)
+  const [chartPanOffset, setChartPanOffset] = useState(0)
+  const [chartDragState, setChartDragState] = useState<ChartDragState | null>(null)
   const [movingAverageConfigs, setMovingAverageConfigs] = useState<MovingAverageConfig[]>([
     { id: "ma-20", days: 20, color: "#2563eb", lineWidth: 2 },
   ])
@@ -460,6 +489,9 @@ export function ChartsPage() {
           setCandles([])
           setOrders([])
           setMarkerMemos([])
+          setChartZoomWindow(null)
+          setChartPanOffset(0)
+          setChartDragState(null)
         }
       })
       .catch((err) => {
@@ -474,6 +506,9 @@ export function ChartsPage() {
         setMarkerMemos([])
         setSelectedAccountSeq("")
         setSelectedHoldingKey("")
+        setChartZoomWindow(null)
+        setChartPanOffset(0)
+        setChartDragState(null)
         setAccountsLoaded(true)
         setAccountsError(getErrorMessage(err))
       })
@@ -501,6 +536,9 @@ export function ChartsPage() {
       setCandles([])
       setOrders([])
       setMarkerMemos([])
+      setChartZoomWindow(null)
+      setChartPanOffset(0)
+      setChartDragState(null)
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
       setHoldingsError("")
@@ -535,6 +573,9 @@ export function ChartsPage() {
           setCandles([])
           setOrders([])
           setMarkerMemos([])
+          setChartZoomWindow(null)
+          setChartPanOffset(0)
+          setChartDragState(null)
           setHoldingsError(getErrorMessage(err))
         })
         .finally(() => {
@@ -571,6 +612,9 @@ export function ChartsPage() {
       setCandles([])
       setOrders([])
       setMarkerMemos([])
+      setChartZoomWindow(null)
+      setChartPanOffset(0)
+      setChartDragState(null)
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
       setCandlesError("")
@@ -628,12 +672,30 @@ export function ChartsPage() {
     () => aggregateCandles(candles, selectedChartPeriod),
     [candles, selectedChartPeriod],
   )
+  const visibleChartCandles = useMemo(() => {
+    const totalCandles = chartCandles.length
+    if (totalCandles === 0) {
+      return chartCandles
+    }
+
+    const visibleCount =
+      chartZoomWindow === null ? totalCandles : Math.min(chartZoomWindow, totalCandles)
+    if (visibleCount >= totalCandles) {
+      return chartCandles
+    }
+
+    const maxPanOffset = Math.max(totalCandles - visibleCount, 0)
+    const clampedPanOffset = Math.min(Math.max(chartPanOffset, 0), maxPanOffset)
+    const end = totalCandles - clampedPanOffset
+    const start = Math.max(0, end - visibleCount)
+    return chartCandles.slice(start, end)
+  }, [chartCandles, chartPanOffset, chartZoomWindow])
   const tradeMarkers = useMemo(
     () => buildTradeMarkers(orders, markerMemos),
     [markerMemos, orders],
   )
   const selectedMarker = tradeMarkers.find((marker) => marker.key === selectedMarkerKey)
-  const latest = chartCandles[chartCandles.length - 1]
+  const latest = visibleChartCandles[visibleChartCandles.length - 1]
   const chartEmptyMessage = holdingsLoading
     ? "보유 종목을 불러오는 중입니다."
     : candlesLoading
@@ -641,6 +703,66 @@ export function ChartsPage() {
       : holdings.length === 0
         ? "선택한 Toss 계좌의 보유 종목이 없습니다."
         : "선택한 종목의 캔들 데이터가 없습니다."
+
+  const handleChartWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (chartCandles.length === 0) {
+      return
+    }
+    event.preventDefault()
+
+    const totalCandles = chartCandles.length
+    const currentWindow = chartZoomWindow ?? totalCandles
+    const minWindow = Math.min(MIN_VISIBLE_CANDLES, totalCandles)
+    const nextWindow =
+      event.deltaY > 0
+        ? Math.min(totalCandles, Math.ceil(currentWindow * ZOOM_OUT_RATIO))
+        : Math.max(minWindow, Math.floor(currentWindow * ZOOM_IN_RATIO))
+
+    if (nextWindow >= totalCandles) {
+      setChartZoomWindow(null)
+      setChartPanOffset(0)
+      return
+    }
+
+    setChartZoomWindow(nextWindow)
+    setChartPanOffset((current) => Math.min(current, Math.max(totalCandles - nextWindow, 0)))
+  }
+
+  const handleChartMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (chartCandles.length === 0 || event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    setChartDragState({ lastX: event.clientX })
+  }
+
+  const handleChartMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!chartDragState || chartCandles.length === 0) {
+      return
+    }
+    event.preventDefault()
+
+    const totalCandles = chartCandles.length
+    const visibleWindow = Math.min(chartZoomWindow ?? totalCandles, totalCandles)
+    const maxPanOffset = Math.max(totalCandles - visibleWindow, 0)
+    if (maxPanOffset === 0) {
+      setChartDragState({ lastX: event.clientX })
+      return
+    }
+
+    const deltaX = event.clientX - chartDragState.lastX
+    const steps = Math.trunc(deltaX / DRAG_PAN_STEP_PIXELS)
+    if (steps === 0) {
+      return
+    }
+
+    setChartPanOffset((current) => Math.min(maxPanOffset, Math.max(0, current + steps)))
+    setChartDragState({ lastX: chartDragState.lastX + steps * DRAG_PAN_STEP_PIXELS })
+  }
+
+  const handleChartMouseUp = () => {
+    setChartDragState(null)
+  }
 
   const addMovingAverage = () => {
     const days = Number(movingAverageForm.days)
@@ -743,7 +865,7 @@ export function ChartsPage() {
 
         {accounts.length === 0 && accountsLoaded ? (
           <p className="empty-state">Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요.</p>
-        ) : chartCandles.length > 0 && selectedHolding ? (
+        ) : visibleChartCandles.length > 0 && selectedHolding ? (
           <div className="candle-chart-area">
             <div className="candle-summary-grid">
               <div>
@@ -767,18 +889,27 @@ export function ChartsPage() {
               </div>
               <div>
                 <span>표시 봉</span>
-                <strong>{chartCandles.length.toLocaleString("ko-KR")}개</strong>
+                <strong>{visibleChartCandles.length.toLocaleString("ko-KR")}개</strong>
               </div>
             </div>
-            <CandleChart
-              candles={chartCandles}
-              currency={selectedHolding.currency}
-              movingAverageConfigs={movingAverageConfigs}
-              markers={tradeMarkers}
-              selectedMarkerKey={selectedMarkerKey}
-              showVolume={showVolume}
-              onSelectMarker={selectMarker}
-            />
+            <div
+              className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
+              onMouseDown={handleChartMouseDown}
+              onMouseLeave={handleChartMouseUp}
+              onMouseMove={handleChartMouseMove}
+              onMouseUp={handleChartMouseUp}
+              onWheel={handleChartWheel}
+            >
+              <CandleChart
+                candles={visibleChartCandles}
+                currency={selectedHolding.currency}
+                movingAverageConfigs={movingAverageConfigs}
+                markers={tradeMarkers}
+                selectedMarkerKey={selectedMarkerKey}
+                showVolume={showVolume}
+                onSelectMarker={selectMarker}
+              />
+            </div>
           </div>
         ) : (
           <p className="empty-state">
