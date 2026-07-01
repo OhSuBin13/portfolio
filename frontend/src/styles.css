@@ -1020,7 +1020,128 @@ select:focus {
 
 .marker-memo-panel {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+}
+
+.marker-selected-header {
+  align-items: center;
+  background: #f8fafc;
+  border-left: 4px solid #64748b;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.marker-selected-header-buy {
+  border-left-color: #047857;
+}
+
+.marker-selected-header-trim {
+  border-left-color: #f59e0b;
+}
+
+.marker-selected-header h4 {
+  color: #111827;
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 6px 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.marker-selected-header p {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+}
+
+.marker-selected-badge {
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.marker-selected-header-buy .marker-selected-badge {
+  background: #047857;
+}
+
+.marker-selected-header-trim .marker-selected-badge {
+  background: #b45309;
+}
+
+.marker-selected-price {
+  min-width: min(220px, 100%);
+  text-align: right;
+}
+
+.marker-selected-price strong {
+  color: #111827;
+  display: block;
+  font-size: 18px;
+  line-height: 1.25;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.marker-detail-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.marker-detail-item {
+  align-items: flex-start;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 10px;
+}
+
+.marker-detail-item svg {
+  color: #475569;
+  margin-top: 2px;
+}
+
+.marker-detail-item strong {
+  color: #111827;
+  display: block;
+  font-size: 14px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.marker-note-field {
+  display: grid;
+  gap: 8px;
+}
+
+.marker-note-field > span {
+  align-items: center;
+  color: #111827;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.marker-note-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.marker-note-state {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 textarea {
@@ -1087,6 +1208,7 @@ textarea:focus {
   .growth-entry-grid,
   .candle-summary-grid,
   .chart-settings-grid,
+  .marker-detail-grid,
   .moving-average-form,
   .field-row,
   .field-row.triple {
@@ -1125,6 +1247,16 @@ textarea:focus {
   .chart-period-select,
   .chart-symbol-select {
     width: 100%;
+  }
+
+  .marker-selected-header,
+  .marker-note-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .marker-selected-price {
+    text-align: left;
   }
 
   .allocation-chart,

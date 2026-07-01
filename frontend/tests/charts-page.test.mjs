@@ -52,6 +52,14 @@ for (const expectedText of [
   "거래량",
   "chart-markers",
   "markerMemoDraft",
+  "marker-selected-header",
+  "marker-detail-grid",
+  "marker-note-field",
+  "marker-note-actions",
+  "판단 기록",
+  "체결가",
+  "판단 메모",
+  "placeholder",
   "매수",
   "추가매수",
   "Trim",
@@ -77,3 +85,6 @@ assert.ok(styles.includes(".candle-up"), "Styles should define rising candle col
 assert.ok(styles.includes(".candle-down"), "Styles should define falling candle color")
 assert.ok(styles.includes(".moving-average-line"), "Styles should define moving-average lines")
 assert.ok(styles.includes(".chart-markers"), "Styles should define trade marker layout")
+assert.ok(styles.includes(".marker-selected-header"), "Styles should define selected marker header")
+assert.ok(styles.includes(".marker-detail-grid"), "Styles should define selected marker detail layout")
+assert.ok(styles.includes(".marker-note-actions"), "Styles should define marker note actions")

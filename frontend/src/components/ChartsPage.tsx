@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react"
-import { Plus, Save, Trash2 } from "lucide-react"
+import { Calendar, DollarSign, Hash, Plus, Save, StickyNote, Trash2 } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
@@ -1023,41 +1023,68 @@ export function ChartsPage() {
         </div>
         {selectedMarker ? (
           <div className="marker-memo-panel">
-            <div className="mix-list">
-              <div className="mix-row">
-                <span>구분</span>
-                <strong>{selectedMarker.label}</strong>
+            <div className={`marker-selected-header marker-selected-header-${selectedMarker.tone}`}>
+              <div>
+                <span className="marker-selected-badge">{selectedMarker.label}</span>
+                <h4>{selectedMarker.label} 판단 기록</h4>
+                <p>{formatDateTime(selectedMarker.timestamp)}</p>
               </div>
-              <div className="mix-row">
-                <span>시점</span>
-                <strong>{formatDateTime(selectedMarker.timestamp)}</strong>
-              </div>
-              <div className="mix-row">
-                <span>가격</span>
+              <div className="marker-selected-price">
+                <span>체결가</span>
                 <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
               </div>
-              <div className="mix-row">
-                <span>수량</span>
-                <strong>{selectedMarker.quantity}</strong>
+            </div>
+
+            <div className="marker-detail-grid">
+              <div className="marker-detail-item">
+                <Calendar size={18} />
+                <div>
+                  <span>시점</span>
+                  <strong>{formatDateTime(selectedMarker.timestamp)}</strong>
+                </div>
+              </div>
+              <div className="marker-detail-item">
+                <DollarSign size={18} />
+                <div>
+                  <span>가격</span>
+                  <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
+                </div>
+              </div>
+              <div className="marker-detail-item">
+                <Hash size={18} />
+                <div>
+                  <span>수량</span>
+                  <strong>{selectedMarker.quantity}</strong>
+                </div>
               </div>
             </div>
-            <label>
-              메모
+
+            <label className="marker-note-field">
+              <span>
+                <StickyNote size={16} />
+                판단 메모
+              </span>
               <textarea
                 onChange={(event) => setMarkerMemoDraft(event.target.value)}
+                placeholder={`${selectedMarker.label} 판단 근거, 리스크, 다음 행동을 적어두세요.`}
                 rows={4}
                 value={markerMemoDraft}
               />
             </label>
-            <button
-              className="primary-button compact-button"
-              disabled={memoSaving}
-              onClick={saveMarkerMemo}
-              type="button"
-            >
-              <Save size={16} />
-              저장
-            </button>
+            <div className="marker-note-actions">
+              <span className="marker-note-state">
+                {markerMemoDraft.trim() ? "메모 작성 중" : "메모 없음"}
+              </span>
+              <button
+                className="primary-button compact-button"
+                disabled={memoSaving}
+                onClick={saveMarkerMemo}
+                type="button"
+              >
+                <Save size={16} />
+                저장
+              </button>
+            </div>
           </div>
         ) : (
           <p className="empty-state">
