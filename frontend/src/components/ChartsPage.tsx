@@ -123,9 +123,6 @@ const changeRateTone = (value: number | null): ChangeRateTone => {
 const changeRateForPrice = (value: number, previousClose: number | null) =>
   previousClose !== null && previousClose > 0 ? ((value - previousClose) / previousClose) * 100 : null
 
-const formatVolume = (value: number) =>
-  value.toLocaleString("ko-KR", { maximumFractionDigits: 0 })
-
 const parseDate = (value: string) => {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed
@@ -1077,30 +1074,13 @@ export function ChartsPage() {
             <p className="empty-state">Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요.</p>
           ) : visibleChartCandles.length > 0 && selectedHolding ? (
             <div className="candle-chart-area">
-              <div className="candle-summary-grid">
-                <div>
-                  <span>종목</span>
-                  <strong>{holdingLabel(selectedHolding)}</strong>
-                </div>
-                <div>
-                  <span>종가</span>
-                  <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
-                </div>
-                <div>
-                  <span>고가 / 저가</span>
-                  <strong>
-                    {formatPrice(latest.high, selectedHolding.currency)} /{" "}
-                    {formatPrice(latest.low, selectedHolding.currency)}
-                  </strong>
-                </div>
-                <div>
-                  <span>거래량</span>
-                  <strong>{formatVolume(latest.volume)}</strong>
-                </div>
-                <div>
-                  <span>표시 봉</span>
-                  <strong>{visibleChartCandles.length.toLocaleString("ko-KR")}개</strong>
-                </div>
+              <div
+                aria-label={`${selectedHolding.name} 현재 가격 ${formatPrice(latest.close, selectedHolding.currency)}`}
+                className="chart-symbol-summary"
+              >
+                <strong>{selectedHolding.name}</strong>
+                <span>|</span>
+                <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
               </div>
               <div
                 className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}

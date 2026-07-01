@@ -83,6 +83,7 @@ for (const expectedText of [
   "event.clientX",
   "point.index - visibleCandleStartIndex",
   "거래량",
+  "chart-symbol-summary",
   "chart-markers",
   "markerMemoDraft",
   "markerMemoOpen",
@@ -126,6 +127,27 @@ assert.ok(source.includes("ChartMarkerMemo"), "Charts page should type marker me
 assert.ok(source.includes("selectedHoldingKey"), "Charts page should select a held symbol")
 assert.ok(source.includes("<svg"), "Charts page should render an SVG candlestick chart")
 assert.ok(source.includes("candle-chart-svg"), "Charts page should use stable chart SVG styling")
+assert.ok(
+  source.includes('className="chart-symbol-summary"'),
+  "Charts page should show a compact symbol and current price summary above the chart",
+)
+assert.match(
+  source,
+  /className="chart-symbol-summary"[\s\S]*?<strong>\{selectedHolding\.name\}<\/strong>[\s\S]*?<span>\|<\/span>[\s\S]*?<strong>\{formatPrice\(latest\.close, selectedHolding\.currency\)\}<\/strong>/,
+  "Charts page should display only the selected holding name and current close price above the chart",
+)
+assert.ok(
+  !source.includes('className="candle-summary-grid"'),
+  "Charts page should remove the old candle summary card grid",
+)
+for (const removedSummaryLabel of [
+  "<span>종목</span>",
+  "<span>종가</span>",
+  "<span>고가 / 저가</span>",
+  "<span>표시 봉</span>",
+]) {
+  assert.ok(!source.includes(removedSummaryLabel), `Charts page should remove ${removedSummaryLabel}`)
+}
 assert.match(
   source,
   /className="chart-hover-price-bg"[\s\S]*?width=\{104\}[\s\S]*?x=\{4\}/,
@@ -393,6 +415,8 @@ assert.ok(
   "Frontend types should include chart marker memos",
 )
 assert.ok(styles.includes(".candle-chart-svg"), "Styles should size the candlestick SVG")
+assert.ok(styles.includes(".chart-symbol-summary"), "Styles should define compact chart symbol summary")
+assert.ok(!styles.includes(".candle-summary-grid"), "Styles should not keep old candle summary grid")
 assert.ok(styles.includes(".candle-up"), "Styles should define rising candle color")
 assert.ok(styles.includes(".candle-down"), "Styles should define falling candle color")
 assert.ok(styles.includes(".moving-average-line"), "Styles should define moving-average lines")

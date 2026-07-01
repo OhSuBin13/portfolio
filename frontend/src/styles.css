@@ -850,25 +850,21 @@ select:focus {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
 }
 
-.candle-summary-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(120px, 1fr));
-}
-
-.candle-summary-grid div {
-  border: 1px solid #eef2f7;
-  border-radius: 8px;
-  min-width: 0;
-  padding: 10px;
-}
-
-.candle-summary-grid strong {
+.chart-symbol-summary {
+  align-items: baseline;
   color: #111827;
-  display: block;
-  font-size: 14px;
-  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 800;
+  gap: 8px;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.chart-symbol-summary span {
+  color: #94a3b8;
+  font-weight: 700;
 }
 
 .candle-chart-svg {
@@ -1467,9 +1463,6 @@ textarea:focus {
     grid-column: 1 / -1;
   }
 
-  .candle-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -1503,7 +1496,6 @@ textarea:focus {
   .form-grid,
   .growth-entry-grid,
   .chart-panel-layout,
-  .candle-summary-grid,
   .chart-settings-grid,
   .marker-detail-grid,
   .moving-average-form,
