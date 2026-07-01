@@ -816,8 +816,40 @@ select:focus {
   min-width: min(520px, 100%);
 }
 
-.chart-period-select {
-  width: 132px;
+.chart-period-toggle {
+  align-self: end;
+  background: #f1f5f9;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  white-space: nowrap;
+}
+
+.chart-period-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  height: 30px;
+  min-width: 34px;
+  padding: 0 10px;
+}
+
+.chart-period-toggle button:hover,
+.chart-period-toggle button:focus-visible {
+  background: #e2e8f0;
+  color: #111827;
+  outline: none;
+}
+
+.chart-period-toggle button[aria-pressed="true"] {
+  background: #111827;
+  color: #ffffff;
 }
 
 .chart-symbol-select {
@@ -1605,9 +1637,17 @@ textarea:focus {
   }
 
   .chart-heading-actions,
-  .chart-period-select,
+  .chart-period-toggle,
   .chart-symbol-select {
     width: 100%;
+  }
+
+  .chart-period-toggle {
+    justify-content: stretch;
+  }
+
+  .chart-period-toggle button {
+    flex: 1;
   }
 
   .marker-selected-header,

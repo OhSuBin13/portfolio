@@ -26,6 +26,7 @@ for (const expectedText of [
   "주봉",
   "월봉",
   "연봉",
+  "shortLabel",
   "monthly",
   "monthGroupKey",
   "formatChartDateLabel",
@@ -78,6 +79,8 @@ for (const expectedText of [
   "onMouseMove={handleChartMouseMove}",
   "onMouseUp={handleChartMouseUp}",
   "onMouseLeave={handleChartMouseUp}",
+  "chart-period-toggle",
+  "봉 선택",
   "event.preventDefault()",
   "event.deltaY > 0",
   "event.clientX",
@@ -203,8 +206,29 @@ assert.match(
   "Hover OHLC panel should color the open change rate from the computed tone",
 )
 assert.ok(
-  source.includes('{ value: "monthly", label: "월봉" }'),
+  source.includes('{ value: "monthly", label: "월봉", shortLabel: "월" }'),
   "Charts page should expose monthly candles",
+)
+for (const expectedPeriodLabel of [
+  'shortLabel: "일"',
+  'shortLabel: "주"',
+  'shortLabel: "월"',
+  'shortLabel: "연"',
+]) {
+  assert.ok(source.includes(expectedPeriodLabel), `Charts page should expose ${expectedPeriodLabel}`)
+}
+assert.match(
+  source,
+  /<div[\s\S]*?aria-label="봉 선택"[\s\S]*?className="chart-period-toggle"[\s\S]*?role="group"[\s\S]*?\{chartPeriodOptions\.map\(\(option\) => \([\s\S]*?<button[\s\S]*?aria-pressed=\{selectedChartPeriod === option\.value\}[\s\S]*?onClick=\{\(\) => setSelectedChartPeriod\(option\.value\)\}[\s\S]*?\{option\.shortLabel\}[\s\S]*?<\/button>/,
+  "Charts page should render chart periods as a one-line button group",
+)
+assert.ok(
+  !source.includes('className="chart-period-select"'),
+  "Charts page should remove the old period select wrapper",
+)
+assert.ok(
+  !source.includes("setSelectedChartPeriod(event.target.value as ChartPeriod)"),
+  "Charts page should not use a select change handler for the chart period",
 )
 assert.ok(
   source.includes('selectedChartPeriod === "monthly" ? monthGroupKey'),
@@ -459,6 +483,11 @@ assert.ok(
 assert.ok(styles.includes(".candle-chart-svg"), "Styles should size the candlestick SVG")
 assert.ok(styles.includes(".chart-symbol-summary"), "Styles should define compact chart symbol summary")
 assert.ok(!styles.includes(".candle-summary-grid"), "Styles should not keep old candle summary grid")
+assert.ok(styles.includes(".chart-period-toggle"), "Styles should define the chart period button group")
+assert.ok(
+  styles.includes('.chart-period-toggle button[aria-pressed="true"]'),
+  "Styles should define the selected chart period button",
+)
 assert.ok(styles.includes(".candle-up"), "Styles should define rising candle color")
 assert.ok(styles.includes(".candle-down"), "Styles should define falling candle color")
 assert.ok(styles.includes(".moving-average-line"), "Styles should define moving-average lines")

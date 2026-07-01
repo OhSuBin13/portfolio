@@ -36,10 +36,10 @@ const ZOOM_OUT_RATIO = 1.25
 const DRAG_PAN_STEP_PIXELS = 36
 
 const chartPeriodOptions = [
-  { value: "daily", label: "일봉" },
-  { value: "weekly", label: "주봉" },
-  { value: "monthly", label: "월봉" },
-  { value: "annual", label: "연봉" },
+  { value: "daily", label: "일봉", shortLabel: "일" },
+  { value: "weekly", label: "주봉", shortLabel: "주" },
+  { value: "monthly", label: "월봉", shortLabel: "월" },
+  { value: "annual", label: "연봉", shortLabel: "연" },
 ] as const
 
 type ChartPeriod = (typeof chartPeriodOptions)[number]["value"]
@@ -1082,19 +1082,20 @@ export function ChartsPage() {
               <span>{selectedAccount ? accountLabel(selectedAccount) : "Toss 계좌"}</span>
             </div>
             <div className="section-heading-actions chart-heading-actions">
-              <label className="chart-period-select">
-                <span>봉</span>
-                <select
-                  value={selectedChartPeriod}
-                  onChange={(event) => setSelectedChartPeriod(event.target.value as ChartPeriod)}
-                >
-                  {chartPeriodOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div aria-label="봉 선택" className="chart-period-toggle" role="group">
+                {chartPeriodOptions.map((option) => (
+                  <button
+                    aria-label={option.label}
+                    aria-pressed={selectedChartPeriod === option.value}
+                    key={option.value}
+                    onClick={() => setSelectedChartPeriod(option.value)}
+                    title={option.label}
+                    type="button"
+                  >
+                    {option.shortLabel}
+                  </button>
+                ))}
+              </div>
               <label className="chart-symbol-select">
                 <span>보유 종목</span>
                 <select
