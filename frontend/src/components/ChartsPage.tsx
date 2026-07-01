@@ -282,7 +282,9 @@ const markerIndex = (candles: TossCandle[], marker: TradeMarker) => {
 function CandleChart({
   candles,
   currency,
+  movingAverageSourceCandles,
   movingAverageConfigs,
+  visibleCandleStartIndex,
   markers,
   selectedMarkerKey,
   showVolume,
@@ -290,14 +292,22 @@ function CandleChart({
 }: {
   candles: TossCandle[]
   currency: TossHolding["currency"] | undefined
+  movingAverageSourceCandles: TossCandle[]
   movingAverageConfigs: MovingAverageConfig[]
+  visibleCandleStartIndex: number
   markers: TradeMarker[]
   selectedMarkerKey: string
   showVolume: boolean
   onSelectMarker: (marker: TradeMarker) => void
 }) {
+  const visibleCandleEndIndex = visibleCandleStartIndex + candles.length - 1
   const movingAverageSeries = movingAverageConfigs.map((config) =>
-    movingAveragePoints(candles, config.days),
+    movingAveragePoints(movingAverageSourceCandles, config.days)
+      .filter(
+        (point) =>
+          point.index >= visibleCandleStartIndex && point.index <= visibleCandleEndIndex,
+      )
+      .map((point) => ({ ...point, index: point.index - visibleCandleStartIndex })),
   )
   const bounds = priceBounds(candles, movingAverageSeries, markers)
   const priceBottom = showVolume ? PRICE_BOTTOM_WITH_VOLUME : PRICE_BOTTOM_WITHOUT_VOLUME
@@ -672,24 +682,26 @@ export function ChartsPage() {
     () => aggregateCandles(candles, selectedChartPeriod),
     [candles, selectedChartPeriod],
   )
-  const visibleChartCandles = useMemo(() => {
+  const visibleChartWindow = useMemo(() => {
     const totalCandles = chartCandles.length
     if (totalCandles === 0) {
-      return chartCandles
+      return { candles: chartCandles, startIndex: 0 }
     }
 
     const visibleCount =
       chartZoomWindow === null ? totalCandles : Math.min(chartZoomWindow, totalCandles)
     if (visibleCount >= totalCandles) {
-      return chartCandles
+      return { candles: chartCandles, startIndex: 0 }
     }
 
     const maxPanOffset = Math.max(totalCandles - visibleCount, 0)
     const clampedPanOffset = Math.min(Math.max(chartPanOffset, 0), maxPanOffset)
     const end = totalCandles - clampedPanOffset
     const start = Math.max(0, end - visibleCount)
-    return chartCandles.slice(start, end)
+    return { candles: chartCandles.slice(start, end), startIndex: start }
   }, [chartCandles, chartPanOffset, chartZoomWindow])
+  const visibleChartCandles = visibleChartWindow.candles
+  const visibleCandleStartIndex = visibleChartWindow.startIndex
   const tradeMarkers = useMemo(
     () => buildTradeMarkers(orders, markerMemos),
     [markerMemos, orders],
@@ -903,7 +915,9 @@ export function ChartsPage() {
               <CandleChart
                 candles={visibleChartCandles}
                 currency={selectedHolding.currency}
+                movingAverageSourceCandles={chartCandles}
                 movingAverageConfigs={movingAverageConfigs}
+                visibleCandleStartIndex={visibleCandleStartIndex}
                 markers={tradeMarkers}
                 selectedMarkerKey={selectedMarkerKey}
                 showVolume={showVolume}
