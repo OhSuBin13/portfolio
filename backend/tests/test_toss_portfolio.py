@@ -83,7 +83,6 @@ async def test_toss_auth_client_posts_client_credentials_form(httpx_mock):
         method="POST",
         url="https://openapi.tossinvest.com/oauth2/token",
         json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
-        is_optional=True,
     )
     auth_client = TossAuthClient(" toss-client ", " toss-secret ")
 
@@ -105,7 +104,6 @@ async def test_toss_auth_client_serializes_concurrent_token_fetches(httpx_mock):
         method="POST",
         url="https://openapi.tossinvest.com/oauth2/token",
         json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
-        is_optional=True,
     )
     auth_client = TossAuthClient("toss-client", "toss-secret")
 
@@ -358,119 +356,6 @@ async def test_toss_market_data_provider_retries_prices_after_429(httpx_mock):
     assert quotes[0].price == 75000
     assert quotes[0].currency == "KRW"
     assert sleeps == [0.75]
-
-
-@pytest.mark.asyncio
-async def test_toss_market_data_provider_fetches_candles(httpx_mock):
-    httpx_mock.add_response(
-        method="POST",
-        url="https://openapi.tossinvest.com/oauth2/token",
-        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
-        is_optional=True,
-    )
-    httpx_mock.add_response(
-        method="GET",
-        url="https://openapi.tossinvest.com/api/v1/candles",
-        match_params={"symbol": "005930", "interval": "1d", "limit": "2"},
-        json={
-            "result": {
-                "items": [
-                    {
-                        "timestamp": "2026-06-29T00:00:00+09:00",
-                        "openPrice": "70000",
-                        "highPrice": "76000",
-                        "lowPrice": "69000",
-                        "closePrice": "75000",
-                        "volume": "123456",
-                    },
-                    {
-                        "date": "2026-06-30",
-                        "open": "75000",
-                        "high": "78000",
-                        "low": "74000",
-                        "close": "77000",
-                        "tradingVolume": "234567",
-                    },
-                ]
-            }
-        },
-        is_optional=True,
-    )
-    provider = TossMarketDataProvider(
-        "toss-client",
-        "toss-secret",
-        auth_client=TossAuthClient("toss-client", "toss-secret"),
-    )
-
-    candles = await provider.fetch_candles(" 005930 ", interval="1d", limit=2)
-
-    assert [candle.timestamp for candle in candles] == [
-        "2026-06-29T00:00:00+09:00",
-        "2026-06-30",
-    ]
-    assert candles[0].open == 70000
-    assert candles[0].high == 76000
-    assert candles[0].low == 69000
-    assert candles[0].close == 75000
-    assert candles[0].volume == 123456
-    assert candles[1].close == 77000
-    candle_request = _requests_by_method_path(httpx_mock, "GET", "/api/v1/candles")[0]
-    assert candle_request.headers["authorization"] == "Bearer token-123"
-
-
-@pytest.mark.asyncio
-async def test_toss_market_data_provider_retries_candles_after_429(httpx_mock):
-    sleeps: list[float] = []
-
-    async def fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-
-    httpx_mock.add_response(
-        method="POST",
-        url="https://openapi.tossinvest.com/oauth2/token",
-        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
-        is_optional=True,
-    )
-    httpx_mock.add_response(
-        method="GET",
-        url="https://openapi.tossinvest.com/api/v1/candles",
-        match_params={"symbol": "VOO", "interval": "1d", "limit": "1"},
-        status_code=429,
-        headers={"Retry-After": "0.25"},
-        json={"error": {"code": "rate-limit-exceeded"}},
-        is_optional=True,
-    )
-    httpx_mock.add_response(
-        method="GET",
-        url="https://openapi.tossinvest.com/api/v1/candles",
-        match_params={"symbol": "VOO", "interval": "1d", "limit": "1"},
-        json={
-            "result": [
-                {
-                    "time": "2026-06-30T00:00:00-04:00",
-                    "open": "520.1",
-                    "high": "522.4",
-                    "low": "519.8",
-                    "close": "521.2",
-                    "volume": "12345",
-                }
-            ]
-        },
-        is_optional=True,
-    )
-    provider = TossMarketDataProvider(
-        "toss-client",
-        "toss-secret",
-        auth_client=TossAuthClient("toss-client", "toss-secret"),
-        sleep=fake_sleep,
-    )
-
-    candles = await provider.fetch_candles("voo", interval="1d", limit=1)
-
-    assert candles[0].symbol == "VOO"
-    assert candles[0].close == 521.2
-    assert sleeps == [0.25]
-    assert len(_requests_by_method_path(httpx_mock, "GET", "/api/v1/candles")) == 2
 
 
 @pytest.mark.asyncio

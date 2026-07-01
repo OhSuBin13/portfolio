@@ -36,7 +36,6 @@ local holdings, or old portfolio snapshots.
 | --- | --- | --- |
 | Brokerage account list | `GET /api/v1/accounts` | `GET /api/toss/accounts` |
 | Brokerage holdings | `GET /api/v1/holdings` with `X-Tossinvest-Account` | `GET /api/toss/holdings?account_seq=...` |
-| Held stock/ETF candles | `GET /api/v1/candles` | `GET /api/toss/candles?symbol=...` |
 | Order-history import | `GET /api/v1/orders` with `X-Tossinvest-Account` | `POST /api/toss/order-imports` |
 | Imported order-history list | Local SQLite cache populated from `GET /api/v1/orders` | `GET /api/toss/orders?account_seq=...` |
 | Order detail parsing | `GET /api/v1/orders/{orderId}` with `X-Tossinvest-Account` | Backend provider/parser boundary |
@@ -45,7 +44,7 @@ local holdings, or old portfolio snapshots.
 | OAuth token | `POST /oauth2/token` | Backend-only provider boundary |
 
 All Toss credentials stay on the backend. The frontend only receives normalized
-account, holding, candle, buying-power, order-history, summary, goal, and backup
+account, holding, buying-power, order-history, summary, goal, and backup
 response models.
 
 ## 3. Local Persistence Boundary
@@ -115,11 +114,6 @@ The dashboard and holdings page load Toss accounts first, keep a selected
 data. The dashboard includes Toss-derived buying power in summary values and
 goal progress. The holdings page is read-only and displays KRW/USD buying power
 for the selected Toss account.
-
-The chart page also starts from the selected Toss account's holdings. It keeps a
-single chart panel, lets the user select one held stock/ETF, and requests
-normalized OHLCV candles from `GET /api/toss/candles`. Candle data is read-only
-and is not persisted to SQLite.
 
 The Growth History page uses the same selected Toss account. It lets the user
 manually save month-level net worth and dividend values, then displays monthly

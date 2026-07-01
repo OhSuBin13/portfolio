@@ -25,8 +25,7 @@ PORTFOLIO_TOSS_SECRET_KEY=...
 
 The backend owns all Toss API calls. The frontend calls local API routes such as
 `/api/toss/accounts`, `/api/toss/holdings`, `/api/toss/buying-power`,
-`/api/toss/candles`, `/api/toss/order-imports`, `/api/toss/orders`, and
-`/api/summary`.
+`/api/toss/order-imports`, `/api/toss/orders`, and `/api/summary`.
 
 Backups are created on startup and then run automatically while the backend is
 running. The default periodic backup interval is 1 hour and can be changed with
@@ -58,9 +57,6 @@ The frontend uses `http://127.0.0.1:8000` as the default API base. Set
 - Dashboard valuation uses live Toss holdings for the selected account,
   Toss-derived buying power, and Toss USD/KRW FX data when USD holdings or USD
   buying power are present.
-- The chart screen reads the selected account's Toss holdings, then requests
-  read-only Toss OHLCV candles for the selected held stock/ETF through the
-  backend.
 - Do not commit database files, backup files, API keys, `node_modules`, or build outputs.
 
 ## Verification
@@ -89,11 +85,10 @@ npm run lint
    summary values load.
 4. Open `보유자산` to inspect the selected account's Toss stock/ETF holdings and
    Toss-derived KRW/USD buying power.
-5. Open `차트` and select one held stock/ETF to inspect its OHLCV candle chart.
-6. Open `주문내역` and import OPEN Toss order history for the selected account.
-7. Review imported orders from the local read-only cache. CLOSED imports may fail
+5. Open `주문내역` and import OPEN Toss order history for the selected account.
+6. Review imported orders from the local read-only cache. CLOSED imports may fail
    if Toss reports `closed-not-supported`.
-8. Create or review local goals and confirm automatic backup records appear after
+7. Create or review local goals and confirm automatic backup records appear after
    the backend has been running.
 
 The app no longer exposes local account creation, asset creation, transaction

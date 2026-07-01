@@ -467,102 +467,6 @@ button {
   height: 100%;
 }
 
-.chart-panel {
-  display: grid;
-  gap: 12px;
-  min-height: 520px;
-}
-
-.chart-heading {
-  align-items: start;
-}
-
-.chart-heading > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.chart-symbol-select {
-  align-items: start;
-  display: grid;
-  gap: 6px;
-  min-width: 280px;
-}
-
-.candle-chart-area {
-  display: grid;
-  gap: 14px;
-}
-
-.candle-summary-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.candle-summary-grid > div {
-  border-top: 1px solid #eef2f7;
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding-top: 9px;
-}
-
-.candle-summary-grid strong {
-  color: #111827;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-.candle-chart-svg {
-  aspect-ratio: 960 / 430;
-  display: block;
-  overflow: visible;
-  width: 100%;
-}
-
-.candle-axis {
-  stroke: #dbe3ee;
-  stroke-width: 1;
-}
-
-.candle-axis.muted {
-  stroke-dasharray: 5 5;
-}
-
-.candle-axis-label,
-.candle-date-label {
-  fill: #64748b;
-  font-size: 11px;
-}
-
-.candle-date-label.end {
-  text-anchor: end;
-}
-
-.candle-wick {
-  stroke-width: 2;
-}
-
-.candle-body {
-  stroke-width: 1;
-}
-
-.candle-up {
-  fill: #dc2626;
-  stroke: #b91c1c;
-}
-
-.candle-down {
-  fill: #2563eb;
-  stroke: #1d4ed8;
-}
-
-.candle-volume {
-  opacity: 0.28;
-  stroke-width: 0;
-}
-
 .empty-state {
   color: #64748b;
   font-size: 14px;
@@ -938,7 +842,6 @@ select:focus {
   .summary-grid,
   .dashboard-header,
   .growth-header,
-  .candle-summary-grid,
   .form-grid,
   .growth-entry-grid,
   .field-row,
@@ -977,17 +880,6 @@ select:focus {
   .allocation-pie-svg {
     justify-self: center;
     width: min(360px, 100%);
-  }
-
-  .chart-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .chart-heading-actions,
-  .chart-symbol-select {
-    min-width: 0;
-    width: 100%;
   }
 
   .primary-button,
