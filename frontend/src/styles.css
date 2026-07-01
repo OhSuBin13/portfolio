@@ -824,6 +824,14 @@ select:focus {
   min-width: min(360px, 100%);
 }
 
+.chart-settings-toggle {
+  align-self: end;
+}
+
+.chart-settings-toggle svg {
+  pointer-events: none;
+}
+
 .candle-chart-area {
   display: grid;
   gap: 14px;
@@ -1025,6 +1033,36 @@ select:focus {
 .chart-settings-panel {
   display: grid;
   gap: 12px;
+}
+
+.chart-settings-overlay {
+  align-items: start;
+  background: rgba(15, 23, 42, 0.34);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  overflow: auto;
+  padding: 72px 20px 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.chart-settings-dialog {
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  width: min(760px, 100%);
+}
+
+.chart-settings-heading {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.chart-settings-heading > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .chart-settings-grid {
@@ -1459,6 +1497,14 @@ textarea:focus {
   .chart-panel-layout.memo-expanded .marker-memo-drawer {
     justify-items: end;
     width: 100%;
+  }
+
+  .chart-settings-overlay {
+    padding: 18px;
+  }
+
+  .chart-settings-dialog {
+    max-height: calc(100vh - 36px);
   }
 
   .order-toolbar {

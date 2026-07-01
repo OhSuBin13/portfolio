@@ -34,6 +34,17 @@ for (const expectedText of [
   "type=\"color\"",
   "lineWidth",
   "showVolume",
+  "chartSettingsOpen",
+  "setChartSettingsOpen",
+  "SettingsIcon",
+  "X",
+  "chart-settings-toggle",
+  "chart-settings-overlay",
+  "chart-settings-dialog",
+  "차트 설정 열기",
+  "차트 설정 닫기",
+  "aria-modal=\"true\"",
+  "role=\"dialog\"",
   "chartZoomWindow",
   "chartPanOffset",
   "visibleChartWindow",
@@ -263,6 +274,41 @@ for (const legacyOhlcLabel of ["O {", "· H", "· L", "· C"]) {
   assert.ok(!source.includes(legacyOhlcLabel), `Charts page should not show ${legacyOhlcLabel}`)
 }
 assert.ok(source.includes("보유 종목 차트"), "Charts page should present one holdings chart panel")
+assert.ok(
+  source.includes("const [chartSettingsOpen, setChartSettingsOpen] = useState(false)"),
+  "Chart settings overlay should be hidden by default",
+)
+assert.ok(
+  source.includes("onClick={() => setChartSettingsOpen(true)}"),
+  "Chart heading should open settings from the gear button",
+)
+assert.ok(
+  source.includes("onClick={() => setChartSettingsOpen(false)}"),
+  "Chart settings dialog should include an explicit close control",
+)
+assert.ok(
+  source.includes("event.target === event.currentTarget"),
+  "Chart settings overlay should close when the backdrop is clicked",
+)
+assert.ok(
+  source.includes("{chartSettingsOpen && ("),
+  "Chart settings should only render while the overlay is open",
+)
+assert.match(
+  source,
+  /<div className="section-heading-actions chart-heading-actions">[\s\S]*?<button[\s\S]*?aria-label="차트 설정 열기"[\s\S]*?className="icon-button chart-settings-toggle"[\s\S]*?<SettingsIcon size=\{17\} \/>/,
+  "Chart heading should expose chart settings through a gear icon button",
+)
+assert.match(
+  source,
+  /\{chartSettingsOpen && \([\s\S]*?<div[\s\S]*?className="chart-settings-overlay"[\s\S]*?<section[\s\S]*?aria-label="차트 설정"[\s\S]*?aria-modal="true"[\s\S]*?className="panel chart-settings-panel chart-settings-dialog"[\s\S]*?role="dialog"/,
+  "Chart settings should open in a screen overlay dialog",
+)
+assert.match(
+  source,
+  /<\/div>\s*\)\}\s*<section className="panel">[\s\S]*?<h3>매매 마커<\/h3>/,
+  "The old bottom settings panel should not remain between the chart area and marker panel",
+)
 
 assert.ok(typesSource.includes("export type TossCandle"), "Frontend types should include Toss candles")
 assert.ok(
@@ -286,6 +332,10 @@ assert.ok(
 )
 assert.ok(styles.includes(".chart-panel-layout"), "Styles should define chart panel and memo side layout")
 assert.ok(styles.includes(".chart-panel-layout.memo-expanded"), "Styles should define expanded memo drawer layout")
+assert.ok(styles.includes(".chart-settings-toggle"), "Styles should define the chart settings gear button")
+assert.ok(styles.includes(".chart-settings-overlay"), "Styles should define the floating settings overlay")
+assert.ok(styles.includes("position: fixed"), "Styles should float chart settings above the screen")
+assert.ok(styles.includes(".chart-settings-dialog"), "Styles should define the settings dialog")
 assert.ok(
   !styles.includes(".chart-main-grid"),
   "Styles should not keep the old in-panel chart and memo grid",
