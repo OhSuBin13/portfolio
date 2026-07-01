@@ -90,14 +90,21 @@ for (const expectedText of [
   "setMarkerMemoOpen",
   "clearSelectedMarker",
   "openMarkerMemoDialog",
+  "openMarkerMemoDetail",
+  "deleteMarkerMemo",
+  "apiDelete",
   "memoMarkers",
   "memoListExpanded",
   "setMemoListExpanded",
+  "memoManageMode",
+  "setMemoManageMode",
   "chart-panel-layout",
   "memo-expanded",
   "marker-memo-drawer",
   "marker-memo-toggle",
   "marker-memo-compose-button",
+  "marker-memo-manage-button",
+  "marker-memo-delete-button",
   "marker-memo-overlay",
   "marker-memo-dialog",
   "marker-memo-list-panel",
@@ -105,9 +112,12 @@ for (const expectedText of [
   "marker-memo-preview",
   "선택한 매매 마커 판단 메모 작성",
   "판단 메모 작성 화면 닫기",
+  "판단 메모 세부 정보",
   "작성된 판단 메모 펼치기",
   "작성된 판단 메모 접기",
   "작성된 판단 메모",
+  "작성된 판단 메모 관리",
+  "판단 메모 삭제",
   "작성된 판단 메모가 없습니다.",
   "marker-selected-header",
   "marker-detail-grid",
@@ -262,8 +272,8 @@ assert.ok(
   "Charts page should render the written marker memo list",
 )
 assert.ok(
-  source.includes('onClick={() => selectMarker(marker)}'),
-  "Written marker memo list items should select the marker for editing",
+  source.includes('onClick={() => openMarkerMemoDetail(marker)}'),
+  "Written marker memo list items should open marker memo detail editing",
 )
 assert.ok(
   source.includes('selectedMarkerKey === marker.key ? " selected" : ""'),
@@ -278,6 +288,10 @@ assert.ok(
   "Written marker memo toggle should switch between expanded and collapsed",
 )
 assert.ok(
+  source.includes("const [memoManageMode, setMemoManageMode] = useState(false)"),
+  "Written marker memo management mode should be disabled by default",
+)
+assert.ok(
   source.includes('aria-expanded={memoListExpanded}'),
   "Written marker memo toggle should expose its expanded state",
 )
@@ -288,6 +302,16 @@ assert.ok(
 assert.ok(
   source.includes("{memoListExpanded && ("),
   "Written marker memo list should only render while expanded",
+)
+assert.match(
+  source,
+  /\{memoListExpanded && \([\s\S]*?<button[\s\S]*?aria-label="작성된 판단 메모 관리"[\s\S]*?aria-pressed=\{memoManageMode\}[\s\S]*?className=\{`secondary-button marker-memo-manage-button\$\{memoManageMode \? " active" : ""\}`\}[\s\S]*?onClick=\{\(\) => setMemoManageMode\(\(current\) => !current\)\}[\s\S]*?>[\s\S]*?관리[\s\S]*?<\/button>/,
+  "Expanded written marker memo list should expose a manage-mode toggle",
+)
+assert.match(
+  source,
+  /\{memoManageMode && \([\s\S]*?<button[\s\S]*?aria-label=\{`\$\{marker\.label\} 판단 메모 삭제`\}[\s\S]*?className="icon-button marker-memo-delete-button"[\s\S]*?onClick=\{\(event\) => deleteMarkerMemo\(event, marker\)\}[\s\S]*?<X size=\{15\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
+  "Manage mode should reveal an X delete button on each written marker memo",
 )
 assert.match(
   source,
@@ -321,6 +345,24 @@ assert.ok(
 assert.ok(
   source.includes("const openMarkerMemoDialog = () =>"),
   "Charts page should open marker memo editing from the plus button",
+)
+assert.ok(
+  source.includes("const openMarkerMemoDetail = (marker: TradeMarker) =>"),
+  "Charts page should open marker memo details from written memo list items",
+)
+assert.match(
+  source,
+  /const deleteMarkerMemo = \(event: ReactMouseEvent<HTMLButtonElement>, marker: TradeMarker\) => \{[\s\S]*?event\.stopPropagation\(\)[\s\S]*?const path = `\/api\/toss\/chart-marker-memos\?account_seq=\$\{encodeURIComponent\([\s\S]*?selectedAccountSeq,[\s\S]*?\)\}&symbol=\$\{encodeURIComponent\(selectedHolding\.symbol\)\}&marker_key=\$\{encodeURIComponent\([\s\S]*?marker\.key,[\s\S]*?\)\}`[\s\S]*?apiDelete\(path\)[\s\S]*?setMarkerMemos\(\(current\) => current\.filter\(\(memo\) => memo\.marker_key !== marker\.key\)\)[\s\S]*?setSelectedMarkerKey\(""\)[\s\S]*?setMarkerMemoOpen\(false\)[\s\S]*?\}/,
+  "Deleting a written marker memo should stop row opening, call the delete API, remove the memo, and close selected detail state",
+)
+assert.match(
+  source,
+  /const openMarkerMemoDetail = \(marker: TradeMarker\) => \{[\s\S]*?setSelectedMarkerKey\(marker\.key\)[\s\S]*?setMarkerMemoDraft\(marker\.memo\)[\s\S]*?setMemoError\(""\)[\s\S]*?setMarkerMemoOpen\(true\)[\s\S]*?\}/,
+  "Opening written marker memo details should select the marker, load its memo, and show the dialog",
+)
+assert.ok(
+  source.includes("onKeyDown={(event) => handleMemoListItemKeyDown(event, marker)}"),
+  "Written marker memo list items should remain keyboard accessible while hosting a delete button",
 )
 assert.ok(
   source.includes("setMarkerMemoDraft(selectedMarker.memo)"),
@@ -357,7 +399,7 @@ assert.ok(
 )
 assert.match(
   source,
-  /\{markerMemoOpen && selectedMarker && \([\s\S]*?<div[\s\S]*?className="marker-memo-overlay"[\s\S]*?<section[\s\S]*?aria-label="판단 메모 작성"[\s\S]*?aria-modal="true"[\s\S]*?className="panel marker-memo-dialog"[\s\S]*?role="dialog"/,
+  /\{markerMemoOpen && selectedMarker && \([\s\S]*?<div[\s\S]*?className="marker-memo-overlay"[\s\S]*?<section[\s\S]*?aria-label="판단 메모 세부 정보"[\s\S]*?aria-modal="true"[\s\S]*?className="panel marker-memo-dialog"[\s\S]*?role="dialog"/,
   "Marker memo editing should open in a floating dialog",
 )
 assert.match(

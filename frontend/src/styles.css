@@ -1203,6 +1203,12 @@ select:focus {
   min-width: 0;
 }
 
+.marker-memo-list-heading > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .marker-memo-list-heading h4 {
   color: #111827;
   font-size: 15px;
@@ -1215,6 +1221,17 @@ select:focus {
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.marker-memo-manage-button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.marker-memo-manage-button.active {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #b91c1c;
 }
 
 .marker-memo-list {
@@ -1239,12 +1256,38 @@ select:focus {
   width: 100%;
 }
 
+.marker-memo-list-item.manage-mode {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .marker-memo-list-item:hover,
 .marker-memo-list-item:focus-visible,
 .marker-memo-list-item.selected {
   background: #f8fafc;
   border-color: #94a3b8;
   outline: none;
+}
+
+.marker-memo-list-item-body {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.marker-memo-delete-button {
+  background: #fff7f7;
+  border-color: #fecaca;
+  color: #b91c1c;
+  height: 28px;
+  width: 28px;
+}
+
+.marker-memo-delete-button:hover,
+.marker-memo-delete-button:focus-visible {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 
 .marker-memo-list-item-buy {

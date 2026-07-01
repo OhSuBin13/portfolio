@@ -1022,3 +1022,20 @@ def fetch_chart_marker_memos(
         """,
         (account_seq, symbol),
     ).fetchall()
+
+
+def delete_chart_marker_memo(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    symbol: str,
+    marker_key: str,
+) -> None:
+    db.execute(
+        """
+        delete from chart_marker_memos
+        where account_seq = ? and symbol = ? and marker_key = ?
+        """,
+        (account_seq, symbol, marker_key),
+    )
+    db.commit()

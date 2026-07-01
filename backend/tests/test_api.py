@@ -504,6 +504,32 @@ def test_chart_marker_memo_endpoint_upserts_and_lists_notes(tmp_path):
     assert list_response.json() == [second_response.json()]
 
 
+def test_chart_marker_memo_endpoint_deletes_note(tmp_path):
+    client = create_test_client(tmp_path)
+
+    saved_response = client.post(
+        "/api/toss/chart-marker-memos",
+        json={
+            "account_seq": "acct-1",
+            "symbol": "VOO",
+            "marker_key": "order:buy-1",
+            "memo": "삭제할 판단 메모",
+        },
+    )
+    delete_response = client.delete(
+        "/api/toss/chart-marker-memos?account_seq=acct-1&symbol=voo&marker_key=order%3Abuy-1",
+    )
+    list_response = client.get(
+        "/api/toss/chart-marker-memos?account_seq=acct-1&symbol=VOO",
+    )
+
+    assert saved_response.status_code == 200
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+
 def test_toss_order_import_endpoint_imports_open_orders(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,

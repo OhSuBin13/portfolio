@@ -15,6 +15,7 @@ from portfolio_app.models import (
     TossOrderResponse,
 )
 from portfolio_app.repositories import (
+    delete_chart_marker_memo,
     fetch_chart_marker_memos,
     fetch_toss_order_import_run,
     fetch_toss_order_import_runs,
@@ -385,6 +386,27 @@ def upsert_chart_marker_memo_endpoint(
         memo=payload.memo.strip(),
     )
     return row_to_dict(row)
+
+
+@router.delete("/chart-marker-memos", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chart_marker_memo_endpoint(
+    db: Db,
+    account_seq: AccountSeq,
+    symbol: Annotated[str, Query(min_length=1)],
+    marker_key: Annotated[str, Query(min_length=1, max_length=200)],
+) -> None:
+    normalized_symbol = _normalize_optional_uppercase(symbol)
+    if normalized_symbol is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
+        )
+    delete_chart_marker_memo(
+        db,
+        account_seq=normalize_account_seq(account_seq),
+        symbol=normalized_symbol,
+        marker_key=_normalize_marker_key(marker_key),
+    )
 
 
 @router.get("/buying-power", response_model=list[TossBuyingPowerResponse])

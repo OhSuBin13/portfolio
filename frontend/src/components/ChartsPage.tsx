@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { apiGet, apiPost } from "../api"
+import { apiDelete, apiGet, apiPost } from "../api"
 import { buildTradeMarkers, spreadOverlappingMarkers, type TradeMarker } from "../chartMarkers"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
@@ -620,6 +620,7 @@ export function ChartsPage() {
   const [markerMemoDraft, setMarkerMemoDraft] = useState("")
   const [markerMemoOpen, setMarkerMemoOpen] = useState(false)
   const [memoListExpanded, setMemoListExpanded] = useState(false)
+  const [memoManageMode, setMemoManageMode] = useState(false)
   const [accountsError, setAccountsError] = useState("")
   const [holdingsError, setHoldingsError] = useState("")
   const [candlesError, setCandlesError] = useState("")
@@ -657,6 +658,7 @@ export function ChartsPage() {
           setChartPanOffset(0)
           setChartDragState(null)
           setMarkerMemoOpen(false)
+          setMemoManageMode(false)
         }
       })
       .catch((err) => {
@@ -675,6 +677,7 @@ export function ChartsPage() {
         setChartPanOffset(0)
         setChartDragState(null)
         setMarkerMemoOpen(false)
+        setMemoManageMode(false)
         setAccountsLoaded(true)
         setAccountsError(getErrorMessage(err))
       })
@@ -708,6 +711,7 @@ export function ChartsPage() {
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
       setMarkerMemoOpen(false)
+      setMemoManageMode(false)
       setHoldingsError("")
       setCandlesError("")
       setOrdersError("")
@@ -744,6 +748,7 @@ export function ChartsPage() {
           setChartPanOffset(0)
           setChartDragState(null)
           setMarkerMemoOpen(false)
+          setMemoManageMode(false)
           setHoldingsError(getErrorMessage(err))
         })
         .finally(() => {
@@ -786,6 +791,7 @@ export function ChartsPage() {
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
       setMarkerMemoOpen(false)
+      setMemoManageMode(false)
       setCandlesError("")
       setOrdersError("")
       setMemoError("")
@@ -950,6 +956,13 @@ export function ChartsPage() {
     clearSelectedMarker()
   }
 
+  const toggleMemoListExpanded = () => {
+    if (memoListExpanded) {
+      setMemoManageMode(false)
+    }
+    setMemoListExpanded((current) => !current)
+  }
+
   const addMovingAverage = () => {
     const days = Number(movingAverageForm.days)
     const lineWidth = Number(movingAverageForm.lineWidth)
@@ -984,6 +997,44 @@ export function ChartsPage() {
     setMarkerMemoDraft(selectedMarker.memo)
     setMemoError("")
     setMarkerMemoOpen(true)
+  }
+
+  const openMarkerMemoDetail = (marker: TradeMarker) => {
+    setSelectedMarkerKey(marker.key)
+    setMarkerMemoDraft(marker.memo)
+    setMemoError("")
+    setMarkerMemoOpen(true)
+  }
+
+  const handleMemoListItemKeyDown = (event: KeyboardEvent<HTMLDivElement>, marker: TradeMarker) => {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
+      return
+    }
+    event.preventDefault()
+    openMarkerMemoDetail(marker)
+  }
+
+  const deleteMarkerMemo = (event: ReactMouseEvent<HTMLButtonElement>, marker: TradeMarker) => {
+    event.stopPropagation()
+    if (!selectedHolding || !selectedAccountSeq) {
+      return
+    }
+    setMemoError("")
+    const path = `/api/toss/chart-marker-memos?account_seq=${encodeURIComponent(
+      selectedAccountSeq,
+    )}&symbol=${encodeURIComponent(selectedHolding.symbol)}&marker_key=${encodeURIComponent(
+      marker.key,
+    )}`
+    apiDelete(path)
+      .then(() => {
+        setMarkerMemos((current) => current.filter((memo) => memo.marker_key !== marker.key))
+        if (selectedMarkerKey === marker.key) {
+          setSelectedMarkerKey("")
+          setMarkerMemoDraft("")
+          setMarkerMemoOpen(false)
+        }
+      })
+      .catch((err) => setMemoError(getErrorMessage(err)))
   }
 
   const saveMarkerMemo = () => {
@@ -1118,7 +1169,7 @@ export function ChartsPage() {
               aria-expanded={memoListExpanded}
               aria-label={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
               className="marker-memo-toggle"
-              onClick={() => setMemoListExpanded((current) => !current)}
+              onClick={toggleMemoListExpanded}
               title={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
               type="button"
             >
@@ -1138,27 +1189,56 @@ export function ChartsPage() {
             {memoListExpanded && (
               <aside className="marker-memo-list-panel" aria-label="작성된 판단 메모">
                 <div className="marker-memo-list-heading">
-                  <h4>작성된 판단 메모</h4>
-                  <span>{memoMarkers.length.toLocaleString("ko-KR")}건</span>
+                  <div>
+                    <h4>작성된 판단 메모</h4>
+                    <span>{memoMarkers.length.toLocaleString("ko-KR")}건</span>
+                  </div>
+                  <button
+                    aria-label="작성된 판단 메모 관리"
+                    aria-pressed={memoManageMode}
+                    className={`secondary-button marker-memo-manage-button${memoManageMode ? " active" : ""}`}
+                    onClick={() => setMemoManageMode((current) => !current)}
+                    title={memoManageMode ? "삭제 모드 끄기" : "삭제 모드 켜기"}
+                    type="button"
+                  >
+                    관리
+                  </button>
                 </div>
                 {memoMarkers.length > 0 ? (
                   <div className="marker-memo-list">
                     {memoMarkers.map((marker) => (
-                      <button
-                        className={`marker-memo-list-item marker-memo-list-item-${marker.tone}${selectedMarkerKey === marker.key ? " selected" : ""}`}
+                      <div
+                        className={`marker-memo-list-item marker-memo-list-item-${marker.tone}${
+                          selectedMarkerKey === marker.key ? " selected" : ""
+                        }${memoManageMode ? " manage-mode" : ""}`}
                         key={marker.key}
-                        onClick={() => selectMarker(marker)}
-                        type="button"
+                        onClick={() => openMarkerMemoDetail(marker)}
+                        onKeyDown={(event) => handleMemoListItemKeyDown(event, marker)}
+                        role="button"
+                        tabIndex={0}
                       >
-                        <span className="marker-memo-list-item-header">
-                          <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
-                            {marker.label}
+                        <span className="marker-memo-list-item-body">
+                          <span className="marker-memo-list-item-header">
+                            <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
+                              {marker.label}
+                            </span>
+                            <time>{formatDateTime(marker.timestamp)}</time>
                           </span>
-                          <time>{formatDateTime(marker.timestamp)}</time>
+                          <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
+                          <span className="marker-memo-preview">{marker.memo.trim()}</span>
                         </span>
-                        <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
-                        <span className="marker-memo-preview">{marker.memo.trim()}</span>
-                      </button>
+                        {memoManageMode && (
+                          <button
+                            aria-label={`${marker.label} 판단 메모 삭제`}
+                            className="icon-button marker-memo-delete-button"
+                            onClick={(event) => deleteMarkerMemo(event, marker)}
+                            title="판단 메모 삭제"
+                            type="button"
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -1284,14 +1364,14 @@ export function ChartsPage() {
       {markerMemoOpen && selectedMarker && (
         <div className="marker-memo-overlay">
           <section
-            aria-label="판단 메모 작성"
+            aria-label="판단 메모 세부 정보"
             aria-modal="true"
             className="panel marker-memo-dialog"
             role="dialog"
           >
             <div className="section-heading marker-memo-dialog-heading">
               <div>
-                <h3>판단 메모</h3>
+                <h3>판단 메모 세부 정보</h3>
                 <span>{selectedMarker.label} 판단 기록</span>
               </div>
               <button
