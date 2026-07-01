@@ -573,7 +573,10 @@ function CandleChart({
               aria-label={`${marker.label} ${formatDateTime(marker.timestamp)} ${formatPrice(marker.price, currency)}`}
               className={`chart-marker chart-marker-${marker.tone} ${selectedMarkerKey === marker.key ? "selected" : ""}`}
               key={marker.key}
-              onClick={() => onSelectMarker(marker)}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelectMarker(marker)
+              }}
               onKeyDown={(event) => handleMarkerKeyDown(event, marker)}
               role="button"
               tabIndex={0}
@@ -618,6 +621,7 @@ export function ChartsPage() {
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false)
   const [selectedMarkerKey, setSelectedMarkerKey] = useState("")
   const [markerMemoDraft, setMarkerMemoDraft] = useState("")
+  const [markerMemoOpen, setMarkerMemoOpen] = useState(false)
   const [memoListExpanded, setMemoListExpanded] = useState(false)
   const [accountsError, setAccountsError] = useState("")
   const [holdingsError, setHoldingsError] = useState("")
@@ -655,6 +659,7 @@ export function ChartsPage() {
           setChartZoomWindow(null)
           setChartPanOffset(0)
           setChartDragState(null)
+          setMarkerMemoOpen(false)
         }
       })
       .catch((err) => {
@@ -672,6 +677,7 @@ export function ChartsPage() {
         setChartZoomWindow(null)
         setChartPanOffset(0)
         setChartDragState(null)
+        setMarkerMemoOpen(false)
         setAccountsLoaded(true)
         setAccountsError(getErrorMessage(err))
       })
@@ -704,6 +710,7 @@ export function ChartsPage() {
       setChartDragState(null)
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
+      setMarkerMemoOpen(false)
       setHoldingsError("")
       setCandlesError("")
       setOrdersError("")
@@ -739,6 +746,7 @@ export function ChartsPage() {
           setChartZoomWindow(null)
           setChartPanOffset(0)
           setChartDragState(null)
+          setMarkerMemoOpen(false)
           setHoldingsError(getErrorMessage(err))
         })
         .finally(() => {
@@ -780,6 +788,7 @@ export function ChartsPage() {
       setChartDragState(null)
       setSelectedMarkerKey("")
       setMarkerMemoDraft("")
+      setMarkerMemoOpen(false)
       setCandlesError("")
       setOrdersError("")
       setMemoError("")
@@ -933,6 +942,17 @@ export function ChartsPage() {
     setChartDragState(null)
   }
 
+  const clearSelectedMarker = () => {
+    setSelectedMarkerKey("")
+    setMarkerMemoDraft("")
+    setMarkerMemoOpen(false)
+    setMemoError("")
+  }
+
+  const handleChartBlankClick = () => {
+    clearSelectedMarker()
+  }
+
   const addMovingAverage = () => {
     const days = Number(movingAverageForm.days)
     const lineWidth = Number(movingAverageForm.lineWidth)
@@ -956,7 +976,17 @@ export function ChartsPage() {
   const selectMarker = (marker: TradeMarker) => {
     setSelectedMarkerKey(marker.key)
     setMarkerMemoDraft(marker.memo)
+    setMarkerMemoOpen(false)
     setMemoError("")
+  }
+
+  const openMarkerMemoDialog = () => {
+    if (!selectedMarker) {
+      return
+    }
+    setMarkerMemoDraft(selectedMarker.memo)
+    setMemoError("")
+    setMarkerMemoOpen(true)
   }
 
   const saveMarkerMemo = () => {
@@ -977,6 +1007,7 @@ export function ChartsPage() {
           ...current.filter((memo) => memo.marker_key !== saved.marker_key),
         ])
         setSelectedMarkerKey(saved.marker_key)
+        setMarkerMemoOpen(false)
       })
       .catch((err) => setMemoError(getErrorMessage(err)))
       .finally(() => setMemoSaving(false))
@@ -1073,6 +1104,7 @@ export function ChartsPage() {
               </div>
               <div
                 className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
+                onClick={handleChartBlankClick}
                 onMouseDown={handleChartMouseDown}
                 onMouseLeave={handleChartMouseUp}
                 onMouseMove={handleChartMouseMove}
@@ -1112,6 +1144,17 @@ export function ChartsPage() {
             >
               {memoListExpanded ? ">>" : "<<"}
             </button>
+            {selectedMarker && (
+              <button
+                aria-label="선택한 매매 마커 판단 메모 작성"
+                className="icon-button marker-memo-compose-button"
+                onClick={openMarkerMemoDialog}
+                title="선택한 매매 마커 판단 메모 작성"
+                type="button"
+              >
+                <Plus size={17} />
+              </button>
+            )}
             {memoListExpanded && (
               <aside className="marker-memo-list-panel" aria-label="작성된 판단 메모">
                 <div className="marker-memo-list-heading">
@@ -1258,84 +1301,96 @@ export function ChartsPage() {
         </div>
       )}
 
-      <section className="panel">
-        <div className="section-heading">
-          <h3>매매 마커</h3>
-          <span>{tradeMarkers.length.toLocaleString("ko-KR")}건</span>
-        </div>
-        {selectedMarker ? (
-          <div className="marker-memo-panel">
-            <div className={`marker-selected-header marker-selected-header-${selectedMarker.tone}`}>
+      {markerMemoOpen && selectedMarker && (
+        <div className="marker-memo-overlay">
+          <section
+            aria-label="판단 메모 작성"
+            aria-modal="true"
+            className="panel marker-memo-dialog"
+            role="dialog"
+          >
+            <div className="section-heading marker-memo-dialog-heading">
               <div>
-                <span className="marker-selected-badge">{selectedMarker.label}</span>
-                <h4>{selectedMarker.label} 판단 기록</h4>
-                <p>{formatDateTime(selectedMarker.timestamp)}</p>
+                <h3>판단 메모</h3>
+                <span>{selectedMarker.label} 판단 기록</span>
               </div>
-              <div className="marker-selected-price">
-                <span>체결가</span>
-                <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
-              </div>
+              <button
+                aria-label="판단 메모 작성 화면 닫기"
+                className="icon-button"
+                onClick={() => setMarkerMemoOpen(false)}
+                title="판단 메모 작성 화면 닫기"
+                type="button"
+              >
+                <X size={16} />
+              </button>
             </div>
-
-            <div className="marker-detail-grid">
-              <div className="marker-detail-item">
-                <Calendar size={18} />
+            <div className="marker-memo-panel">
+              <div className={`marker-selected-header marker-selected-header-${selectedMarker.tone}`}>
                 <div>
-                  <span>시점</span>
-                  <strong>{formatDateTime(selectedMarker.timestamp)}</strong>
+                  <span className="marker-selected-badge">{selectedMarker.label}</span>
+                  <h4>{selectedMarker.label} 판단 기록</h4>
+                  <p>{formatDateTime(selectedMarker.timestamp)}</p>
                 </div>
-              </div>
-              <div className="marker-detail-item">
-                <DollarSign size={18} />
-                <div>
-                  <span>가격</span>
+                <div className="marker-selected-price">
+                  <span>체결가</span>
                   <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
                 </div>
               </div>
-              <div className="marker-detail-item">
-                <Hash size={18} />
-                <div>
-                  <span>수량</span>
-                  <strong>{selectedMarker.quantity}</strong>
+
+              <div className="marker-detail-grid">
+                <div className="marker-detail-item">
+                  <Calendar size={18} />
+                  <div>
+                    <span>시점</span>
+                    <strong>{formatDateTime(selectedMarker.timestamp)}</strong>
+                  </div>
+                </div>
+                <div className="marker-detail-item">
+                  <DollarSign size={18} />
+                  <div>
+                    <span>가격</span>
+                    <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
+                  </div>
+                </div>
+                <div className="marker-detail-item">
+                  <Hash size={18} />
+                  <div>
+                    <span>수량</span>
+                    <strong>{selectedMarker.quantity}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <label className="marker-note-field">
-              <span>
-                <StickyNote size={16} />
-                판단 메모
-              </span>
-              <textarea
-                onChange={(event) => setMarkerMemoDraft(event.target.value)}
-                placeholder={`${selectedMarker.label} 판단 근거, 리스크, 다음 행동을 적어두세요.`}
-                rows={4}
-                value={markerMemoDraft}
-              />
-            </label>
-            <div className="marker-note-actions">
-              <span className="marker-note-state">
-                {markerMemoDraft.trim() ? "메모 작성 중" : "메모 없음"}
-              </span>
-              <button
-                className="primary-button compact-button"
-                disabled={memoSaving}
-                onClick={saveMarkerMemo}
-                type="button"
-              >
-                <Save size={16} />
-                저장
-              </button>
+              <label className="marker-note-field">
+                <span>
+                  <StickyNote size={16} />
+                  판단 메모
+                </span>
+                <textarea
+                  onChange={(event) => setMarkerMemoDraft(event.target.value)}
+                  placeholder={`${selectedMarker.label} 판단 근거, 리스크, 다음 행동을 적어두세요.`}
+                  rows={4}
+                  value={markerMemoDraft}
+                />
+              </label>
+              <div className="marker-note-actions">
+                <span className="marker-note-state">
+                  {markerMemoDraft.trim() ? "메모 작성 중" : "메모 없음"}
+                </span>
+                <button
+                  className="primary-button compact-button"
+                  disabled={memoSaving}
+                  onClick={saveMarkerMemo}
+                  type="button"
+                >
+                  <Save size={16} />
+                  저장
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <p className="empty-state">
-            {tradeMarkers.length > 0
-              ? "차트의 매수, 추가매수, Trim 표시를 선택하세요."
-              : "저장된 Toss 주문내역이 있으면 매수, 추가매수, Trim 표시가 나타납니다."}
-          </p>
-        )}
-      </section>
+          </section>
+        </div>
+      )}
     </section>
   )
 }

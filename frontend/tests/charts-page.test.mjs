@@ -85,6 +85,10 @@ for (const expectedText of [
   "거래량",
   "chart-markers",
   "markerMemoDraft",
+  "markerMemoOpen",
+  "setMarkerMemoOpen",
+  "clearSelectedMarker",
+  "openMarkerMemoDialog",
   "memoMarkers",
   "memoListExpanded",
   "setMemoListExpanded",
@@ -92,9 +96,14 @@ for (const expectedText of [
   "memo-expanded",
   "marker-memo-drawer",
   "marker-memo-toggle",
+  "marker-memo-compose-button",
+  "marker-memo-overlay",
+  "marker-memo-dialog",
   "marker-memo-list-panel",
   "marker-memo-list-item",
   "marker-memo-preview",
+  "선택한 매매 마커 판단 메모 작성",
+  "판단 메모 작성 화면 닫기",
   "작성된 판단 메모 펼치기",
   "작성된 판단 메모 접기",
   "작성된 판단 메모",
@@ -107,9 +116,6 @@ for (const expectedText of [
   "체결가",
   "판단 메모",
   "placeholder",
-  "매수",
-  "추가매수",
-  "Trim",
 ]) {
   assert.ok(source.includes(expectedText), `Charts page should include ${expectedText}`)
 }
@@ -270,6 +276,82 @@ assert.ok(
   !source.includes('className="chart-main-grid"'),
   "Charts page should not keep the memo list inside the chart panel grid",
 )
+assert.ok(
+  source.includes("const [markerMemoOpen, setMarkerMemoOpen] = useState(false)"),
+  "Marker memo dialog should be hidden by default",
+)
+assert.ok(
+  source.includes("const clearSelectedMarker = () =>"),
+  "Charts page should centralize clearing the selected marker",
+)
+assert.ok(
+  source.includes('setSelectedMarkerKey("")'),
+  "Clearing the selected marker should remove the selected marker key",
+)
+assert.ok(
+  source.includes('setMarkerMemoDraft("")'),
+  "Clearing the selected marker should reset the memo draft",
+)
+assert.ok(
+  source.includes("setMarkerMemoOpen(false)"),
+  "Clearing or saving should close the marker memo dialog",
+)
+assert.ok(
+  source.includes("const openMarkerMemoDialog = () =>"),
+  "Charts page should open marker memo editing from the plus button",
+)
+assert.ok(
+  source.includes("setMarkerMemoDraft(selectedMarker.memo)"),
+  "Opening marker memo editing should initialize the draft from the selected marker memo",
+)
+assert.ok(
+  source.includes("setMarkerMemoOpen(true)"),
+  "Opening marker memo editing should show the floating memo dialog",
+)
+assert.ok(
+  source.includes("const handleChartBlankClick = () =>"),
+  "Charts page should clear the selected marker when the chart blank area is clicked",
+)
+assert.ok(
+  source.includes("onClick={handleChartBlankClick}"),
+  "Chart viewport should clear the selected marker on blank clicks",
+)
+assert.ok(
+  source.includes("event.stopPropagation()"),
+  "Trade marker clicks should not bubble to the chart blank-click handler",
+)
+assert.match(
+  source,
+  /\{selectedMarker && \([\s\S]*?<button[\s\S]*?aria-label="선택한 매매 마커 판단 메모 작성"[\s\S]*?className="icon-button marker-memo-compose-button"[\s\S]*?onClick=\{openMarkerMemoDialog\}[\s\S]*?<Plus size=\{17\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
+  "Marker memo drawer should only show the plus button for a selected marker",
+)
+assert.ok(
+  !source.includes("disabled={!selectedMarker}"),
+  "Marker memo plus button should be hidden instead of rendered disabled",
+)
+assert.ok(
+  !source.includes("매매 마커를 선택하면 판단 메모를 작성할 수 있습니다."),
+  "Charts page should not keep hidden-state copy for a disabled plus button",
+)
+assert.match(
+  source,
+  /\{markerMemoOpen && selectedMarker && \([\s\S]*?<div[\s\S]*?className="marker-memo-overlay"[\s\S]*?<section[\s\S]*?aria-label="판단 메모 작성"[\s\S]*?aria-modal="true"[\s\S]*?className="panel marker-memo-dialog"[\s\S]*?role="dialog"/,
+  "Marker memo editing should open in a floating dialog",
+)
+assert.match(
+  source,
+  /apiPost<ChartMarkerMemo>\("\/api\/toss\/chart-marker-memos"[\s\S]*?\.then\(\(saved\) => \{[\s\S]*?setSelectedMarkerKey\(saved\.marker_key\)[\s\S]*?setMarkerMemoOpen\(false\)/,
+  "Saving a marker memo should persist it and close the dialog",
+)
+assert.match(
+  source,
+  /\{markerMemoOpen && selectedMarker && \([\s\S]*?aria-label="판단 메모 작성 화면 닫기"[\s\S]*?onClick=\{\(\) => setMarkerMemoOpen\(false\)\}[\s\S]*?<X size=\{16\} \/>/,
+  "Marker memo dialog should close from the x button",
+)
+assert.ok(
+  !source.includes("<h3>매매 마커</h3>"),
+  "Charts page should not keep the old bottom marker memo panel",
+)
 for (const legacyOhlcLabel of ["O {", "· H", "· L", "· C"]) {
   assert.ok(!source.includes(legacyOhlcLabel), `Charts page should not show ${legacyOhlcLabel}`)
 }
@@ -304,11 +386,6 @@ assert.match(
   /\{chartSettingsOpen && \([\s\S]*?<div[\s\S]*?className="chart-settings-overlay"[\s\S]*?<section[\s\S]*?aria-label="차트 설정"[\s\S]*?aria-modal="true"[\s\S]*?className="panel chart-settings-panel chart-settings-dialog"[\s\S]*?role="dialog"/,
   "Chart settings should open in a screen overlay dialog",
 )
-assert.match(
-  source,
-  /<\/div>\s*\)\}\s*<section className="panel">[\s\S]*?<h3>매매 마커<\/h3>/,
-  "The old bottom settings panel should not remain between the chart area and marker panel",
-)
 
 assert.ok(typesSource.includes("export type TossCandle"), "Frontend types should include Toss candles")
 assert.ok(
@@ -342,6 +419,9 @@ assert.ok(
 )
 assert.ok(styles.includes(".marker-memo-drawer"), "Styles should define written memo drawer")
 assert.ok(styles.includes(".marker-memo-toggle"), "Styles should define written memo drawer toggle")
+assert.ok(styles.includes(".marker-memo-compose-button"), "Styles should define marker memo plus button")
+assert.ok(styles.includes(".marker-memo-overlay"), "Styles should define floating marker memo overlay")
+assert.ok(styles.includes(".marker-memo-dialog"), "Styles should define floating marker memo dialog")
 assert.ok(styles.includes(".marker-memo-list-panel"), "Styles should define written memo side panel")
 assert.ok(styles.includes(".marker-memo-list-item"), "Styles should define written memo list items")
 assert.ok(styles.includes(".marker-memo-preview"), "Styles should define written memo previews")

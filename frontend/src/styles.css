@@ -1156,6 +1156,40 @@ select:focus {
   outline: none;
 }
 
+.marker-memo-compose-button {
+  background: #ffffff;
+}
+
+.marker-memo-overlay {
+  align-items: start;
+  background: rgba(15, 23, 42, 0.34);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  overflow: auto;
+  padding: 72px 20px 24px;
+  position: fixed;
+  z-index: 60;
+}
+
+.marker-memo-dialog {
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  width: min(680px, 100%);
+}
+
+.marker-memo-dialog-heading {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.marker-memo-dialog-heading > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .marker-memo-list-panel {
   border-left: 1px solid #e2e8f0;
   display: grid;
@@ -1504,6 +1538,14 @@ textarea:focus {
   }
 
   .chart-settings-dialog {
+    max-height: calc(100vh - 36px);
+  }
+
+  .marker-memo-overlay {
+    padding: 18px;
+  }
+
+  .marker-memo-dialog {
     max-height: calc(100vh - 36px);
   }
 
