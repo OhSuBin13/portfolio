@@ -25,6 +25,9 @@ const { buildTradeMarkers, spreadOverlappingMarkers } = module.exports
 const markerLabels = (orders) =>
   Array.from(buildTradeMarkers(orders, []), (marker) => marker.label)
 
+const markerOrderKeys = (orders) =>
+  Array.from(buildTradeMarkers(orders, []), (marker) => marker.key)
+
 const marker = (key) => ({
   key,
   label: "매수",
@@ -76,6 +79,36 @@ assert.deepEqual(
     order({ order_id: "6", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-03T09:00:00Z" }),
   ]),
   ["매수", "Trim", "추가매수"],
+)
+
+assert.deepEqual(
+  markerOrderKeys([
+    order({ order_id: "7", side: "BUY", filled_quantity: "1", ordered_at: "2026-01-04T09:00:00Z" }),
+    order({ order_id: "8", side: "SELL", filled_quantity: "1", ordered_at: "2026-01-04T10:00:00Z" }),
+    order({ order_id: "9", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-05T09:00:00Z" }),
+  ]),
+  ["order:9"],
+)
+
+assert.deepEqual(
+  markerOrderKeys([
+    order({ order_id: "10", side: "BUY", filled_quantity: "3", ordered_at: "2026-01-23T09:00:00Z" }),
+    order({ order_id: "11", side: "SELL", filled_quantity: "3", ordered_at: "2026-01-24T09:00:00Z" }),
+    order({ order_id: "12", side: "BUY", filled_quantity: "3", ordered_at: "2026-01-24T10:00:00Z" }),
+    order({ order_id: "13", side: "SELL", filled_quantity: "3", ordered_at: "2026-01-24T11:00:00Z" }),
+    order({ order_id: "14", side: "BUY", filled_quantity: "3", ordered_at: "2026-01-24T12:00:00Z" }),
+    order({ order_id: "15", side: "SELL", filled_quantity: "3", ordered_at: "2026-01-24T13:00:00Z" }),
+  ]),
+  ["order:10", "order:11"],
+)
+
+assert.deepEqual(
+  markerOrderKeys([
+    order({ order_id: "16", side: "BUY", filled_quantity: "0", ordered_at: "2026-01-25T09:00:00Z" }),
+    order({ order_id: "17", side: "SELL", filled_quantity: "0", ordered_at: "2026-01-25T10:00:00Z" }),
+    order({ order_id: "18", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-26T09:00:00Z" }),
+  ]),
+  ["order:18"],
 )
 
 assert.deepEqual(
