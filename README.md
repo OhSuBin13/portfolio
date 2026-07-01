@@ -25,7 +25,8 @@ PORTFOLIO_TOSS_SECRET_KEY=...
 
 The backend owns all Toss API calls. The frontend calls local API routes such as
 `/api/toss/accounts`, `/api/toss/holdings`, `/api/toss/buying-power`,
-`/api/toss/order-imports`, `/api/toss/orders`, and `/api/summary`.
+`/api/toss/candles`, `/api/toss/order-imports`, `/api/toss/orders`,
+`/api/toss/chart-marker-memos`, and `/api/summary`.
 
 Backups are created on startup and then run automatically while the backend is
 running. The default periodic backup interval is 1 hour and can be changed with
@@ -51,9 +52,13 @@ The frontend uses `http://127.0.0.1:8000` as the default API base. Set
   `data/portfolio.sqlite`.
 - Backup files live in `data/backups/`.
 - Fresh local schema includes `schema_migrations`, `settings`, `fx_rates`,
-  `goals`, `backups`, `toss_order_import_runs`, and `toss_orders`.
+  `goals`, `backups`, `toss_order_import_runs`, `toss_orders`,
+  `chart_marker_memos`, `growth_month_history`, and `sp500_proxy_prices`.
 - Imported Toss order history is read-only. It does not update current holdings,
   drive dashboard valuation, or recreate the removed local transaction ledger.
+- The chart screen reads 1d Toss candles through the backend. The backend pages
+  Toss candle responses in batches and can return up to 1,000 normalized daily
+  candles for the selected held stock/ETF.
 - Dashboard valuation uses live Toss holdings for the selected account,
   Toss-derived buying power, and Toss USD/KRW FX data when USD holdings or USD
   buying power are present.
@@ -85,10 +90,12 @@ npm run lint
    summary values load.
 4. Open `보유자산` to inspect the selected account's Toss stock/ETF holdings and
    Toss-derived KRW/USD buying power.
-5. Open `주문내역` and import OPEN Toss order history for the selected account.
-6. Review imported orders from the local read-only cache. CLOSED imports may fail
+5. Open `차트` and select one held stock/ETF to inspect daily, weekly, or annual
+   candles, moving averages, volume, and saved trade-marker notes.
+6. Open `주문내역` and import OPEN Toss order history for the selected account.
+7. Review imported orders from the local read-only cache. CLOSED imports may fail
    if Toss reports `closed-not-supported`.
-7. Create or review local goals and confirm automatic backup records appear after
+8. Create or review local goals and confirm automatic backup records appear after
    the backend has been running.
 
 The app no longer exposes local account creation, asset creation, transaction

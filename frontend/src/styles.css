@@ -804,6 +804,232 @@ select:focus {
   opacity: 0.6;
 }
 
+.chart-panel {
+  overflow: hidden;
+}
+
+.chart-heading {
+  align-items: flex-start;
+}
+
+.chart-heading-actions {
+  min-width: min(520px, 100%);
+}
+
+.chart-period-select {
+  width: 132px;
+}
+
+.chart-symbol-select {
+  min-width: min(360px, 100%);
+}
+
+.candle-chart-area {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.candle-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(120px, 1fr));
+}
+
+.candle-summary-grid div {
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.candle-summary-grid strong {
+  color: #111827;
+  display: block;
+  font-size: 14px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.candle-chart-svg {
+  aspect-ratio: 1040 / 500;
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.candle-axis {
+  stroke: #cbd5e1;
+  stroke-width: 1;
+}
+
+.candle-axis.muted {
+  stroke: #e5e7eb;
+  stroke-dasharray: 4 4;
+}
+
+.candle-axis-label,
+.candle-date-label {
+  fill: #64748b;
+  font-size: 12px;
+}
+
+.candle-date-label.end {
+  text-anchor: end;
+}
+
+.candle-wick {
+  stroke-linecap: round;
+  stroke-width: 1.2;
+}
+
+.candle-body {
+  stroke-width: 0;
+}
+
+.candle-up {
+  fill: #dc2626;
+  stroke: #dc2626;
+}
+
+.candle-down {
+  fill: #2563eb;
+  stroke: #2563eb;
+}
+
+.candle-volume {
+  opacity: 0.3;
+}
+
+.moving-average-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-markers text {
+  fill: #111827;
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  text-anchor: middle;
+}
+
+.chart-marker {
+  cursor: pointer;
+  outline: none;
+}
+
+.chart-marker circle {
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.chart-marker-buy circle {
+  fill: #047857;
+}
+
+.chart-marker-trim circle {
+  fill: #f59e0b;
+}
+
+.chart-marker:focus-visible circle,
+.chart-marker.selected circle {
+  stroke: #111827;
+  stroke-width: 3;
+}
+
+.chart-settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.chart-settings-grid {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+}
+
+.checkbox-label {
+  align-items: center;
+  color: #111827;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.checkbox-label input {
+  min-height: auto;
+  width: auto;
+}
+
+.moving-average-form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(100px, 1fr) minmax(90px, 0.8fr) minmax(100px, 1fr) auto;
+}
+
+.moving-average-form input[type="color"] {
+  padding: 4px;
+}
+
+.moving-average-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.moving-average-row {
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.moving-average-row strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.moving-average-swatch {
+  border-radius: 999px;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.marker-memo-panel {
+  display: grid;
+  gap: 12px;
+}
+
+textarea {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #111827;
+  font: inherit;
+  min-height: 96px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
 @media (max-width: 1100px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -811,6 +1037,10 @@ select:focus {
 
   .summary-grid .hero-panel {
     grid-column: 1 / -1;
+  }
+
+  .candle-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -844,6 +1074,9 @@ select:focus {
   .growth-header,
   .form-grid,
   .growth-entry-grid,
+  .candle-summary-grid,
+  .chart-settings-grid,
+  .moving-average-form,
   .field-row,
   .field-row.triple {
     grid-template-columns: 1fr;
@@ -870,6 +1103,17 @@ select:focus {
 
   .order-search {
     flex-basis: 100%;
+  }
+
+  .chart-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chart-heading-actions,
+  .chart-period-select,
+  .chart-symbol-select {
+    width: 100%;
   }
 
   .allocation-chart,

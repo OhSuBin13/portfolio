@@ -14,6 +14,7 @@ TOSS_ONLY_TABLES = {
     "settings",
     "toss_order_import_runs",
     "toss_orders",
+    "chart_marker_memos",
     "growth_month_history",
     "sp500_proxy_prices",
 }
@@ -21,6 +22,9 @@ TOSS_ORDER_INDEXES = {
     "idx_toss_orders_account_ordered_at",
     "idx_toss_orders_account_status",
     "idx_toss_orders_account_symbol",
+}
+CHART_MARKER_MEMO_INDEXES = {
+    "idx_chart_marker_memos_account_symbol",
 }
 GROWTH_MONTH_HISTORY_INDEXES = {
     "idx_growth_month_history_account_period",
@@ -38,6 +42,7 @@ SEEDED_SP500_PROXY_PRICES = [
 TOSS_ONLY_INDEXES = {
     "idx_fx_rates_summary_pair_latest",
     *TOSS_ORDER_INDEXES,
+    *CHART_MARKER_MEMO_INDEXES,
     *GROWTH_MONTH_HISTORY_INDEXES,
     *SP500_PROXY_PRICE_INDEXES,
 }
@@ -663,7 +668,7 @@ def test_migrate_creates_toss_only_schema(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
     assert_toss_only_schema(db)
 
 
@@ -672,12 +677,31 @@ def test_migrate_creates_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
     assert {
         "toss_order_import_runs",
         "toss_orders",
     } <= table_names(db)
     assert index_names(db) >= TOSS_ORDER_INDEXES
+
+
+def test_migrate_creates_chart_marker_memos_table(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+
+    migrate(db)
+
+    assert migration_versions(db) == [15]
+    assert "chart_marker_memos" in table_names(db)
+    assert column_names(db, "chart_marker_memos") == {
+        "id",
+        "account_seq",
+        "symbol",
+        "marker_key",
+        "memo",
+        "created_at",
+        "updated_at",
+    }
+    assert index_names(db) >= CHART_MARKER_MEMO_INDEXES
 
 
 def test_toss_order_history_contract_in_fresh_schema(tmp_path):
@@ -691,7 +715,7 @@ def test_growth_month_history_contract_in_fresh_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
     assert_growth_month_history_contract(db)
 
 
@@ -699,7 +723,7 @@ def test_sp500_proxy_prices_contract_in_fresh_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
 
@@ -898,7 +922,7 @@ def test_migrate_from_v9_drops_local_ledger_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [9, 10, 11, 12, 13, 14]
+    assert migration_versions(db) == [9, 10, 11, 12, 13, 14, 15]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     assert db.execute("select count(*) from goals").fetchone()[0] == 1
@@ -914,7 +938,7 @@ def test_migrate_from_v10_adds_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [10, 11, 12, 13, 14]
+    assert migration_versions(db) == [10, 11, 12, 13, 14, 15]
     assert {
         "toss_order_import_runs",
         "toss_orders",
@@ -943,7 +967,7 @@ def test_migrate_from_v11_adds_growth_month_history_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [11, 12, 13, 14]
+    assert migration_versions(db) == [11, 12, 13, 14, 15]
     assert_growth_month_history_contract(db)
 
 
@@ -977,7 +1001,7 @@ def test_migrate_from_v12_adds_sp500_proxy_prices_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [12, 13, 14]
+    assert migration_versions(db) == [12, 13, 14, 15]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
 
@@ -1035,7 +1059,7 @@ def test_migrate_from_v13_seeds_sp500_proxy_prices_without_overwriting_existing_
 
     migrate(db)
 
-    assert migration_versions(db) == [13, 14]
+    assert migration_versions(db) == [13, 14, 15]
     assert [(row["year"], row["price"]) for row in db.execute(
         """
         select year, price
@@ -1138,7 +1162,7 @@ def test_migrate_upgrades_version_7_database_to_v11_and_preserves_goals(tmp_path
     migrate(db)
 
     row = db.execute("select * from goals where id = 42").fetchone()
-    assert migration_versions(db) == [7, 8, 9, 10, 11, 12, 13, 14]
+    assert migration_versions(db) == [7, 8, 9, 10, 11, 12, 13, 14, 15]
     assert_toss_only_schema(db)
     assert row["target_amount_krw"] == 100_000_000
     with pytest.raises(sqlite3.IntegrityError):
@@ -1210,7 +1234,7 @@ def test_migrate_upgrades_version_4_database_to_v11_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     assert_toss_only_schema(db)
 
 
@@ -1263,7 +1287,23 @@ def test_migrate_upgrades_version_1_database_to_v11_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    assert migration_versions(db) == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+    ]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     with pytest.raises(sqlite3.IntegrityError):
@@ -1282,7 +1322,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
     assert_toss_only_schema(db)
 
 
@@ -1292,12 +1332,12 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [14]
+    assert migration_versions(db) == [15]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
-    create_schema_migrations(db, 15)
+    create_schema_migrations(db, 16)
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):

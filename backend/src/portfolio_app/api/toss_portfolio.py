@@ -15,10 +15,13 @@ from portfolio_app.models import (
     TossOrderResponse,
 )
 from portfolio_app.repositories import (
+    fetch_chart_marker_memos,
     fetch_toss_order_import_run,
     fetch_toss_order_import_runs,
     fetch_toss_orders,
+    upsert_chart_marker_memo,
 )
+from portfolio_app.services.market_data import MarketCandle, TossMarketDataProvider
 from portfolio_app.services.toss_order_imports import import_toss_orders
 from portfolio_app.services.toss_portfolio import (
     TossAccount,
@@ -32,6 +35,8 @@ router = APIRouter(prefix="/api/toss", tags=["toss"])
 AccountSeq = Annotated[str, Query(min_length=1)]
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 ACCOUNT_SEQ_REQUIRED_MESSAGE = "Toss 계좌 식별자를 입력해 주세요."
+CANDLE_SYMBOL_REQUIRED_MESSAGE = "Toss 캔들 조회 종목 심볼을 입력해 주세요."
+CHART_MARKER_REQUIRED_MESSAGE = "차트 마커 식별자를 입력해 주세요."
 
 
 class TossAccountResponse(BaseModel):
@@ -63,6 +68,39 @@ class TossBuyingPowerResponse(BaseModel):
     cash_buying_power: float = Field(ge=0, allow_inf_nan=False)
 
 
+class TossCandleResponse(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    symbol: str
+    timestamp: str = Field(min_length=1)
+    open: float = Field(gt=0, allow_inf_nan=False)
+    high: float = Field(gt=0, allow_inf_nan=False)
+    low: float = Field(gt=0, allow_inf_nan=False)
+    close: float = Field(gt=0, allow_inf_nan=False)
+    volume: float = Field(ge=0, allow_inf_nan=False)
+
+
+class ChartMarkerMemoUpsert(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    account_seq: str = Field(min_length=1)
+    symbol: str = Field(min_length=1)
+    marker_key: str = Field(min_length=1, max_length=200)
+    memo: str = Field(max_length=2000)
+
+
+class ChartMarkerMemoResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    account_seq: str
+    symbol: str
+    marker_key: str
+    memo: str
+    created_at: str
+    updated_at: str
+
+
 def toss_http_error_detail(exc: httpx.HTTPError) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         return f"Toss 요청 실패: HTTP {exc.response.status_code} {exc.response.reason_phrase}"
@@ -82,6 +120,15 @@ def normalize_account_seq(account_seq: str) -> str:
 def _provider(request: Request) -> TossBrokerageProvider:
     settings = request.app.state.settings
     return TossBrokerageProvider(
+        settings.toss_api_key,
+        settings.toss_secret_key,
+        auth_client=request.app.state.toss_auth_client,
+    )
+
+
+def _market_data_provider(request: Request) -> TossMarketDataProvider:
+    settings = request.app.state.settings
+    return TossMarketDataProvider(
         settings.toss_api_key,
         settings.toss_secret_key,
         auth_client=request.app.state.toss_auth_client,
@@ -126,6 +173,28 @@ def _buying_power_response(row: TossBuyingPower) -> TossBuyingPowerResponse:
         currency=row.currency,
         cash_buying_power=row.cash_buying_power,
     )
+
+
+def _candle_response(candle: MarketCandle) -> TossCandleResponse:
+    return TossCandleResponse(
+        symbol=candle.symbol,
+        timestamp=candle.timestamp,
+        open=candle.open,
+        high=candle.high,
+        low=candle.low,
+        close=candle.close,
+        volume=candle.volume,
+    )
+
+
+def _normalize_marker_key(marker_key: str) -> str:
+    normalized = marker_key.strip()
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CHART_MARKER_REQUIRED_MESSAGE,
+        )
+    return normalized
 
 
 @router.post(
@@ -241,6 +310,81 @@ async def list_toss_holdings(
         ) from exc
 
     return [_holding_response(holding) for holding in holdings]
+
+
+@router.get("/candles", response_model=list[TossCandleResponse])
+async def list_toss_candles(
+    request: Request,
+    symbol: Annotated[str, Query(min_length=1)],
+    interval: Annotated[str, Query(min_length=1)] = "1d",
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
+) -> list[TossCandleResponse]:
+    normalized_symbol = _normalize_optional_uppercase(symbol)
+    if normalized_symbol is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
+        )
+
+    try:
+        candles = await _market_data_provider(request).fetch_candles(
+            normalized_symbol,
+            interval=interval,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=toss_http_error_detail(exc),
+        ) from exc
+
+    return [_candle_response(candle) for candle in candles]
+
+
+@router.get("/chart-marker-memos", response_model=list[ChartMarkerMemoResponse])
+def list_chart_marker_memos(
+    db: Db,
+    account_seq: AccountSeq,
+    symbol: Annotated[str, Query(min_length=1)],
+) -> list[dict[str, object]]:
+    normalized_symbol = _normalize_optional_uppercase(symbol)
+    if normalized_symbol is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
+        )
+    rows = fetch_chart_marker_memos(
+        db,
+        account_seq=normalize_account_seq(account_seq),
+        symbol=normalized_symbol,
+    )
+    return [row_to_dict(row) for row in rows]
+
+
+@router.post("/chart-marker-memos", response_model=ChartMarkerMemoResponse)
+def upsert_chart_marker_memo_endpoint(
+    payload: ChartMarkerMemoUpsert,
+    db: Db,
+) -> dict[str, object]:
+    normalized_symbol = _normalize_optional_uppercase(payload.symbol)
+    if normalized_symbol is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
+        )
+    row = upsert_chart_marker_memo(
+        db,
+        account_seq=normalize_account_seq(payload.account_seq),
+        symbol=normalized_symbol,
+        marker_key=_normalize_marker_key(payload.marker_key),
+        memo=payload.memo.strip(),
+    )
+    return row_to_dict(row)
 
 
 @router.get("/buying-power", response_model=list[TossBuyingPowerResponse])

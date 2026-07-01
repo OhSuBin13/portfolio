@@ -973,3 +973,52 @@ def fetch_toss_orders(
         """,
         params,
     ).fetchall()
+
+
+def upsert_chart_marker_memo(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    symbol: str,
+    marker_key: str,
+    memo: str,
+) -> sqlite3.Row:
+    db.execute(
+        """
+        insert into chart_marker_memos(account_seq, symbol, marker_key, memo)
+        values (?, ?, ?, ?)
+        on conflict(account_seq, symbol, marker_key) do update set
+          memo = excluded.memo,
+          updated_at = current_timestamp
+        """,
+        (account_seq, symbol, marker_key, memo),
+    )
+    db.commit()
+    row = db.execute(
+        """
+        select *
+        from chart_marker_memos
+        where account_seq = ? and symbol = ? and marker_key = ?
+        """,
+        (account_seq, symbol, marker_key),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("차트 마커 메모를 찾을 수 없습니다.")
+    return row
+
+
+def fetch_chart_marker_memos(
+    db: sqlite3.Connection,
+    *,
+    account_seq: str,
+    symbol: str,
+) -> list[sqlite3.Row]:
+    return db.execute(
+        """
+        select *
+        from chart_marker_memos
+        where account_seq = ? and symbol = ?
+        order by marker_key
+        """,
+        (account_seq, symbol),
+    ).fetchall()

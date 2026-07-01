@@ -91,6 +91,20 @@ on toss_orders(account_seq, order_status, ordered_at desc, id desc);
 create index if not exists idx_toss_orders_account_symbol
 on toss_orders(account_seq, symbol, ordered_at desc, id desc);
 
+create table if not exists chart_marker_memos (
+  id integer primary key,
+  account_seq text not null,
+  symbol text not null,
+  marker_key text not null,
+  memo text not null default '',
+  created_at text not null default current_timestamp,
+  updated_at text not null default current_timestamp,
+  unique(account_seq, symbol, marker_key)
+);
+
+create index if not exists idx_chart_marker_memos_account_symbol
+on chart_marker_memos(account_seq, symbol, marker_key);
+
 create table if not exists growth_month_history (
   id integer primary key,
   account_seq text not null,

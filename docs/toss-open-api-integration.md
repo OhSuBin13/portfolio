@@ -36,15 +36,17 @@ local holdings, or old portfolio snapshots.
 | --- | --- | --- |
 | Brokerage account list | `GET /api/v1/accounts` | `GET /api/toss/accounts` |
 | Brokerage holdings | `GET /api/v1/holdings` with `X-Tossinvest-Account` | `GET /api/toss/holdings?account_seq=...` |
+| Held stock/ETF candles | `GET /api/v1/candles` with `interval=1d`, `count<=200`, `before` pagination | `GET /api/toss/candles?symbol=...&interval=1d&limit=1000` |
 | Order-history import | `GET /api/v1/orders` with `X-Tossinvest-Account` | `POST /api/toss/order-imports` |
 | Imported order-history list | Local SQLite cache populated from `GET /api/v1/orders` | `GET /api/toss/orders?account_seq=...` |
+| Chart marker notes | Local SQLite notes keyed by account, symbol, and order marker | `GET/POST /api/toss/chart-marker-memos` |
 | Order detail parsing | `GET /api/v1/orders/{orderId}` with `X-Tossinvest-Account` | Backend provider/parser boundary |
 | USD/KRW valuation | `GET /api/v1/exchange-rate` | `GET /api/summary?account_seq=...` |
 | Buying power | `GET /api/v1/buying-power` with `X-Tossinvest-Account` and `currency=KRW\|USD` | `GET /api/toss/buying-power?account_seq=...`, `GET /api/summary?account_seq=...` |
 | OAuth token | `POST /oauth2/token` | Backend-only provider boundary |
 
 All Toss credentials stay on the backend. The frontend only receives normalized
-account, holding, buying-power, order-history, summary, goal, and backup
+account, holding, candle, buying-power, order-history, chart-marker memo, summary, goal, and backup
 response models.
 
 ## 3. Local Persistence Boundary
@@ -58,6 +60,7 @@ SQLite tables that remain in the fresh schema:
 - `backups`
 - `toss_order_import_runs`
 - `toss_orders`
+- `chart_marker_memos`
 - `growth_month_history`
 - `sp500_proxy_prices`
 
@@ -68,7 +71,8 @@ survivor data such as goals, backups, settings, and FX rates. Migration v11 adds
 the Toss order-history import cache tables. Migration v12 adds
 `growth_month_history`. Migration v13 adds `sp500_proxy_prices`; migration v14
 seeds 2021~2025 VOO year-end prices without overwriting existing user-edited
-proxy prices.
+proxy prices. Migration v15 adds `chart_marker_memos` for chart note text keyed
+by Toss account, held symbol, and order marker key.
 
 Imported Toss order history is read-only historical data. It does not mutate
 holdings, replace the removed `/api/transactions` command path, drive current
@@ -127,6 +131,16 @@ imports are supported through the Toss order list API. CLOSED imports can fail
 while the Toss OpenAPI reports `closed-not-supported`; the app records the failed
 import run and surfaces the provider failure instead of assuming closed history
 is available.
+
+The chart page starts from the selected Toss account's holdings. It keeps a
+single chart panel, lets the user select one held stock/ETF, and requests up to
+1,000 normalized 1d OHLCV candles through `GET /api/toss/candles`. The backend
+uses Toss `count=200` pages and `before` pagination to satisfy the larger local
+limit. The frontend derives daily, weekly, and annual chart views from those 1d
+candles, can overlay close-based moving averages, can hide or show volume, and
+uses imported Toss orders to mark initial buys, later buys, and trim sells.
+Marker memo text is the only chart-specific local persistence and is stored in
+`chart_marker_memos`.
 
 The app no longer mounts transaction entry, transaction-derived growth history,
 local market-sync status, local account creation, local asset creation, or

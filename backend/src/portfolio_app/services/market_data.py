@@ -12,6 +12,8 @@ import httpx
 from portfolio_app.config import Settings, get_settings
 
 TOSS_PRICE_SYMBOL_LIMIT = 200
+TOSS_CANDLE_PAGE_LIMIT = 200
+TOSS_CANDLE_LIMIT = 1000
 
 
 @dataclass
@@ -22,6 +24,17 @@ class MarketQuote:
     source: str
     status: str = "ok"
     error_message: str = ""
+
+
+@dataclass
+class MarketCandle:
+    symbol: str
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
 
 @dataclass
@@ -44,6 +57,15 @@ class MarketDataProvider(Protocol):
         pass
 
     async def fetch_equity_quotes(self, symbols: list[str]) -> list[MarketQuote]:
+        pass
+
+    async def fetch_candles(
+        self,
+        symbol: str,
+        *,
+        interval: str = "1d",
+        limit: int = TOSS_CANDLE_LIMIT,
+    ) -> list[MarketCandle]:
         pass
 
 
@@ -96,6 +118,15 @@ class UnsupportedMarketDataProvider:
         raise ValueError(self.message)
 
     async def fetch_equity_quotes(self, _symbols: list[str]) -> list[MarketQuote]:
+        raise ValueError(self.message)
+
+    async def fetch_candles(
+        self,
+        _symbol: str,
+        *,
+        interval: str = "1d",
+        limit: int = TOSS_CANDLE_LIMIT,
+    ) -> list[MarketCandle]:
         raise ValueError(self.message)
 
 
@@ -199,6 +230,31 @@ def _normalized_symbols(symbols: list[str]) -> list[str]:
 
 def _chunks(values: list[str], size: int) -> list[list[str]]:
     return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def _required_text(value: Any, message: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        raise ValueError(message)
+    return text
+
+
+def _non_negative_number(value: Any, message: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(message) from exc
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(message)
+    return number
+
+
+def _first_present(item: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = item.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def keep_last_good_quote(*, previous: MarketQuote, error_message: str) -> MarketQuote:
@@ -376,6 +432,125 @@ class TossMarketDataProvider:
             for symbol in normalized_symbols
             if symbol in quotes_by_symbol
         ]
+
+    async def fetch_candles(
+        self,
+        symbol: str,
+        *,
+        interval: str = "1d",
+        limit: int = TOSS_CANDLE_LIMIT,
+    ) -> list[MarketCandle]:
+        normalized_symbol = symbol.strip().upper()
+        if not normalized_symbol:
+            raise ValueError("Toss 캔들 조회 종목 심볼을 입력해 주세요.")
+
+        normalized_interval = interval.strip()
+        if normalized_interval not in {"1m", "1d"}:
+            raise ValueError("Toss 캔들 주기는 1m 또는 1d만 지원합니다.")
+        if limit < 1 or limit > TOSS_CANDLE_LIMIT:
+            raise ValueError("Toss 캔들 조회 개수는 1개 이상 1000개 이하이어야 합니다.")
+
+        token = await self._token()
+        candles: list[MarketCandle] = []
+        before: str | None = None
+        remaining = limit
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            while remaining > 0:
+                count = min(remaining, TOSS_CANDLE_PAGE_LIMIT)
+                params: dict[str, object] = {
+                    "symbol": normalized_symbol,
+                    "interval": normalized_interval,
+                    "count": count,
+                    "adjusted": "true",
+                }
+                if before is not None:
+                    params["before"] = before
+
+                response = await request_with_toss_retry(
+                    client,
+                    "GET",
+                    f"{self.base_url}/api/v1/candles",
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                    sleep=self._sleep,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                items, next_before = _candle_page(payload)
+                if not items:
+                    break
+
+                candles.extend(_parse_candle(normalized_symbol, item) for item in items)
+                remaining = limit - len(candles)
+                if next_before is None or next_before == before:
+                    break
+                before = next_before
+
+        return candles[:limit]
+
+
+def _candle_page(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if isinstance(result, list):
+        items = result
+        next_before = None
+    elif isinstance(result, dict):
+        items = result.get("candles") or result.get("items") or result.get("data")
+        next_before_value = result.get("nextBefore") or result.get("next_before")
+        next_before = (
+            next_before_value.strip()
+            if isinstance(next_before_value, str) and next_before_value.strip()
+            else None
+        )
+    else:
+        items = None
+        next_before = None
+
+    if not isinstance(items, list):
+        raise ValueError("Toss 응답에서 캔들 정보를 찾을 수 없습니다.")
+    if any(not isinstance(item, dict) for item in items):
+        raise ValueError("Toss 캔들 항목은 객체여야 합니다.")
+    return items, next_before
+
+
+def _parse_candle(symbol: str, item: dict[str, Any]) -> MarketCandle:
+    timestamp = _required_text(
+        _first_present(item, "timestamp", "time", "date", "datetime", "dateTime"),
+        "Toss 캔들 시간 값이 필요합니다.",
+    )
+    open_price = _positive_number(
+        _first_present(item, "openPrice", "open"),
+        "Toss 캔들 시가는 0보다 큰 숫자여야 합니다.",
+    )
+    high_price = _positive_number(
+        _first_present(item, "highPrice", "high"),
+        "Toss 캔들 고가는 0보다 큰 숫자여야 합니다.",
+    )
+    low_price = _positive_number(
+        _first_present(item, "lowPrice", "low"),
+        "Toss 캔들 저가는 0보다 큰 숫자여야 합니다.",
+    )
+    close_price = _positive_number(
+        _first_present(item, "closePrice", "close"),
+        "Toss 캔들 종가는 0보다 큰 숫자여야 합니다.",
+    )
+    volume = _non_negative_number(
+        _first_present(item, "volume", "tradeVolume"),
+        "Toss 캔들 거래량은 0 이상의 숫자여야 합니다.",
+    )
+    if high_price < low_price:
+        raise ValueError("Toss 캔들 고가는 저가보다 작을 수 없습니다.")
+
+    return MarketCandle(
+        symbol=symbol,
+        timestamp=timestamp,
+        open=open_price,
+        high=high_price,
+        low=low_price,
+        close=close_price,
+        volume=volume,
+    )
 
 
 def market_data_provider_for_asset(

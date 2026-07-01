@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 TOSS_ONLY_REMOVED_TABLES = (
     "import_rows",
@@ -437,6 +437,14 @@ def _migrate_from_13_to_14(db: sqlite3.Connection) -> None:
         db.execute("insert or ignore into schema_migrations(version) values (14)")
 
 
+def _migrate_from_14_to_15(db: sqlite3.Connection) -> None:
+    with db:
+        db.execute("begin")
+        for statement in _schema_statements(SCHEMA_PATH.read_text(encoding="utf-8")):
+            db.execute(statement)
+        db.execute("insert or ignore into schema_migrations(version) values (15)")
+
+
 def migrate(db: sqlite3.Connection) -> None:
     version = current_version(db)
     if version > SCHEMA_VERSION:
@@ -506,6 +514,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 13:
         _migrate_from_13_to_14(db)
         version = 14
+
+    if version == 14:
+        _migrate_from_14_to_15(db)
+        version = 15
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(

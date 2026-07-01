@@ -377,6 +377,133 @@ def test_toss_holdings_endpoint_rejects_blank_account_seq(tmp_path):
     assert response.json()["detail"] == "Toss 계좌 식별자를 입력해 주세요."
 
 
+def test_toss_candles_endpoint_fetches_1000_daily_candles_with_pagination(
+    tmp_path,
+    httpx_mock,
+):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_optional=True,
+    )
+    before_values = [
+        None,
+        "2026-03-24T09:00:00+09:00",
+        "2026-03-23T09:00:00+09:00",
+        "2026-03-22T09:00:00+09:00",
+        "2026-03-21T09:00:00+09:00",
+    ]
+    next_values = [
+        "2026-03-24T09:00:00+09:00",
+        "2026-03-23T09:00:00+09:00",
+        "2026-03-22T09:00:00+09:00",
+        "2026-03-21T09:00:00+09:00",
+        None,
+    ]
+    for index, (before, next_before) in enumerate(zip(before_values, next_values, strict=True)):
+        match_params = {
+            "symbol": "005930",
+            "interval": "1d",
+            "count": "200",
+            "adjusted": "true",
+        }
+        if before is not None:
+            match_params["before"] = before
+        httpx_mock.add_response(
+            method="GET",
+            url="https://openapi.tossinvest.com/api/v1/candles",
+            match_params=match_params,
+            json={
+                "result": {
+                    "candles": [
+                        {
+                            "timestamp": f"2026-03-{25 - index:02d}T09:00:00+09:00",
+                            "openPrice": str(71000 + index),
+                            "highPrice": str(72000 + index),
+                            "lowPrice": str(70000 + index),
+                            "closePrice": str(71500 + index),
+                            "volume": str(1_000_000 + index),
+                            "currency": "KRW",
+                        }
+                    ],
+                    "nextBefore": next_before,
+                }
+            },
+            is_optional=True,
+        )
+
+    response = client.get("/api/toss/candles?symbol=%20005930%20&interval=1d&limit=1000")
+
+    assert response.status_code == 200
+    candles = response.json()
+    assert len(candles) == 5
+    assert candles[0] == {
+        "symbol": "005930",
+        "timestamp": "2026-03-25T09:00:00+09:00",
+        "open": 71000.0,
+        "high": 72000.0,
+        "low": 70000.0,
+        "close": 71500.0,
+        "volume": 1000000.0,
+    }
+    candle_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/candles"
+    ]
+    assert len(candle_requests) == 5
+    assert candle_requests[0].url.params["count"] == "200"
+    assert "limit" not in candle_requests[0].url.params
+    assert candle_requests[1].url.params["before"] == "2026-03-24T09:00:00+09:00"
+
+
+def test_toss_candles_endpoint_rejects_blank_symbol(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/toss/candles?symbol=%20%20")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Toss 캔들 조회 종목 심볼을 입력해 주세요."
+
+
+def test_chart_marker_memo_endpoint_upserts_and_lists_notes(tmp_path):
+    client = create_test_client(tmp_path)
+
+    first_response = client.post(
+        "/api/toss/chart-marker-memos",
+        json={
+            "account_seq": " acct-1 ",
+            "symbol": " voo ",
+            "marker_key": "order:buy-1",
+            "memo": "첫 매수 근거",
+        },
+    )
+    second_response = client.post(
+        "/api/toss/chart-marker-memos",
+        json={
+            "account_seq": "acct-1",
+            "symbol": "VOO",
+            "marker_key": "order:buy-1",
+            "memo": "장기 보유 판단",
+        },
+    )
+    list_response = client.get(
+        "/api/toss/chart-marker-memos?account_seq=acct-1&symbol=voo",
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["memo"] == "장기 보유 판단"
+    assert list_response.status_code == 200
+    assert list_response.json() == [second_response.json()]
+
+
 def test_toss_order_import_endpoint_imports_open_orders(tmp_path, httpx_mock):
     client = create_test_client(
         tmp_path,
