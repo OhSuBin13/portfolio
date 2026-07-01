@@ -40,6 +40,11 @@ for (const expectedText of [
   "handleChartMouseDown",
   "handleChartMouseMove",
   "handleChartMouseUp",
+  "chartHoverPrice",
+  "handleChartHoverMove",
+  "handleChartHoverLeave",
+  "chart-hover-price-line",
+  "chart-hover-price-label",
   "onWheel={handleChartWheel}",
   "onMouseDown={handleChartMouseDown}",
   "onMouseMove={handleChartMouseMove}",
@@ -73,6 +78,16 @@ assert.ok(source.includes("ChartMarkerMemo"), "Charts page should type marker me
 assert.ok(source.includes("selectedHoldingKey"), "Charts page should select a held symbol")
 assert.ok(source.includes("<svg"), "Charts page should render an SVG candlestick chart")
 assert.ok(source.includes("candle-chart-svg"), "Charts page should use stable chart SVG styling")
+assert.match(
+  source,
+  /className="chart-hover-price-bg"[\s\S]*?width=\{104\}[\s\S]*?x=\{4\}/,
+  "Hover price label background should keep tighter horizontal padding near the SVG left edge",
+)
+assert.match(
+  source,
+  /className="chart-hover-price-label"[\s\S]*?x=\{56\}/,
+  "Hover price label text should stay centered in the tighter label",
+)
 assert.ok(source.includes("보유 종목 차트"), "Charts page should present one holdings chart panel")
 
 assert.ok(typesSource.includes("export type TossCandle"), "Frontend types should include Toss candles")
@@ -85,6 +100,8 @@ assert.ok(styles.includes(".candle-up"), "Styles should define rising candle col
 assert.ok(styles.includes(".candle-down"), "Styles should define falling candle color")
 assert.ok(styles.includes(".moving-average-line"), "Styles should define moving-average lines")
 assert.ok(styles.includes(".chart-markers"), "Styles should define trade marker layout")
+assert.ok(styles.includes(".chart-hover-price-line"), "Styles should define hover price guide")
+assert.ok(styles.includes(".chart-hover-price-label"), "Styles should define hover price label")
 assert.ok(styles.includes(".marker-selected-header"), "Styles should define selected marker header")
 assert.ok(styles.includes(".marker-detail-grid"), "Styles should define selected marker detail layout")
 assert.ok(styles.includes(".marker-note-actions"), "Styles should define marker note actions")

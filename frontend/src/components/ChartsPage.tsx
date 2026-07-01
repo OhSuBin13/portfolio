@@ -50,6 +50,11 @@ type ChartDragState = {
   lastX: number
 }
 
+type ChartHoverPrice = {
+  y: number
+  price: number
+}
+
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const accountLabel = (account: TossAccount) =>
@@ -282,6 +287,19 @@ function CandleChart({
       return candleIndex >= 0 ? [{ marker, candleIndex }] : []
     }),
   )
+  const [chartHoverPrice, setChartHoverPrice] = useState<ChartHoverPrice | null>(null)
+
+  const handleChartHoverMove = (event: ReactMouseEvent<SVGSVGElement>) => {
+    const boundsRect = event.currentTarget.getBoundingClientRect()
+    const svgY = ((event.clientY - boundsRect.top) / boundsRect.height) * CHART_HEIGHT
+    const y = Math.min(Math.max(svgY, PRICE_TOP), priceBottom)
+    const price = bounds.max - ((y - PRICE_TOP) / (priceBottom - PRICE_TOP)) * priceRange
+    setChartHoverPrice({ y, price })
+  }
+
+  const handleChartHoverLeave = () => {
+    setChartHoverPrice(null)
+  }
 
   const handleMarkerKeyDown = (event: KeyboardEvent<SVGGElement>, marker: TradeMarker) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -291,7 +309,13 @@ function CandleChart({
   }
 
   return (
-    <svg className="candle-chart-svg" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} role="img">
+    <svg
+      className="candle-chart-svg"
+      onMouseLeave={handleChartHoverLeave}
+      onMouseMove={handleChartHoverMove}
+      role="img"
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+    >
       <line className="candle-axis" x1={PLOT_LEFT} x2={CHART_WIDTH - PLOT_RIGHT} y1={PRICE_TOP} y2={PRICE_TOP} />
       <line className="candle-axis" x1={PLOT_LEFT} x2={CHART_WIDTH - PLOT_RIGHT} y1={priceBottom} y2={priceBottom} />
       <line className="candle-axis muted" x1={PLOT_LEFT} x2={CHART_WIDTH - PLOT_RIGHT} y1={yForPrice(midPrice)} y2={yForPrice(midPrice)} />
@@ -358,6 +382,33 @@ function CandleChart({
           style={{ stroke: config.color, strokeWidth: config.lineWidth }}
         />
       ))}
+
+      {chartHoverPrice && (
+        <g className="chart-hover-price">
+          <line
+            className="chart-hover-price-line"
+            x1={PLOT_LEFT}
+            x2={CHART_WIDTH - PLOT_RIGHT}
+            y1={chartHoverPrice.y}
+            y2={chartHoverPrice.y}
+          />
+          <rect
+            className="chart-hover-price-bg"
+            height={22}
+            rx={4}
+            width={104}
+            x={4}
+            y={chartHoverPrice.y - 11}
+          />
+          <text
+            className="chart-hover-price-label"
+            x={56}
+            y={chartHoverPrice.y + 4}
+          >
+            {formatPrice(chartHoverPrice.price, currency)}
+          </text>
+        </g>
+      )}
 
       <g className="chart-markers">
         {markerPlacements.map(({ marker, candleIndex, xOffset }) => {
