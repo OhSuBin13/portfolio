@@ -28,10 +28,20 @@ const DRAG_PAN_STEP_PIXELS = 36
 const chartPeriodOptions = [
   { value: "daily", label: "일봉" },
   { value: "weekly", label: "주봉" },
+  { value: "monthly", label: "월봉" },
   { value: "annual", label: "연봉" },
 ] as const
 
 type ChartPeriod = (typeof chartPeriodOptions)[number]["value"]
+
+type ChangeRateTone = "up" | "down" | "flat"
+
+type OhlcChangeRates = {
+  open: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+}
 
 type MovingAverageConfig = {
   id: string
@@ -50,9 +60,13 @@ type ChartDragState = {
   lastX: number
 }
 
-type ChartHoverPrice = {
+type ChartHoverState = {
+  x: number
   y: number
   price: number
+  candle: TossCandle
+  previousClose: number | null
+  changeRates: OhlcChangeRates
 }
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -65,8 +79,39 @@ const holdingKey = (holding: TossHolding) => `${holding.market}:${holding.symbol
 const holdingLabel = (holding: TossHolding) =>
   `${holding.symbol} · ${holding.name} · ${holding.market}`
 
-const formatPrice = (value: number, currency: TossHolding["currency"] | undefined) =>
-  `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ""}`
+const formatPrice = (value: number, currency: TossHolding["currency"] | undefined) => {
+  const formatted = value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })
+  if (currency === "USD") {
+    return `$${formatted}`
+  }
+  return `${formatted}${currency ? ` ${currency}` : ""}`
+}
+
+const formatChangeRate = (value: number | null) => {
+  if (value === null || !Number.isFinite(value)) {
+    return "-"
+  }
+  const formatted = Math.abs(value).toLocaleString("ko-KR", {
+    maximumFractionDigits: 2,
+  })
+  if (value > 0) {
+    return `+${formatted}%`
+  }
+  if (value < 0) {
+    return `-${formatted}%`
+  }
+  return "0%"
+}
+
+const changeRateTone = (value: number | null): ChangeRateTone => {
+  if (value === null || !Number.isFinite(value) || value === 0) {
+    return "flat"
+  }
+  return value > 0 ? "up" : "down"
+}
+
+const changeRateForPrice = (value: number, previousClose: number | null) =>
+  previousClose !== null && previousClose > 0 ? ((value - previousClose) / previousClose) * 100 : null
 
 const formatVolume = (value: number) =>
   value.toLocaleString("ko-KR", { maximumFractionDigits: 0 })
@@ -86,15 +131,22 @@ const dateKey = (value: string) => {
   ).padStart(2, "0")}`
 }
 
-const formatDateLabel = (value: string) => {
+const formatChartDateLabel = (value: string, selectedChartPeriod: ChartPeriod) => {
   const parsed = parseDate(value)
   if (!parsed) {
-    return value.slice(0, 10)
+    return selectedChartPeriod === "annual"
+      ? value.slice(2, 4)
+      : selectedChartPeriod === "monthly"
+        ? value.slice(2, 7)
+        : value.slice(2, 10)
   }
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(parsed)
+  const year = String(parsed.getFullYear()).slice(2)
+  const month = String(parsed.getMonth() + 1).padStart(2, "0")
+  const day = String(parsed.getDate()).padStart(2, "0")
+  if (selectedChartPeriod === "annual") {
+    return year
+  }
+  return selectedChartPeriod === "monthly" ? `${year}-${month}` : `${year}-${month}-${day}`
 }
 
 const formatDateTime = (value: string) => {
@@ -126,6 +178,14 @@ const weekGroupKey = (timestamp: string) => {
   return dateKey(monday.toISOString())
 }
 
+const monthGroupKey = (timestamp: string) => {
+  const parsed = parseDate(timestamp)
+  if (!parsed) {
+    return timestamp.slice(0, 7)
+  }
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`
+}
+
 const yearGroupKey = (timestamp: string) => {
   const parsed = parseDate(timestamp)
   return parsed ? String(parsed.getFullYear()) : timestamp.slice(0, 4)
@@ -154,7 +214,9 @@ const aggregateCandles = (candles: TossCandle[], selectedChartPeriod: ChartPerio
   const grouped = new Map<string, TossCandle[]>()
   for (const candle of sorted) {
     const key =
-      selectedChartPeriod === "weekly" ? weekGroupKey(candle.timestamp) : yearGroupKey(candle.timestamp)
+      selectedChartPeriod === "weekly"
+        ? weekGroupKey(candle.timestamp)
+        : selectedChartPeriod === "monthly" ? monthGroupKey(candle.timestamp) : yearGroupKey(candle.timestamp)
     const group = grouped.get(key)
     if (group) {
       group.push(candle)
@@ -235,6 +297,7 @@ function CandleChart({
   movingAverageConfigs,
   visibleCandleStartIndex,
   markers,
+  selectedChartPeriod,
   selectedMarkerKey,
   showVolume,
   onSelectMarker,
@@ -245,6 +308,7 @@ function CandleChart({
   movingAverageConfigs: MovingAverageConfig[]
   visibleCandleStartIndex: number
   markers: TradeMarker[]
+  selectedChartPeriod: ChartPeriod
   selectedMarkerKey: string
   showVolume: boolean
   onSelectMarker: (marker: TradeMarker) => void
@@ -287,18 +351,43 @@ function CandleChart({
       return candleIndex >= 0 ? [{ marker, candleIndex }] : []
     }),
   )
-  const [chartHoverPrice, setChartHoverPrice] = useState<ChartHoverPrice | null>(null)
+  const [chartHoverState, setChartHoverState] = useState<ChartHoverState | null>(null)
 
   const handleChartHoverMove = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (candles.length === 0) {
+      return
+    }
     const boundsRect = event.currentTarget.getBoundingClientRect()
+    const svgX = ((event.clientX - boundsRect.left) / boundsRect.width) * CHART_WIDTH
     const svgY = ((event.clientY - boundsRect.top) / boundsRect.height) * CHART_HEIGHT
+    const clampedX = Math.min(Math.max(svgX, PLOT_LEFT), CHART_WIDTH - PLOT_RIGHT)
+    const hoverCandleIndex = Math.min(
+      candles.length - 1,
+      Math.max(0, Math.round((clampedX - PLOT_LEFT - step / 2) / step)),
+    )
+    const hoverCandle = candles[hoverCandleIndex]
+    const previousCandle = candles[hoverCandleIndex - 1]
+    const previousClose = previousCandle?.close ?? null
+    const changeRates = {
+      open: changeRateForPrice(hoverCandle.open, previousClose),
+      high: changeRateForPrice(hoverCandle.high, previousClose),
+      low: changeRateForPrice(hoverCandle.low, previousClose),
+      close: changeRateForPrice(hoverCandle.close, previousClose),
+    }
     const y = Math.min(Math.max(svgY, PRICE_TOP), priceBottom)
     const price = bounds.max - ((y - PRICE_TOP) / (priceBottom - PRICE_TOP)) * priceRange
-    setChartHoverPrice({ y, price })
+    setChartHoverState({
+      x: xForIndex(hoverCandleIndex),
+      y,
+      price,
+      candle: hoverCandle,
+      previousClose,
+      changeRates,
+    })
   }
 
   const handleChartHoverLeave = () => {
-    setChartHoverPrice(null)
+    setChartHoverState(null)
   }
 
   const handleMarkerKeyDown = (event: KeyboardEvent<SVGGElement>, marker: TradeMarker) => {
@@ -332,10 +421,10 @@ function CandleChart({
         {formatPrice(bounds.min, currency)}
       </text>
       <text className="candle-date-label" x={PLOT_LEFT} y={CHART_HEIGHT - 10}>
-        {formatDateLabel(first.timestamp)}
+        {formatChartDateLabel(first.timestamp, selectedChartPeriod)}
       </text>
       <text className="candle-date-label end" x={CHART_WIDTH - PLOT_RIGHT} y={CHART_HEIGHT - 10}>
-        {formatDateLabel(last.timestamp)}
+        {formatChartDateLabel(last.timestamp, selectedChartPeriod)}
       </text>
 
       {candles.map((candle, index) => {
@@ -383,14 +472,21 @@ function CandleChart({
         />
       ))}
 
-      {chartHoverPrice && (
-        <g className="chart-hover-price">
+      {chartHoverState && (
+        <g className="chart-hover-guides">
           <line
             className="chart-hover-price-line"
             x1={PLOT_LEFT}
             x2={CHART_WIDTH - PLOT_RIGHT}
-            y1={chartHoverPrice.y}
-            y2={chartHoverPrice.y}
+            y1={chartHoverState.y}
+            y2={chartHoverState.y}
+          />
+          <line
+            className="chart-hover-vertical-line"
+            x1={chartHoverState.x}
+            x2={chartHoverState.x}
+            y1={PRICE_TOP}
+            y2={showVolume ? VOLUME_BOTTOM : priceBottom}
           />
           <rect
             className="chart-hover-price-bg"
@@ -398,15 +494,63 @@ function CandleChart({
             rx={4}
             width={104}
             x={4}
-            y={chartHoverPrice.y - 11}
+            y={chartHoverState.y - 11}
           />
           <text
             className="chart-hover-price-label"
             x={56}
-            y={chartHoverPrice.y + 4}
+            y={chartHoverState.y + 4}
           >
-            {formatPrice(chartHoverPrice.price, currency)}
+            {formatPrice(chartHoverState.price, currency)}
           </text>
+          <rect
+            className="chart-hover-date-bg"
+            height={20}
+            rx={4}
+            width={74}
+            x={chartHoverState.x - 37}
+            y={(showVolume ? VOLUME_BOTTOM : priceBottom) + 5}
+          />
+          <text
+            className="chart-hover-date-label"
+            x={chartHoverState.x}
+            y={(showVolume ? VOLUME_BOTTOM : priceBottom) + 19}
+          >
+            {formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)}
+          </text>
+          <g className="chart-hover-ohlc-panel">
+            <rect
+              className="chart-hover-ohlc-bg"
+              height={44}
+              rx={6}
+              width={504}
+              x={4}
+              y={PRICE_TOP + 8}
+            />
+            <text className="chart-hover-ohlc-values" x={10} y={PRICE_TOP + 25}>
+              <tspan>시작 {formatPrice(chartHoverState.candle.open, currency)} </tspan>
+              <tspan className={`chart-hover-change-rate chart-hover-change-${changeRateTone(chartHoverState.changeRates.open)}`}>
+                ({formatChangeRate(chartHoverState.changeRates.open)})
+              </tspan>
+              <tspan> · 고가{" "}</tspan>
+              <tspan>{formatPrice(chartHoverState.candle.high, currency)} </tspan>
+              <tspan className={`chart-hover-change-rate chart-hover-change-${changeRateTone(chartHoverState.changeRates.high)}`}>
+                ({formatChangeRate(chartHoverState.changeRates.high)})
+              </tspan>
+            </text>
+            <text className="chart-hover-ohlc-values" x={10} y={PRICE_TOP + 43}>
+              <tspan>저가{" "}</tspan>
+              <tspan>{formatPrice(chartHoverState.candle.low, currency)} </tspan>
+              <tspan className={`chart-hover-change-rate chart-hover-change-${changeRateTone(chartHoverState.changeRates.low)}`}>
+                ({formatChangeRate(chartHoverState.changeRates.low)})
+              </tspan>
+              <tspan> · 종가{" "}</tspan>
+              <tspan>{formatPrice(chartHoverState.candle.close, currency)} </tspan>
+              <tspan className={`chart-hover-change-rate chart-hover-change-${changeRateTone(chartHoverState.changeRates.close)}`}>
+                ({formatChangeRate(chartHoverState.changeRates.close)})
+              </tspan>
+            </text>
+          </g>
         </g>
       )}
 
@@ -916,6 +1060,7 @@ export function ChartsPage() {
                 movingAverageConfigs={movingAverageConfigs}
                 visibleCandleStartIndex={visibleCandleStartIndex}
                 markers={tradeMarkers}
+                selectedChartPeriod={selectedChartPeriod}
                 selectedMarkerKey={selectedMarkerKey}
                 showVolume={showVolume}
                 onSelectMarker={selectMarker}

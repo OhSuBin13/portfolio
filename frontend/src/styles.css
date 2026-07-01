@@ -919,26 +919,60 @@ select:focus {
   stroke-linejoin: round;
 }
 
-.chart-hover-price {
+.chart-hover-guides,
+.chart-hover-ohlc-panel {
   pointer-events: none;
 }
 
-.chart-hover-price-line {
+.chart-hover-price-line,
+.chart-hover-vertical-line {
   stroke: #475569;
   stroke-dasharray: 5 5;
   stroke-width: 1;
 }
 
-.chart-hover-price-bg {
+.chart-hover-price-bg,
+.chart-hover-date-bg {
   fill: #111827;
   opacity: 0.9;
 }
 
-.chart-hover-price-label {
+.chart-hover-price-label,
+.chart-hover-date-label {
   fill: #ffffff;
   font-size: 11px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+.chart-hover-ohlc-bg {
+  fill: #ffffff;
+  opacity: 0.95;
+  stroke: #cbd5e1;
+  stroke-width: 1;
+}
+
+.chart-hover-change-rate {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.chart-hover-change-up {
+  fill: #dc2626;
+}
+
+.chart-hover-change-down {
+  fill: #2563eb;
+}
+
+.chart-hover-change-flat {
+  fill: #64748b;
+}
+
+.chart-hover-ohlc-values {
+  fill: #334155;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .chart-markers text {
