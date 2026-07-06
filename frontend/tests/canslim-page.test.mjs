@@ -92,6 +92,46 @@ for (const letter of ["c", "a", "n", "s", "l", "i", "m"]) {
 assert.ok(pageSource.includes("loading"), "Page should render a loading state")
 assert.ok(pageSource.includes("error"), "Page should render an error state")
 assert.ok(pageSource.includes("empty-state"), "Page should render an empty/help state")
+assert.ok(pageSource.includes("useRef"), "Page should use a request sequence ref for async lookup guards")
+assert.ok(
+  pageSource.includes("requestSeqRef"),
+  "Page should keep only the latest CAN SLIM lookup result",
+)
+assert.match(
+  pageSource,
+  /const requestId = requestSeqRef\.current \+ 1[\s\S]*requestSeqRef\.current = requestId/,
+  "Page should assign a monotonic request id before each lookup",
+)
+assert.match(
+  pageSource,
+  /if \(requestId !== requestSeqRef\.current\) {\s*return\s*}/,
+  "Page should ignore stale lookup results and errors",
+)
+const awaitedFetchIndex = pageSource.indexOf("const result = await fetchCanslimAnalysis")
+const catchIndex = pageSource.indexOf("} catch", awaitedFetchIndex)
+const awaitedFetchBlock = pageSource.slice(awaitedFetchIndex, catchIndex)
+assert.ok(
+  !awaitedFetchBlock.includes("setSymbol("),
+  "Page should not reset ticker input after an awaited lookup resolves",
+)
+assert.ok(
+  pageSource.includes("formatMetricValue(metric, metricValue)"),
+  "Metric formatter should receive metric names",
+)
+assert.match(
+  pageSource,
+  /metric\.endsWith\("_percent"\)[\s\S]*formatPercent\(value\)/,
+  "Metric formatter should render *_percent fields with percent notation",
+)
+assert.ok(
+  pageSource.includes("const displayedCandles = [...market.candles]"),
+  "M table should use an explicitly sorted displayed candle list",
+)
+assert.match(
+  pageSource,
+  /displayedCandles[\s\S]*sort\(\(left, right\) => right\.date\.localeCompare\(left\.date\)\)[\s\S]*slice\(0, 8\)/,
+  "M table should display the latest SPY candles first",
+)
 assert.ok(
   !pageSource.includes("recommendation") &&
     !pageSource.includes("verdict") &&

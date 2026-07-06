@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { RefreshCw, Search } from "lucide-react"
 import { fetchCanslimAnalysis } from "../api"
 import type {
@@ -49,11 +49,14 @@ const formatPercent = (value: number | null | undefined) => {
   return `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`
 }
 
-const formatMetricValue = (value: unknown): string => {
+const formatMetricValue = (metric: string, value: unknown): string => {
   if (value === null || value === undefined) {
     return "-"
   }
   if (typeof value === "number") {
+    if (metric.endsWith("_percent")) {
+      return formatPercent(value)
+    }
     return formatNumber(value)
   }
   if (typeof value === "string") {
@@ -63,7 +66,7 @@ const formatMetricValue = (value: unknown): string => {
     return value ? "true" : "false"
   }
   if (Array.isArray(value)) {
-    return value.map(formatMetricValue).join(", ")
+    return value.map((item) => formatMetricValue(metric, item)).join(", ")
   }
 
   try {
@@ -112,7 +115,7 @@ function LetterSection({
           {metrics.map(([metric, metricValue]) => (
             <div key={metric}>
               <dt>{formatMetricName(metric)}</dt>
-              <dd>{formatMetricValue(metricValue)}</dd>
+              <dd>{formatMetricValue(metric, metricValue)}</dd>
             </div>
           ))}
         </dl>
@@ -207,7 +210,10 @@ function CanslimMarketChart({ candles }: { candles: CanslimMarketCandle[] }) {
 }
 
 function MarketContext({ market }: { market: CanslimMarketContext }) {
-  const latest = [...market.candles].sort((left, right) => right.date.localeCompare(left.date))[0]
+  const displayedCandles = [...market.candles]
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, 8)
+  const latest = displayedCandles[0]
 
   return (
     <section className="panel canslim-market-panel">
@@ -247,7 +253,7 @@ function MarketContext({ market }: { market: CanslimMarketContext }) {
               </tr>
             </thead>
             <tbody>
-              {market.candles.slice(0, 8).map((candle) => (
+              {displayedCandles.map((candle) => (
                 <tr key={candle.date}>
                   <th scope="row">{candle.date}</th>
                   <td className="numeric-cell">{formatUsd(candle.close)}</td>
@@ -302,6 +308,7 @@ function CompanySummary({ analysis }: { analysis: CanslimAnalysis }) {
 }
 
 export function CanslimPage() {
+  const requestSeqRef = useRef(0)
   const [symbol, setSymbol] = useState("")
   const [marketRange, setMarketRange] = useState<CanslimMarketRange>("6m")
   const [analysis, setAnalysis] = useState<CanslimAnalysis | null>(null)
@@ -315,6 +322,9 @@ export function CanslimPage() {
       return
     }
 
+    const requestId = requestSeqRef.current + 1
+    requestSeqRef.current = requestId
+    setSymbol(normalizedSymbol)
     setLoading(true)
     setError("")
     try {
@@ -323,12 +333,19 @@ export function CanslimPage() {
         marketRange,
         refresh,
       })
+      if (requestId !== requestSeqRef.current) {
+        return
+      }
       setAnalysis(result)
-      setSymbol(normalizedSymbol)
     } catch (err) {
+      if (requestId !== requestSeqRef.current) {
+        return
+      }
       setError(getErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (requestId === requestSeqRef.current) {
+        setLoading(false)
+      }
     }
   }
 
