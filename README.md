@@ -3,7 +3,8 @@
 Private local Korean brokerage portfolio app focused on a Toss Securities-backed
 portfolio view. Toss accounts and holdings are read through the backend, while
 local SQLite stores app settings, goals, backups, FX cache data, and imported
-read-only Toss order history.
+read-only Toss order history. It also provides a backend-owned CAN SLIM analysis
+screen for US-listed common stocks through Financial Modeling Prep.
 
 ## Backend Setup
 
@@ -23,10 +24,21 @@ PORTFOLIO_TOSS_API_KEY=...
 PORTFOLIO_TOSS_SECRET_KEY=...
 ```
 
+CAN SLIM analysis uses Financial Modeling Prep from the backend only. Configure
+the FMP key before using the `CAN SLIM` screen:
+
+```bash
+PORTFOLIO_FMP_API_KEY=...
+```
+
 The backend owns all Toss API calls. The frontend calls local API routes such as
 `/api/toss/accounts`, `/api/toss/holdings`, `/api/toss/buying-power`,
 `/api/toss/candles`, `/api/toss/order-imports`, `/api/toss/orders`,
 `/api/toss/chart-marker-memos`, and `/api/summary`.
+
+The CAN SLIM screen calls the local `/api/canslim/analysis` route with
+`symbol`, `market_range`, and optional `refresh=true`. FMP credentials are never
+sent to the frontend. v1 supports US-listed common stocks only.
 
 Backups are created on startup and then run automatically while the backend is
 running. The default periodic backup interval is 1 hour and can be changed with
@@ -53,7 +65,8 @@ The frontend uses `http://127.0.0.1:8000` as the default API base. Set
 - Backup files live in `data/backups/`.
 - Fresh local schema includes `schema_migrations`, `settings`, `fx_rates`,
   `goals`, `backups`, `toss_order_import_runs`, `toss_orders`,
-  `chart_marker_memos`, `growth_month_history`, and `sp500_proxy_prices`.
+  `chart_marker_memos`, `growth_month_history`, `sp500_proxy_prices`, and
+  `canslim_cache_entries`.
 - Imported Toss order history is read-only. It does not update current holdings,
   drive dashboard valuation, or recreate the removed local transaction ledger.
 - The chart screen reads 1d Toss candles through the backend. The backend pages
@@ -92,10 +105,12 @@ npm run lint
    Toss-derived KRW/USD buying power.
 5. Open `차트` and select one held stock/ETF to inspect daily, weekly, or annual
    candles, moving averages, volume, and saved trade-marker notes.
-6. Open `주문내역` and import OPEN Toss order history for the selected account.
-7. Review imported orders from the local read-only cache. CLOSED imports may fail
+6. Open `CAN SLIM`, enter a US stock symbol such as `NVDA`, and review C/A/N/S/L/I
+   evidence, top-performing institutional holders, and the SPY market context.
+7. Open `주문내역` and import OPEN Toss order history for the selected account.
+8. Review imported orders from the local read-only cache. CLOSED imports may fail
    if Toss reports `closed-not-supported`.
-8. Create or review local goals and confirm automatic backup records appear after
+9. Create or review local goals and confirm automatic backup records appear after
    the backend has been running.
 
 The app no longer exposes local account creation, asset creation, transaction
