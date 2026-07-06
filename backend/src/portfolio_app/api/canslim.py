@@ -3,7 +3,9 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import ValidationError
 
+from portfolio_app import repositories
 from portfolio_app.api import get_db
 from portfolio_app.models import CanslimAnalysisResponse
 from portfolio_app.services.canslim import (
@@ -11,7 +13,13 @@ from portfolio_app.services.canslim import (
     FmpCanslimProvider,
     FmpProviderError,
     build_canslim_analysis,
+    cache_expiry_iso,
+    cached_payload_is_fresh,
+    canslim_analysis_cache_key,
+    dumps_analysis_payload,
+    loads_analysis_payload,
     normalize_symbol,
+    now_iso,
 )
 
 router = APIRouter(prefix="/api/canslim", tags=["canslim"])
@@ -36,7 +44,6 @@ async def get_canslim_analysis(
     market_range: str = "6m",
     refresh: bool = False,
 ) -> CanslimAnalysisResponse:
-    del db, refresh
     normalized_range = market_range.strip().lower()
     if normalized_range not in SUPPORTED_MARKET_RANGES:
         raise HTTPException(
@@ -46,6 +53,17 @@ async def get_canslim_analysis(
 
     try:
         normalized_symbol = normalize_symbol(symbol)
+        cache_key = canslim_analysis_cache_key(normalized_symbol, normalized_range)
+        cached_row = repositories.fetch_canslim_cache_entry(db, cache_key=cache_key)
+        if not refresh and cached_row is not None:
+            try:
+                if cached_payload_is_fresh(cached_row):
+                    return CanslimAnalysisResponse.model_validate(
+                        loads_analysis_payload(cached_row["payload_json"])
+                    )
+            except (KeyError, TypeError, ValueError, ValidationError):
+                pass
+
         settings = request.app.state.settings
         today = getattr(request.app.state, "canslim_today", None)
         provider = (
@@ -58,6 +76,15 @@ async def get_canslim_analysis(
             bundle,
             market_range=normalized_range,
             cached=False,
+        )
+        response = CanslimAnalysisResponse.model_validate(analysis)
+        repositories.upsert_canslim_cache_entry(
+            db,
+            cache_key=cache_key,
+            provider="fmp",
+            payload_json=dumps_analysis_payload(response.model_dump(by_alias=True)),
+            fetched_at=now_iso(),
+            expires_at=cache_expiry_iso(1),
         )
     except ValueError as exc:
         raise HTTPException(
@@ -75,4 +102,4 @@ async def get_canslim_analysis(
             detail=_safe_http_error_detail(exc),
         ) from exc
 
-    return CanslimAnalysisResponse.model_validate(analysis)
+    return response

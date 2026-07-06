@@ -1,7 +1,8 @@
+import json
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -118,6 +119,35 @@ def normalize_symbol(symbol: str) -> str:
     if not normalized_symbol:
         raise ValueError("종목 심볼을 입력해 주세요.")
     return normalized_symbol
+
+
+def canslim_analysis_cache_key(symbol: str, market_range: str) -> str:
+    return f"fmp:analysis:{normalize_symbol(symbol)}:{market_range}"
+
+
+def cache_expiry_iso(hours: int) -> str:
+    return (datetime.now(UTC) + timedelta(hours=hours)).isoformat(timespec="seconds")
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def cached_payload_is_fresh(row: Any) -> bool:
+    expires_at = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
+    return datetime.now(UTC) < expires_at
+
+
+def dumps_analysis_payload(payload: dict[str, object]) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def loads_analysis_payload(payload_json: str) -> dict[str, object]:
+    payload = json.loads(payload_json)
+    if not isinstance(payload, dict):
+        raise ValueError("CAN SLIM 캐시 payload가 객체가 아닙니다.")
+    payload["cached"] = True
+    return payload
 
 
 def build_canslim_analysis(

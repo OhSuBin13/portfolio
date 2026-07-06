@@ -1,8 +1,12 @@
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from portfolio_app import repositories
 from portfolio_app.config import Settings
+from portfolio_app.db import connect
 from portfolio_app.main import create_app
 from portfolio_app.services.canslim import FmpCanslimProvider
 
@@ -284,6 +288,132 @@ def test_canslim_analysis_returns_us_stock_analysis(tmp_path, httpx_mock):
     assert body["letters"]["m"]["status"] == "info"
     assert body["letters"]["m"]["symbol"] == "SPY"
     assert body["letters"]["m"]["range"] == "6m"
+
+
+def test_canslim_analysis_uses_cached_payload(tmp_path):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+    _insert_cached_canslim_payload(client, company_name="Cached NVIDIA")
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["company_name"] == "Cached NVIDIA"
+    assert body["cached"] is True
+
+
+def test_canslim_analysis_refresh_bypasses_cache(tmp_path, httpx_mock):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+    _insert_cached_canslim_payload(client, company_name="Cached NVIDIA")
+    client.app.state.canslim_today = lambda: "2026-07-06"
+    _add_canslim_api_success_responses(httpx_mock)
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA&refresh=true")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["company_name"] == "NVIDIA Corporation"
+    assert body["cached"] is False
+
+    db = connect(client.app.state.settings.database_path)
+    try:
+        row = repositories.fetch_canslim_cache_entry(db, cache_key="fmp:analysis:NVDA:6m")
+    finally:
+        db.close()
+    assert row is not None
+    cached_body = json.loads(row["payload_json"])
+    assert cached_body["company_name"] == "NVIDIA Corporation"
+    assert cached_body["cached"] is False
+
+
+def _insert_cached_canslim_payload(
+    client: TestClient,
+    *,
+    company_name: str,
+) -> None:
+    db = connect(client.app.state.settings.database_path)
+    try:
+        repositories.upsert_canslim_cache_entry(
+            db,
+            cache_key="fmp:analysis:NVDA:6m",
+            provider="fmp",
+            payload_json=json.dumps(_cached_canslim_payload(company_name), ensure_ascii=False),
+            fetched_at="2026-07-06T00:00:00+00:00",
+            expires_at="2099-01-01T00:00:00+00:00",
+        )
+    finally:
+        db.close()
+
+
+def _cached_canslim_payload(company_name: str) -> dict[str, object]:
+    letter = {
+        "status": "pass",
+        "headline": "Cached signal",
+        "details": ["Stored analysis"],
+        "metrics": {"score": 1},
+        "source": "cache-fixture",
+        "as_of": "2026-07-06",
+    }
+    return {
+        "symbol": "NVDA",
+        "company_name": company_name,
+        "exchange": "NASDAQ",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "description": "Cached CAN SLIM analysis.",
+        "currency": "USD",
+        "provider": "fmp",
+        "generated_at": "2026-07-06",
+        "cached": False,
+        "letters": {
+            "c": letter,
+            "a": letter,
+            "n": letter,
+            "s": letter,
+            "l": letter,
+            "i": {
+                **letter,
+                "institutional_flow": {
+                    "holders_count_change": 1.0,
+                    "shares_change_percent": 0.08,
+                    "ownership_percent": 0.57,
+                    "market_value_change_percent": 0.11,
+                },
+                "top_performing_holders": [
+                    {
+                        "holder_name": "Cached Holder",
+                        "cik": "0000000001",
+                        "shares": 1000.0,
+                        "market_value": 150000.0,
+                        "position_change_percent": 0.2,
+                        "portfolio_weight_percent": 0.04,
+                        "performance_1y_percent": 0.32,
+                        "performance_3y_percent": 0.85,
+                        "performance_5y_percent": 1.6,
+                        "excess_vs_sp500_percent": 0.21,
+                    }
+                ],
+            },
+            "m": {
+                "status": "info",
+                "symbol": "SPY",
+                "range": "6m",
+                "candles": [
+                    {
+                        "date": "2026-07-02",
+                        "open": 620.0,
+                        "high": 625.0,
+                        "low": 618.0,
+                        "close": 624.0,
+                        "volume": 60000000.0,
+                        "traded_value_usd": 37440000000.0,
+                    }
+                ],
+                "source": "cache-fixture",
+                "as_of": "2026-07-02",
+            },
+        },
+    }
 
 
 def _add_canslim_api_success_responses(httpx_mock) -> None:
