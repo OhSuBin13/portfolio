@@ -1,6 +1,9 @@
 import pytest
 
+from portfolio_app import repositories
 from portfolio_app.config import Settings
+from portfolio_app.db import connect
+from portfolio_app.migrations import migrate
 from portfolio_app.services import canslim as canslim_service
 from portfolio_app.services.canslim import (
     FmpCanslimBundle,
@@ -1026,3 +1029,50 @@ def _spy_price_rows(
             traded_value_usd=200_000_000_000,
         ),
     ]
+
+
+def test_canslim_cache_repository_round_trips_payload(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    repositories.upsert_canslim_cache_entry(
+        db,
+        cache_key="fmp:analysis:NVDA:6m",
+        provider="fmp",
+        payload_json='{"symbol":"NVDA"}',
+        fetched_at="2026-07-06T00:00:00+00:00",
+        expires_at="2026-07-07T00:00:00+00:00",
+    )
+
+    row = repositories.fetch_canslim_cache_entry(db, cache_key="fmp:analysis:NVDA:6m")
+
+    assert row is not None
+    assert row["provider"] == "fmp"
+    assert row["payload_json"] == '{"symbol":"NVDA"}'
+
+
+def test_canslim_cache_repository_refresh_replaces_payload(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    repositories.upsert_canslim_cache_entry(
+        db,
+        cache_key="fmp:analysis:NVDA:6m",
+        provider="fmp",
+        payload_json='{"old":true}',
+        fetched_at="2026-07-06T00:00:00+00:00",
+        expires_at="2026-07-07T00:00:00+00:00",
+    )
+    repositories.upsert_canslim_cache_entry(
+        db,
+        cache_key="fmp:analysis:NVDA:6m",
+        provider="fmp",
+        payload_json='{"old":false}',
+        fetched_at="2026-07-06T01:00:00+00:00",
+        expires_at="2026-07-07T01:00:00+00:00",
+    )
+
+    row = repositories.fetch_canslim_cache_entry(db, cache_key="fmp:analysis:NVDA:6m")
+
+    assert row["payload_json"] == '{"old":false}'
+    assert row["fetched_at"] == "2026-07-06T01:00:00+00:00"

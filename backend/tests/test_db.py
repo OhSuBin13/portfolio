@@ -17,6 +17,7 @@ TOSS_ONLY_TABLES = {
     "chart_marker_memos",
     "growth_month_history",
     "sp500_proxy_prices",
+    "canslim_cache_entries",
 }
 TOSS_ORDER_INDEXES = {
     "idx_toss_orders_account_ordered_at",
@@ -198,6 +199,67 @@ def create_v11_toss_order_history_tables(db: sqlite3.Connection) -> None:
 
         create index idx_toss_orders_account_symbol
         on toss_orders(account_seq, symbol, ordered_at desc, id desc);
+        """
+    )
+
+
+def create_v15_chart_marker_memos_table(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        create table chart_marker_memos (
+          id integer primary key,
+          account_seq text not null,
+          symbol text not null,
+          marker_key text not null,
+          memo text not null default '',
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp,
+          unique(account_seq, symbol, marker_key)
+        );
+
+        create index idx_chart_marker_memos_account_symbol
+        on chart_marker_memos(account_seq, symbol, marker_key);
+        """
+    )
+
+
+def create_v15_growth_month_history_table(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        create table growth_month_history (
+          id integer primary key,
+          account_seq text not null,
+          year integer not null check (year >= 2000 and year <= 2099),
+          month integer not null check (month >= 1 and month <= 12),
+          net_worth_krw real not null check (net_worth_krw >= 0),
+          monthly_dividend_krw real not null default 0 check (monthly_dividend_krw >= 0),
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp,
+          unique(account_seq, year, month)
+        );
+
+        create index idx_growth_month_history_account_period
+        on growth_month_history(account_seq, year, month);
+        """
+    )
+
+
+def create_v15_sp500_proxy_prices_table(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        create table sp500_proxy_prices (
+          id integer primary key,
+          year integer not null check (year >= 2000 and year <= 2099),
+          proxy_symbol text not null default 'VOO' check (proxy_symbol = 'VOO'),
+          price real not null check (price > 0),
+          currency text not null default 'USD' check (currency = 'USD'),
+          created_at text not null default current_timestamp,
+          updated_at text not null default current_timestamp,
+          unique(proxy_symbol, year)
+        );
+
+        create index idx_sp500_proxy_prices_symbol_year
+        on sp500_proxy_prices(proxy_symbol, year);
         """
     )
 
@@ -651,6 +713,17 @@ def assert_sp500_proxy_prices_contract(db: sqlite3.Connection) -> None:
         )
 
 
+def assert_canslim_cache_contract(db: sqlite3.Connection) -> None:
+    assert "canslim_cache_entries" in table_names(db)
+    assert column_names(db, "canslim_cache_entries") == {
+        "cache_key",
+        "provider",
+        "payload_json",
+        "fetched_at",
+        "expires_at",
+    }
+
+
 def assert_seeded_sp500_proxy_prices(db: sqlite3.Connection) -> None:
     rows = db.execute(
         """
@@ -668,7 +741,7 @@ def test_migrate_creates_toss_only_schema(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert_toss_only_schema(db)
 
 
@@ -677,7 +750,7 @@ def test_migrate_creates_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert {
         "toss_order_import_runs",
         "toss_orders",
@@ -690,7 +763,7 @@ def test_migrate_creates_chart_marker_memos_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert "chart_marker_memos" in table_names(db)
     assert column_names(db, "chart_marker_memos") == {
         "id",
@@ -715,7 +788,7 @@ def test_growth_month_history_contract_in_fresh_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert_growth_month_history_contract(db)
 
 
@@ -723,9 +796,17 @@ def test_sp500_proxy_prices_contract_in_fresh_schema(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
+
+
+def test_canslim_cache_contract_in_fresh_schema(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    migrate(db)
+
+    assert migration_versions(db) == [16]
+    assert_canslim_cache_contract(db)
 
 
 def test_growth_month_history_repository_helpers_upsert_and_fetch(tmp_path):
@@ -922,7 +1003,7 @@ def test_migrate_from_v9_drops_local_ledger_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [9, 10, 11, 12, 13, 14, 15]
+    assert migration_versions(db) == [9, 10, 11, 12, 13, 14, 15, 16]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
     assert db.execute("select count(*) from goals").fetchone()[0] == 1
@@ -938,7 +1019,7 @@ def test_migrate_from_v10_adds_toss_order_history_tables(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [10, 11, 12, 13, 14, 15]
+    assert migration_versions(db) == [10, 11, 12, 13, 14, 15, 16]
     assert {
         "toss_order_import_runs",
         "toss_orders",
@@ -967,7 +1048,7 @@ def test_migrate_from_v11_adds_growth_month_history_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [11, 12, 13, 14, 15]
+    assert migration_versions(db) == [11, 12, 13, 14, 15, 16]
     assert_growth_month_history_contract(db)
 
 
@@ -1001,7 +1082,7 @@ def test_migrate_from_v12_adds_sp500_proxy_prices_table(tmp_path):
 
     migrate(db)
 
-    assert migration_versions(db) == [12, 13, 14, 15]
+    assert migration_versions(db) == [12, 13, 14, 15, 16]
     assert_sp500_proxy_prices_contract(db)
     assert_seeded_sp500_proxy_prices(db)
 
@@ -1059,7 +1140,7 @@ def test_migrate_from_v13_seeds_sp500_proxy_prices_without_overwriting_existing_
 
     migrate(db)
 
-    assert migration_versions(db) == [13, 14, 15]
+    assert migration_versions(db) == [13, 14, 15, 16]
     assert [(row["year"], row["price"]) for row in db.execute(
         """
         select year, price
@@ -1074,6 +1155,22 @@ def test_migrate_from_v13_seeds_sp500_proxy_prices_without_overwriting_existing_
         (2024, 538.81),
         (2025, 700.0),
     ]
+
+
+def test_migrate_from_v15_adds_canslim_cache_entries(tmp_path):
+    db = connect(tmp_path / "portfolio.sqlite")
+    create_schema_migrations(db, 15)
+    create_toss_only_survivor_tables(db)
+    create_v11_toss_order_history_tables(db)
+    create_v15_chart_marker_memos_table(db)
+    create_v15_growth_month_history_table(db)
+    create_v15_sp500_proxy_prices_table(db)
+    db.commit()
+
+    migrate(db)
+
+    assert migration_versions(db) == [15, 16]
+    assert_canslim_cache_contract(db)
 
 
 def test_migrate_from_v10_rolls_back_partial_v11_schema_when_schema_application_fails(
@@ -1162,7 +1259,7 @@ def test_migrate_upgrades_version_7_database_to_v11_and_preserves_goals(tmp_path
     migrate(db)
 
     row = db.execute("select * from goals where id = 42").fetchone()
-    assert migration_versions(db) == [7, 8, 9, 10, 11, 12, 13, 14, 15]
+    assert migration_versions(db) == [7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     assert_toss_only_schema(db)
     assert row["target_amount_krw"] == 100_000_000
     with pytest.raises(sqlite3.IntegrityError):
@@ -1234,7 +1331,7 @@ def test_migrate_upgrades_version_4_database_to_v11_and_removes_local_tables(tmp
 
     migrate(db)
 
-    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    assert migration_versions(db) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     assert_toss_only_schema(db)
 
 
@@ -1303,6 +1400,7 @@ def test_migrate_upgrades_version_1_database_to_v11_and_removes_local_tables(tmp
         13,
         14,
         15,
+        16,
     ]
     assert_toss_only_schema(db)
     assert db.execute("select count(*) from fx_rates").fetchone()[0] == 1
@@ -1322,7 +1420,7 @@ def test_migrate_is_idempotent(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
     assert_toss_only_schema(db)
 
 
@@ -1332,12 +1430,12 @@ def test_migrate_supports_plain_sqlite_connections(tmp_path):
     migrate(db)
     migrate(db)
 
-    assert migration_versions(db) == [15]
+    assert migration_versions(db) == [16]
 
 
 def test_migrate_rejects_newer_schema_version(tmp_path):
     db = connect(tmp_path / "portfolio.sqlite")
-    create_schema_migrations(db, 16)
+    create_schema_migrations(db, 17)
     db.commit()
 
     with pytest.raises(RuntimeError, match="newer"):

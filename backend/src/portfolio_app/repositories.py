@@ -1039,3 +1039,50 @@ def delete_chart_marker_memo(
         (account_seq, symbol, marker_key),
     )
     db.commit()
+
+
+def fetch_canslim_cache_entry(
+    db: sqlite3.Connection,
+    *,
+    cache_key: str,
+) -> sqlite3.Row | None:
+    return db.execute(
+        """
+        select *
+        from canslim_cache_entries
+        where cache_key = ?
+        """,
+        (cache_key,),
+    ).fetchone()
+
+
+def upsert_canslim_cache_entry(
+    db: sqlite3.Connection,
+    *,
+    cache_key: str,
+    provider: str,
+    payload_json: str,
+    fetched_at: str,
+    expires_at: str,
+    commit: bool = True,
+) -> sqlite3.Row:
+    db.execute(
+        """
+        insert into canslim_cache_entries(
+            cache_key, provider, payload_json, fetched_at, expires_at
+        )
+        values (?, ?, ?, ?, ?)
+        on conflict(cache_key)
+        do update set provider = excluded.provider,
+                      payload_json = excluded.payload_json,
+                      fetched_at = excluded.fetched_at,
+                      expires_at = excluded.expires_at
+        """,
+        (cache_key, provider, payload_json, fetched_at, expires_at),
+    )
+    if commit:
+        db.commit()
+    row = fetch_canslim_cache_entry(db, cache_key=cache_key)
+    if row is None:
+        raise RuntimeError("저장된 CAN SLIM 캐시를 찾을 수 없습니다.")
+    return row
