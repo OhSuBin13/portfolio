@@ -11,6 +11,7 @@ from portfolio_app.services.canslim import (
     FmpCompanyProfile,
     FmpFloatData,
     FmpIncomeRow,
+    FmpPeerPriceReturn,
     FmpPositionsSummary,
     FmpPriceRow,
     FmpProviderError,
@@ -164,6 +165,7 @@ async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock, peers_payl
         url="https://financialmodelingprep.com/stable/stock-peers?symbol=NVDA&apikey=fmp-key",
         json=peers_payload,
     )
+    _add_peer_price_responses(httpx_mock)
     httpx_mock.add_response(
         method="GET",
         url=(
@@ -237,6 +239,10 @@ async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock, peers_payl
     assert bundle.spy_prices[0].traded_value_usd == 37_350_000_000.0
     assert bundle.float_data.float_shares == 22_000_000_000
     assert bundle.peers == ["AMD", "AVGO"]
+    assert bundle.peer_price_returns == [
+        FmpPeerPriceReturn(symbol="AMD", return_percent=10.0),
+        FmpPeerPriceReturn(symbol="AVGO", return_percent=30.0),
+    ]
     assert bundle.positions_summary is not None
     assert bundle.positions_summary.year == 2026
     assert bundle.positions_summary.quarter == 1
@@ -464,6 +470,42 @@ def test_build_canslim_analysis_classifies_leader_statuses(
 
     assert analysis["letters"]["l"]["status"] == expected_status
     assert analysis["letters"]["l"]["metrics"]["peer_count"] == 2
+
+
+def test_build_canslim_analysis_calculates_peer_rank_percentile():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            prices=_price_rows(latest_close=130.0, oldest_close=100.0),
+            spy_prices=_spy_price_rows(latest_close=105.0, oldest_close=100.0),
+            peer_price_returns=[
+                FmpPeerPriceReturn(symbol="AMD", return_percent=10.0),
+                FmpPeerPriceReturn(symbol="AVGO", return_percent=20.0),
+            ],
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["l"]["status"] == "pass"
+    assert analysis["letters"]["l"]["metrics"]["peer_rank_percentile"] == 100.0
+
+
+def test_build_canslim_analysis_limits_l_to_watch_when_peer_rank_is_not_leader():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            prices=_price_rows(latest_close=130.0, oldest_close=100.0),
+            spy_prices=_spy_price_rows(latest_close=105.0, oldest_close=100.0),
+            peer_price_returns=[
+                FmpPeerPriceReturn(symbol="AMD", return_percent=40.0),
+                FmpPeerPriceReturn(symbol="AVGO", return_percent=50.0),
+            ],
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["l"]["status"] == "watch"
+    assert analysis["letters"]["l"]["metrics"]["peer_rank_percentile"] == 33.33
 
 
 def test_build_canslim_analysis_passes_leader_when_stock_strongly_outperforms_spy():
@@ -944,6 +986,43 @@ def _add_required_fmp_bundle_responses(httpx_mock) -> None:
         url="https://financialmodelingprep.com/stable/stock-peers?symbol=NVDA&apikey=fmp-key",
         json=["AMD", "AVGO"],
     )
+    _add_peer_price_responses(httpx_mock)
+
+
+def _add_peer_price_responses(httpx_mock) -> None:
+    for symbol, latest_close, oldest_close in [
+        ("AMD", 110, 100),
+        ("AVGO", 130, 100),
+    ]:
+        httpx_mock.add_response(
+            method="GET",
+            url=(
+                "https://financialmodelingprep.com/stable/historical-price-eod/full"
+                f"?symbol={symbol}&from=2026-01-06&to=2026-07-06&apikey=fmp-key"
+            ),
+            json=[
+                {
+                    "symbol": symbol,
+                    "date": "2026-07-02",
+                    "open": latest_close,
+                    "high": latest_close + 1,
+                    "low": latest_close - 1,
+                    "close": latest_close,
+                    "volume": 40_000_000,
+                    "vwap": latest_close,
+                },
+                {
+                    "symbol": symbol,
+                    "date": "2026-01-06",
+                    "open": oldest_close,
+                    "high": oldest_close + 1,
+                    "low": oldest_close - 1,
+                    "close": oldest_close,
+                    "volume": 30_000_000,
+                    "vwap": oldest_close,
+                },
+            ],
+        )
 
 
 def _add_positions_summary_response(httpx_mock) -> None:
@@ -1000,6 +1079,7 @@ def _canslim_bundle(
     float_data: FmpFloatData | None = None,
     positions_summary: FmpPositionsSummary | None | object = _DEFAULT_POSITIONS_SUMMARY,
     top_holders: list[FmpTopHolder] | None = None,
+    peer_price_returns: list[FmpPeerPriceReturn] | None = None,
 ) -> FmpCanslimBundle:
     if positions_summary is _DEFAULT_POSITIONS_SUMMARY:
         positions_summary = FmpPositionsSummary(
@@ -1054,6 +1134,7 @@ def _canslim_bundle(
             outstanding_shares=24_000_000_000,
         ),
         peers=["AMD", "AVGO"],
+        peer_price_returns=peer_price_returns or [],
         positions_summary=(
             positions_summary if isinstance(positions_summary, FmpPositionsSummary) else None
         ),

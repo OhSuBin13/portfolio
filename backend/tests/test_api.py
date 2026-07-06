@@ -564,6 +564,7 @@ def _add_canslim_api_success_responses(httpx_mock) -> None:
         url="https://financialmodelingprep.com/stable/stock-peers?symbol=NVDA&apikey=fmp-key",
         json=["AMD", "AVGO"],
     )
+    _add_canslim_peer_price_responses(httpx_mock)
     httpx_mock.add_response(
         method="GET",
         url=(
@@ -617,6 +618,42 @@ def _add_canslim_api_success_responses(httpx_mock) -> None:
             }
         ],
     )
+
+
+def _add_canslim_peer_price_responses(httpx_mock) -> None:
+    for symbol, latest_close, oldest_close in [
+        ("AMD", 110, 100),
+        ("AVGO", 130, 100),
+    ]:
+        httpx_mock.add_response(
+            method="GET",
+            url=(
+                "https://financialmodelingprep.com/stable/historical-price-eod/full"
+                f"?symbol={symbol}&from=2026-01-06&to=2026-07-06&apikey=fmp-key"
+            ),
+            json=[
+                {
+                    "symbol": symbol,
+                    "date": "2026-07-02",
+                    "open": latest_close,
+                    "high": latest_close + 1,
+                    "low": latest_close - 1,
+                    "close": latest_close,
+                    "volume": 40_000_000,
+                    "vwap": latest_close,
+                },
+                {
+                    "symbol": symbol,
+                    "date": "2026-01-06",
+                    "open": oldest_close,
+                    "high": oldest_close + 1,
+                    "low": oldest_close - 1,
+                    "close": oldest_close,
+                    "volume": 30_000_000,
+                    "vwap": oldest_close,
+                },
+            ],
+        )
 
 
 def _canslim_price_rows() -> list[dict[str, object]]:

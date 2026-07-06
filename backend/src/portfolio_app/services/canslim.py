@@ -9,6 +9,7 @@ import httpx
 
 FMP_BASE_URL = "https://financialmodelingprep.com"
 FMP_TOP_HOLDER_LIMIT = 10
+FMP_PEER_RETURN_LIMIT = 10
 FMP_MARKET_RANGE_DAYS = {
     "3m": 90,
     "6m": 182,
@@ -47,6 +48,12 @@ class FmpPriceRow:
     volume: float | None
     vwap: float | None
     traded_value_usd: float | None
+
+
+@dataclass(frozen=True)
+class FmpPeerPriceReturn:
+    symbol: str
+    return_percent: float
 
 
 @dataclass
@@ -93,6 +100,7 @@ class FmpCanslimBundle:
     spy_prices: list[FmpPriceRow]
     float_data: FmpFloatData
     peers: list[str]
+    peer_price_returns: list[FmpPeerPriceReturn]
     positions_summary: FmpPositionsSummary | None
     top_holders: list[FmpTopHolder]
 
@@ -196,7 +204,12 @@ def build_canslim_analysis(
             "a": _build_a_letter(bundle.annual_income),
             "n": _build_n_letter(profile),
             "s": _build_s_letter(bundle.prices, bundle.float_data),
-            "l": _build_l_letter(bundle.prices, bundle.spy_prices, bundle.peers),
+            "l": _build_l_letter(
+                bundle.prices,
+                bundle.spy_prices,
+                bundle.peers,
+                bundle.peer_price_returns,
+            ),
             "i": _build_i_letter(bundle.positions_summary, bundle.top_holders),
             "m": _build_m_letter(bundle.spy_prices, market_range),
         },
@@ -282,6 +295,13 @@ class FmpCanslimProvider:
                 "/stable/stock-peers",
                 {"symbol": normalized_symbol, "apikey": self.api_key},
             )
+            peers = _parse_peers(peers_payload)
+            peer_price_returns = await self._fetch_peer_price_returns(
+                client,
+                peers,
+                from_date=market_from,
+                to_date=to_date,
+            )
             positions_payload = await self._optional_get_json(
                 client,
                 "/stable/institutional-ownership/symbol-positions-summary",
@@ -321,10 +341,41 @@ class FmpCanslimProvider:
             prices=_parse_price_rows(prices_payload, normalized_symbol),
             spy_prices=_parse_price_rows(spy_prices_payload, "SPY"),
             float_data=_parse_float_data(_first_item(float_payload), normalized_symbol),
-            peers=_parse_peers(peers_payload),
+            peers=peers,
+            peer_price_returns=peer_price_returns,
             positions_summary=positions_summary,
             top_holders=top_holders,
         )
+
+    async def _fetch_peer_price_returns(
+        self,
+        client: httpx.AsyncClient,
+        peers: list[str],
+        *,
+        from_date: str,
+        to_date: str,
+    ) -> list[FmpPeerPriceReturn]:
+        peer_returns: list[FmpPeerPriceReturn] = []
+        for peer in peers[:FMP_PEER_RETURN_LIMIT]:
+            payload = await self._optional_get_json(
+                client,
+                "/stable/historical-price-eod/full",
+                {
+                    "symbol": peer,
+                    "from": from_date,
+                    "to": to_date,
+                    "apikey": self.api_key,
+                },
+            )
+            if payload is None:
+                continue
+            price_return = _period_return_percent(_parse_price_rows(payload, peer))
+            if price_return is None:
+                continue
+            peer_returns.append(
+                FmpPeerPriceReturn(symbol=peer, return_percent=_rounded(price_return))
+            )
+        return peer_returns
 
     async def _parse_top_holders(
         self,
@@ -549,6 +600,7 @@ def _build_l_letter(
     prices: list[FmpPriceRow],
     spy_prices: list[FmpPriceRow],
     peers: list[str],
+    peer_price_returns: list[FmpPeerPriceReturn],
 ) -> dict[str, object]:
     comparable_prices = _prices_for_market_period(prices, spy_prices)
     stock_return = _period_return_percent(comparable_prices)
@@ -565,7 +617,9 @@ def _build_l_letter(
         )
 
     excess_return = stock_return - spy_return
-    if excess_return >= 20:
+    peer_rank_percentile = _peer_rank_percentile(stock_return, peer_price_returns)
+    peer_leader = peer_rank_percentile is None or peer_rank_percentile >= 80
+    if excess_return >= 20 and peer_leader:
         status = "pass"
     elif excess_return >= 0:
         status = "watch"
@@ -581,7 +635,7 @@ def _build_l_letter(
             "spy_period_return_percent": _rounded(spy_return),
             "excess_return_percent": _rounded(excess_return),
             "peer_count": len(peers),
-            "peer_rank_percentile": None,
+            "peer_rank_percentile": peer_rank_percentile,
         },
         as_of=comparable_prices[0].date if comparable_prices else None,
     )
@@ -733,6 +787,20 @@ def _positions_summary_is_empty(positions_summary: FmpPositionsSummary) -> bool:
             positions_summary.market_value_change,
         )
     )
+
+
+def _peer_rank_percentile(
+    stock_return: float,
+    peer_price_returns: list[FmpPeerPriceReturn],
+) -> float | None:
+    if not peer_price_returns:
+        return None
+
+    lower_or_equal_count = 1 + sum(
+        1 for peer_return in peer_price_returns if peer_return.return_percent <= stock_return
+    )
+    total_count = len(peer_price_returns) + 1
+    return _rounded((lower_or_equal_count / total_count) * 100)
 
 
 def _has_holder_support(holder: FmpTopHolder) -> bool:
