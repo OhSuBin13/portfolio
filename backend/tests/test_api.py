@@ -197,6 +197,15 @@ def test_canslim_analysis_requires_fmp_key(tmp_path):
     assert response.json()["detail"] == "FMP API 키를 설정해 주세요."
 
 
+def test_canslim_analysis_rejects_empty_symbol(tmp_path):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+
+    response = client.get("/api/canslim/analysis?symbol=")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "종목 심볼을 입력해 주세요."
+
+
 def test_canslim_analysis_rejects_blank_symbol(tmp_path):
     client = create_test_client(tmp_path, fmp_api_key="fmp-key")
 
@@ -230,6 +239,8 @@ def test_canslim_analysis_returns_us_stock_analysis(tmp_path, httpx_mock):
     assert body["provider"] == "fmp"
     assert body["letters"]["c"]["status"] == "pass"
     assert body["letters"]["c"]["headline"]
+    assert "l" in body["letters"]
+    assert "leader" not in body["letters"]
     assert body["letters"]["i"]["institutional_flow"]["shares_change_percent"] == 0.08
     assert body["letters"]["i"]["top_performing_holders"][0]["holder_name"] == (
         "High Quality Capital"
