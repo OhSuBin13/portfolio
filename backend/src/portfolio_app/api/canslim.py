@@ -20,6 +20,14 @@ SymbolQuery = Annotated[str, Query(min_length=1)]
 SUPPORTED_MARKET_RANGES = {"3m", "6m", "1y"}
 
 
+def _safe_http_error_detail(exc: httpx.HTTPError) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        reason = response.reason_phrase or "Unknown"
+        return f"FMP 요청 실패: HTTP {response.status_code} {reason}"
+    return f"FMP 요청 실패: {exc.__class__.__name__}"
+
+
 @router.get("/analysis", response_model=CanslimAnalysisResponse)
 async def get_canslim_analysis(
     request: Request,
@@ -56,10 +64,15 @@ async def get_canslim_analysis(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    except (FmpProviderError, httpx.HTTPError) as exc:
+    except FmpProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=_safe_http_error_detail(exc),
         ) from exc
 
     return CanslimAnalysisResponse.model_validate(analysis)

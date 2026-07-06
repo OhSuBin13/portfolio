@@ -1,8 +1,10 @@
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
 from portfolio_app.main import create_app
+from portfolio_app.services.canslim import FmpCanslimProvider
 
 LOCAL_FRONTEND_ORIGIN = "http://127.0.0.1:5173"
 
@@ -222,6 +224,40 @@ def test_canslim_analysis_rejects_bad_market_range(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "시장 컨텍스트 기간은 3m, 6m, 1y 중 하나여야 합니다."
+
+
+def test_canslim_analysis_sanitizes_raw_http_error(tmp_path, monkeypatch):
+    async def raise_raw_http_error(
+        _provider: FmpCanslimProvider,
+        _symbol: str,
+        *,
+        market_range: str = "6m",
+    ) -> None:
+        request = httpx.Request(
+            "GET",
+            "https://financialmodelingprep.com/stable/profile?symbol=NVDA&apikey=secret-key",
+        )
+        response = httpx.Response(status_code=403, request=request)
+        raise httpx.HTTPStatusError(
+            (
+                "Client error '403 Forbidden' for url "
+                "'https://financialmodelingprep.com/stable/profile?symbol=NVDA"
+                "&apikey=secret-key'"
+            ),
+            request=request,
+            response=response,
+        )
+
+    monkeypatch.setattr(FmpCanslimProvider, "fetch_bundle", raise_raw_http_error)
+    client = create_test_client(tmp_path, fmp_api_key="secret-key")
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA")
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "secret-key" not in detail
+    assert "apikey" not in detail
+    assert detail == "FMP 요청 실패: HTTP 403 Forbidden"
 
 
 def test_canslim_analysis_returns_us_stock_analysis(tmp_path, httpx_mock):
