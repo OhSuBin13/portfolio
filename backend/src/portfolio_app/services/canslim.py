@@ -96,6 +96,13 @@ class FmpCanslimBundle:
     top_holders: list[FmpTopHolder]
 
 
+@dataclass(frozen=True)
+class Fmp13fPeriod:
+    year: int
+    quarter: int
+    date: str
+
+
 class FmpProviderError(RuntimeError):
     pass
 
@@ -131,6 +138,7 @@ class FmpCanslimProvider:
         stock_from = (today - timedelta(days=365)).isoformat()
         market_from = (today - timedelta(days=_market_range_days(market_range) - 1)).isoformat()
         to_date = today.isoformat()
+        period_13f = _latest_filed_13f_period(today)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             profile_payload = await self._get_json(
@@ -185,18 +193,28 @@ class FmpCanslimProvider:
             )
             peers_payload = await self._get_json(
                 client,
-                "/stable/peers",
+                "/stable/stock-peers",
                 {"symbol": normalized_symbol, "apikey": self.api_key},
             )
             positions_payload = await self._get_json(
                 client,
                 "/stable/institutional-ownership/symbol-positions-summary",
-                {"symbol": normalized_symbol, "apikey": self.api_key},
+                {
+                    "symbol": normalized_symbol,
+                    "year": period_13f.year,
+                    "quarter": period_13f.quarter,
+                    "apikey": self.api_key,
+                },
             )
             holders_payload = await self._get_json(
                 client,
                 "/api/v4/institutional-ownership/institutional-holders/symbol-ownership",
-                {"page": 0, "symbol": normalized_symbol, "apikey": self.api_key},
+                {
+                    "page": 0,
+                    "date": period_13f.date,
+                    "symbol": normalized_symbol,
+                    "apikey": self.api_key,
+                },
             )
             top_holders = await self._parse_top_holders(client, holders_payload)
 
@@ -263,6 +281,30 @@ def _market_range_days(market_range: str) -> int:
         return FMP_MARKET_RANGE_DAYS[normalized_range]
     except KeyError as exc:
         raise ValueError("지원하지 않는 시장 범위입니다.") from exc
+
+
+def _latest_filed_13f_period(today: date) -> Fmp13fPeriod:
+    filed_as_of = today - timedelta(days=45)
+    quarter_ends = [
+        (1, date(filed_as_of.year, 3, 31)),
+        (2, date(filed_as_of.year, 6, 30)),
+        (3, date(filed_as_of.year, 9, 30)),
+        (4, date(filed_as_of.year, 12, 31)),
+    ]
+    for quarter, quarter_end in reversed(quarter_ends):
+        if filed_as_of >= quarter_end:
+            return Fmp13fPeriod(
+                year=quarter_end.year,
+                quarter=quarter,
+                date=quarter_end.isoformat(),
+            )
+
+    previous_year_end = date(filed_as_of.year - 1, 12, 31)
+    return Fmp13fPeriod(
+        year=previous_year_end.year,
+        quarter=4,
+        date=previous_year_end.isoformat(),
+    )
 
 
 def _safe_http_error_message(exc: httpx.HTTPError) -> str:
@@ -346,8 +388,16 @@ def _parse_float_data(item: dict[str, Any] | None, fallback_symbol: str) -> FmpF
 
 def _parse_peers(payload: Any) -> list[str]:
     peers: list[str] = []
-    for item in _items(payload):
-        peer = _optional_text(item.get("symbol"))
+    if not isinstance(payload, list):
+        return peers
+
+    for item in payload:
+        if isinstance(item, dict):
+            peer = _optional_text(item.get("symbol"))
+        elif isinstance(item, str):
+            peer = _optional_text(item)
+        else:
+            peer = None
         if peer is not None:
             peers.append(peer.upper())
     return peers

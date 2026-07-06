@@ -8,14 +8,16 @@ from portfolio_app.services.canslim import (
 )
 
 
-def test_settings_include_fmp_api_key():
-    assert Settings().fmp_api_key == ""
+def test_settings_include_fmp_api_key(monkeypatch):
+    monkeypatch.delenv("PORTFOLIO_FMP_API_KEY", raising=False)
+
+    assert Settings(_env_file=None).fmp_api_key == ""
 
 
 def test_settings_reads_fmp_api_key_from_env(monkeypatch):
     monkeypatch.setenv("PORTFOLIO_FMP_API_KEY", "env-fmp-key")
 
-    assert Settings().fmp_api_key == "env-fmp-key"
+    assert Settings(_env_file=None).fmp_api_key == "env-fmp-key"
 
 
 @pytest.mark.asyncio
@@ -37,7 +39,14 @@ def test_normalize_symbol_rejects_blank(symbol):
 
 
 @pytest.mark.asyncio
-async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock):
+@pytest.mark.parametrize(
+    "peers_payload",
+    [
+        [{"symbol": "AMD"}, {"symbol": "AVGO"}],
+        ["AMD", "AVGO"],
+    ],
+)
+async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock, peers_payload):
     httpx_mock.add_response(
         method="GET",
         url="https://financialmodelingprep.com/stable/profile?symbol=NVDA&apikey=fmp-key",
@@ -138,14 +147,14 @@ async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock):
     )
     httpx_mock.add_response(
         method="GET",
-        url="https://financialmodelingprep.com/stable/peers?symbol=NVDA&apikey=fmp-key",
-        json=[{"symbol": "AMD"}, {"symbol": "AVGO"}],
+        url="https://financialmodelingprep.com/stable/stock-peers?symbol=NVDA&apikey=fmp-key",
+        json=peers_payload,
     )
     httpx_mock.add_response(
         method="GET",
         url=(
             "https://financialmodelingprep.com/stable/institutional-ownership/"
-            "symbol-positions-summary?symbol=NVDA&apikey=fmp-key"
+            "symbol-positions-summary?symbol=NVDA&year=2026&quarter=1&apikey=fmp-key"
         ),
         json=[
             {
@@ -165,7 +174,8 @@ async def test_fmp_provider_fetches_and_normalizes_bundle(httpx_mock):
         method="GET",
         url=(
             "https://financialmodelingprep.com/api/v4/institutional-ownership/"
-            "institutional-holders/symbol-ownership?page=0&symbol=NVDA&apikey=fmp-key"
+            "institutional-holders/symbol-ownership"
+            "?page=0&date=2026-03-31&symbol=NVDA&apikey=fmp-key"
         ),
         json=[
             {
