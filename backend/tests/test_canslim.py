@@ -388,9 +388,9 @@ def test_build_canslim_analysis_classifies_strong_stock():
     assert letters["i"]["status"] == "pass"
     assert letters["i"]["institutional_flow"] == {
         "holders_count_change": 100.0,
-        "shares_count_change": 0.08,
+        "shares_change_percent": 0.08,
         "ownership_percent": 0.57,
-        "market_value_change": 0.11,
+        "market_value_change_percent": 0.11,
     }
     assert letters["i"]["top_performing_holders"] == [
         {
@@ -572,7 +572,12 @@ def test_build_canslim_analysis_marks_missing_13f_data_unknown():
     )
 
     assert analysis["letters"]["i"]["status"] == "unknown"
-    assert analysis["letters"]["i"]["institutional_flow"] is None
+    assert analysis["letters"]["i"]["institutional_flow"] == {
+        "holders_count_change": None,
+        "shares_change_percent": None,
+        "ownership_percent": None,
+        "market_value_change_percent": None,
+    }
     assert analysis["letters"]["i"]["top_performing_holders"] == []
 
 

@@ -525,18 +525,13 @@ def _build_i_letter(
     if positions_summary is None:
         return {
             "status": "unknown",
-            "institutional_flow": None,
+            "institutional_flow": _institutional_flow(None),
             "top_performing_holders": [],
             "source": "fmp",
             "as_of": None,
         }
 
-    institutional_flow = {
-        "holders_count_change": positions_summary.holders_count_change,
-        "shares_count_change": positions_summary.shares_count_change,
-        "ownership_percent": positions_summary.ownership_percent,
-        "market_value_change": positions_summary.market_value_change,
-    }
+    institutional_flow = _institutional_flow(positions_summary)
     mapped_holders = [_map_top_holder(holder) for holder in top_holders]
     flow_positive = any(
         value is not None and value > 0
@@ -563,6 +558,25 @@ def _build_i_letter(
         "top_performing_holders": mapped_holders,
         "source": "fmp",
         "as_of": _positions_as_of(positions_summary),
+    }
+
+
+def _institutional_flow(
+    positions_summary: FmpPositionsSummary | None,
+) -> dict[str, float | None]:
+    return {
+        "holders_count_change": (
+            positions_summary.holders_count_change if positions_summary is not None else None
+        ),
+        "shares_change_percent": (
+            positions_summary.shares_count_change if positions_summary is not None else None
+        ),
+        "ownership_percent": (
+            positions_summary.ownership_percent if positions_summary is not None else None
+        ),
+        "market_value_change_percent": (
+            positions_summary.market_value_change if positions_summary is not None else None
+        ),
     }
 
 
