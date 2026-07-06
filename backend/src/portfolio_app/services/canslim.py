@@ -142,10 +142,30 @@ def dumps_analysis_payload(payload: dict[str, object]) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def loads_analysis_payload(payload_json: str) -> dict[str, object]:
+def loads_analysis_payload(
+    payload_json: str,
+    *,
+    market_range: str,
+    symbol: str,
+) -> dict[str, object]:
     payload = json.loads(payload_json)
     if not isinstance(payload, dict):
         raise ValueError("CAN SLIM 캐시 payload가 객체가 아닙니다.")
+    if payload.get("symbol") != normalize_symbol(symbol):
+        raise ValueError("CAN SLIM 캐시 심볼이 요청 심볼과 다릅니다.")
+    if payload.get("provider") != "fmp":
+        raise ValueError("CAN SLIM 캐시 provider가 FMP가 아닙니다.")
+
+    letters = payload.get("letters")
+    if not isinstance(letters, dict):
+        raise ValueError("CAN SLIM 캐시 letters가 객체가 아닙니다.")
+
+    market_context = letters.get("m")
+    if not isinstance(market_context, dict):
+        raise ValueError("CAN SLIM 캐시 시장 컨텍스트가 객체가 아닙니다.")
+    if market_context.get("range") != market_range:
+        raise ValueError("CAN SLIM 캐시 시장 기간이 요청 기간과 다릅니다.")
+
     payload["cached"] = True
     return payload
 

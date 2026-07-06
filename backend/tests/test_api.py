@@ -302,6 +302,44 @@ def test_canslim_analysis_uses_cached_payload(tmp_path):
     assert body["cached"] is True
 
 
+def test_canslim_analysis_ignores_cached_payload_for_wrong_symbol(tmp_path, httpx_mock):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+    _insert_cached_canslim_payload(
+        client,
+        company_name="Cached Apple",
+        payload_symbol="AAPL",
+    )
+    client.app.state.canslim_today = lambda: "2026-07-06"
+    _add_canslim_api_success_responses(httpx_mock)
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbol"] == "NVDA"
+    assert body["company_name"] == "NVIDIA Corporation"
+    assert body["cached"] is False
+
+
+def test_canslim_analysis_ignores_cached_payload_for_wrong_market_range(tmp_path, httpx_mock):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+    _insert_cached_canslim_payload(
+        client,
+        company_name="Cached NVIDIA",
+        market_range="3m",
+    )
+    client.app.state.canslim_today = lambda: "2026-07-06"
+    _add_canslim_api_success_responses(httpx_mock)
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA&market_range=6m")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["company_name"] == "NVIDIA Corporation"
+    assert body["cached"] is False
+    assert body["letters"]["m"]["range"] == "6m"
+
+
 def test_canslim_analysis_refresh_bypasses_cache(tmp_path, httpx_mock):
     client = create_test_client(tmp_path, fmp_api_key="fmp-key")
     _insert_cached_canslim_payload(client, company_name="Cached NVIDIA")
@@ -330,6 +368,8 @@ def _insert_cached_canslim_payload(
     client: TestClient,
     *,
     company_name: str,
+    market_range: str = "6m",
+    payload_symbol: str = "NVDA",
 ) -> None:
     db = connect(client.app.state.settings.database_path)
     try:
@@ -337,7 +377,14 @@ def _insert_cached_canslim_payload(
             db,
             cache_key="fmp:analysis:NVDA:6m",
             provider="fmp",
-            payload_json=json.dumps(_cached_canslim_payload(company_name), ensure_ascii=False),
+            payload_json=json.dumps(
+                _cached_canslim_payload(
+                    company_name,
+                    market_range=market_range,
+                    symbol=payload_symbol,
+                ),
+                ensure_ascii=False,
+            ),
             fetched_at="2026-07-06T00:00:00+00:00",
             expires_at="2099-01-01T00:00:00+00:00",
         )
@@ -345,7 +392,12 @@ def _insert_cached_canslim_payload(
         db.close()
 
 
-def _cached_canslim_payload(company_name: str) -> dict[str, object]:
+def _cached_canslim_payload(
+    company_name: str,
+    *,
+    market_range: str = "6m",
+    symbol: str = "NVDA",
+) -> dict[str, object]:
     letter = {
         "status": "pass",
         "headline": "Cached signal",
@@ -355,7 +407,7 @@ def _cached_canslim_payload(company_name: str) -> dict[str, object]:
         "as_of": "2026-07-06",
     }
     return {
-        "symbol": "NVDA",
+        "symbol": symbol,
         "company_name": company_name,
         "exchange": "NASDAQ",
         "sector": "Technology",
@@ -397,7 +449,7 @@ def _cached_canslim_payload(company_name: str) -> dict[str, object]:
             "m": {
                 "status": "info",
                 "symbol": "SPY",
-                "range": "6m",
+                "range": market_range,
                 "candles": [
                     {
                         "date": "2026-07-02",

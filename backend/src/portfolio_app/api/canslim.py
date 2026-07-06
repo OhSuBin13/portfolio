@@ -59,7 +59,11 @@ async def get_canslim_analysis(
             try:
                 if cached_payload_is_fresh(cached_row):
                     return CanslimAnalysisResponse.model_validate(
-                        loads_analysis_payload(cached_row["payload_json"])
+                        loads_analysis_payload(
+                            cached_row["payload_json"],
+                            market_range=normalized_range,
+                            symbol=normalized_symbol,
+                        )
                     )
             except (KeyError, TypeError, ValueError, ValidationError):
                 pass
