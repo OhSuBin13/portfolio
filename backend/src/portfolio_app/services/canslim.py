@@ -135,7 +135,7 @@ def build_canslim_analysis(
         "sector": profile.sector,
         "industry": profile.industry,
         "description": profile.description,
-        "currency": profile.currency,
+        "currency": "USD",
         "provider": "fmp",
         "generated_at": date.today().isoformat(),
         "cached": cached,
@@ -330,8 +330,10 @@ def _build_c_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
     if len(rows) < 2:
         return _unknown_letter({"quarterly_eps_growth_percent": None})
 
-    latest_eps = rows[0].eps_diluted
-    prior_eps = rows[1].eps_diluted
+    latest = rows[0]
+    comparison = _comparison_quarterly_income_row(rows)
+    latest_eps = latest.eps_diluted
+    prior_eps = comparison.eps_diluted if comparison is not None else None
     if latest_eps is None or prior_eps is None or prior_eps == 0:
         return _unknown_letter({"quarterly_eps_growth_percent": None})
 
@@ -351,8 +353,19 @@ def _build_c_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
             "quarterly_eps_growth_percent": _rounded(growth),
         },
         "source": "fmp",
-        "as_of": rows[0].date,
+        "as_of": latest.date,
     }
+
+
+def _comparison_quarterly_income_row(rows: list[FmpIncomeRow]) -> FmpIncomeRow | None:
+    latest_period = rows[0].period
+    if latest_period is not None:
+        for row in rows[1:]:
+            if row.period == latest_period:
+                return row
+    if len(rows) >= 5:
+        return rows[4]
+    return rows[1] if len(rows) >= 2 else None
 
 
 def _build_a_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
@@ -407,7 +420,7 @@ def _build_n_letter(profile: FmpCompanyProfile) -> dict[str, object]:
 
 
 def _build_s_letter(prices: list[FmpPriceRow], float_data: FmpFloatData) -> dict[str, object]:
-    if len(prices) < 51 or float_data.float_shares is None:
+    if len(prices) < 51:
         return _unknown_letter(
             {
                 "latest_close": None,

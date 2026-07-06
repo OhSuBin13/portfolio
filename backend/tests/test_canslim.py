@@ -459,6 +459,77 @@ def test_build_canslim_analysis_marks_missing_eps_unknown():
     assert analysis["letters"]["a"]["status"] == "unknown"
 
 
+def test_build_canslim_analysis_normalizes_top_level_currency_to_usd():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(profile=_profile(currency="usd")),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["currency"] == "USD"
+
+
+def test_build_canslim_analysis_calculates_supply_without_float_data():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            float_data=FmpFloatData(
+                symbol="NVDA",
+                float_shares=None,
+                outstanding_shares=None,
+            )
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["s"]["status"] == "pass"
+    assert analysis["letters"]["s"]["metrics"]["float_shares"] is None
+    assert analysis["letters"]["s"]["metrics"]["outstanding_shares"] is None
+
+
+def test_build_canslim_analysis_compares_quarterly_eps_to_same_prior_year_period():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            quarterly_income=[
+                FmpIncomeRow(
+                    date="2026-04-30",
+                    period="Q1",
+                    calendar_year=2026,
+                    eps_diluted=1.25,
+                ),
+                FmpIncomeRow(
+                    date="2025-12-31",
+                    period="Q4",
+                    calendar_year=2025,
+                    eps_diluted=1.00,
+                ),
+                FmpIncomeRow(
+                    date="2025-09-30",
+                    period="Q3",
+                    calendar_year=2025,
+                    eps_diluted=0.90,
+                ),
+                FmpIncomeRow(
+                    date="2025-06-30",
+                    period="Q2",
+                    calendar_year=2025,
+                    eps_diluted=0.80,
+                ),
+                FmpIncomeRow(
+                    date="2025-04-30",
+                    period="Q1",
+                    calendar_year=2025,
+                    eps_diluted=0.50,
+                ),
+            ]
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["c"]["metrics"]["quarterly_eps_growth_percent"] == 150.0
+
+
 @pytest.mark.parametrize(
     "profile",
     [
@@ -652,6 +723,7 @@ def _canslim_bundle(
     annual_income: list[FmpIncomeRow] | None = None,
     prices: list[FmpPriceRow] | None = None,
     spy_prices: list[FmpPriceRow] | None = None,
+    float_data: FmpFloatData | None = None,
     positions_summary: FmpPositionsSummary | None | object = _DEFAULT_POSITIONS_SUMMARY,
     top_holders: list[FmpTopHolder] | None = None,
 ) -> FmpCanslimBundle:
@@ -701,7 +773,8 @@ def _canslim_bundle(
         ],
         prices=prices or _price_rows(),
         spy_prices=spy_prices or _spy_price_rows(),
-        float_data=FmpFloatData(
+        float_data=float_data
+        or FmpFloatData(
             symbol="NVDA",
             float_shares=22_000_000_000,
             outstanding_shares=24_000_000_000,
@@ -714,7 +787,7 @@ def _canslim_bundle(
     )
 
 
-def _profile() -> FmpCompanyProfile:
+def _profile(*, currency: str = "USD") -> FmpCompanyProfile:
     return FmpCompanyProfile(
         symbol="NVDA",
         company_name="NVIDIA Corporation",
@@ -722,7 +795,7 @@ def _profile() -> FmpCompanyProfile:
         sector="Technology",
         industry="Semiconductors",
         description="NVIDIA designs accelerated computing products.",
-        currency="USD",
+        currency=currency,
         is_etf=False,
     )
 
