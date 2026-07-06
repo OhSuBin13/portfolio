@@ -92,7 +92,7 @@ class FmpCanslimBundle:
     spy_prices: list[FmpPriceRow]
     float_data: FmpFloatData
     peers: list[str]
-    positions_summary: FmpPositionsSummary
+    positions_summary: FmpPositionsSummary | None
     top_holders: list[FmpTopHolder]
 
 
@@ -196,7 +196,7 @@ class FmpCanslimProvider:
                 "/stable/stock-peers",
                 {"symbol": normalized_symbol, "apikey": self.api_key},
             )
-            positions_payload = await self._get_json(
+            positions_payload = await self._optional_get_json(
                 client,
                 "/stable/institutional-ownership/symbol-positions-summary",
                 {
@@ -206,17 +206,25 @@ class FmpCanslimProvider:
                     "apikey": self.api_key,
                 },
             )
-            holders_payload = await self._get_json(
-                client,
-                "/api/v4/institutional-ownership/institutional-holders/symbol-ownership",
-                {
-                    "page": 0,
-                    "date": period_13f.date,
-                    "symbol": normalized_symbol,
-                    "apikey": self.api_key,
-                },
-            )
-            top_holders = await self._parse_top_holders(client, holders_payload)
+            positions_summary = None
+            top_holders: list[FmpTopHolder] = []
+            if positions_payload is not None:
+                positions_summary = _parse_positions_summary(
+                    _first_item(positions_payload),
+                    normalized_symbol,
+                )
+                holders_payload = await self._optional_get_json(
+                    client,
+                    "/api/v4/institutional-ownership/institutional-holders/symbol-ownership",
+                    {
+                        "page": 0,
+                        "date": period_13f.date,
+                        "symbol": normalized_symbol,
+                        "apikey": self.api_key,
+                    },
+                )
+                if holders_payload is not None:
+                    top_holders = await self._parse_top_holders(client, holders_payload)
 
         profile = _parse_profile(_first_item(profile_payload), normalized_symbol)
         return FmpCanslimBundle(
@@ -228,10 +236,7 @@ class FmpCanslimProvider:
             spy_prices=_parse_price_rows(spy_prices_payload, "SPY"),
             float_data=_parse_float_data(_first_item(float_payload), normalized_symbol),
             peers=_parse_peers(peers_payload),
-            positions_summary=_parse_positions_summary(
-                _first_item(positions_payload),
-                normalized_symbol,
-            ),
+            positions_summary=positions_summary,
             top_holders=top_holders,
         )
 
@@ -245,7 +250,7 @@ class FmpCanslimProvider:
             cik = _optional_text(item.get("cik"))
             performance_payload = None
             if cik is not None:
-                performance_payload = await self._get_json(
+                performance_payload = await self._optional_get_json(
                     client,
                     "/stable/institutional-ownership/holder-performance-summary",
                     {"cik": cik, "page": 0, "apikey": self.api_key},
@@ -267,6 +272,17 @@ class FmpCanslimProvider:
             raise FmpProviderError(_safe_http_error_message(exc)) from exc
         except ValueError as exc:
             raise FmpProviderError("FMP 응답을 해석할 수 없습니다.") from exc
+
+    async def _optional_get_json(
+        self,
+        client: httpx.AsyncClient,
+        path: str,
+        params: dict[str, object],
+    ) -> Any | None:
+        try:
+            return await self._get_json(client, path, params)
+        except FmpProviderError:
+            return None
 
 
 def _today_date(value: date | str) -> date:
