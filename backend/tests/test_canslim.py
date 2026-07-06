@@ -12,6 +12,12 @@ def test_settings_include_fmp_api_key():
     assert Settings().fmp_api_key == ""
 
 
+def test_settings_reads_fmp_api_key_from_env(monkeypatch):
+    monkeypatch.setenv("PORTFOLIO_FMP_API_KEY", "env-fmp-key")
+
+    assert Settings().fmp_api_key == "env-fmp-key"
+
+
 @pytest.mark.asyncio
 async def test_fmp_provider_requires_api_key():
     provider = FmpCanslimProvider("")
