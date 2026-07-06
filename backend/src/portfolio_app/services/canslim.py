@@ -108,6 +108,8 @@ class FmpProviderError(RuntimeError):
 
 
 Today = Callable[[], date | str]
+SUPPORTED_CANSLIM_EXCHANGES = {"NYSE", "NASDAQ", "AMEX", "ARCA", "BATS"}
+UNSUPPORTED_CANSLIM_TARGET_MESSAGE = "CAN SLIM v1은 미국 상장 보통주만 지원합니다."
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -115,6 +117,38 @@ def normalize_symbol(symbol: str) -> str:
     if not normalized_symbol:
         raise ValueError("종목 심볼을 입력해 주세요.")
     return normalized_symbol
+
+
+def build_canslim_analysis(
+    bundle: FmpCanslimBundle,
+    *,
+    market_range: str,
+    cached: bool,
+) -> dict[str, object]:
+    _validate_canslim_target(bundle.profile)
+
+    profile = bundle.profile
+    return {
+        "symbol": profile.symbol,
+        "company_name": profile.company_name,
+        "exchange": profile.exchange,
+        "sector": profile.sector,
+        "industry": profile.industry,
+        "description": profile.description,
+        "currency": profile.currency,
+        "provider": "fmp",
+        "generated_at": date.today().isoformat(),
+        "cached": cached,
+        "letters": {
+            "c": _build_c_letter(bundle.quarterly_income),
+            "a": _build_a_letter(bundle.annual_income),
+            "n": _build_n_letter(profile),
+            "s": _build_s_letter(bundle.prices, bundle.float_data),
+            "l": _build_l_letter(bundle.prices, bundle.spy_prices, bundle.peers),
+            "i": _build_i_letter(bundle.positions_summary, bundle.top_holders),
+            "m": _build_m_letter(bundle.spy_prices, market_range),
+        },
+    }
 
 
 class FmpCanslimProvider:
@@ -283,6 +317,314 @@ class FmpCanslimProvider:
             return await self._get_json(client, path, params)
         except FmpProviderError:
             return None
+
+
+def _validate_canslim_target(profile: FmpCompanyProfile) -> None:
+    exchange = (profile.exchange or "").upper()
+    currency = (profile.currency or "").upper()
+    if currency != "USD" or exchange not in SUPPORTED_CANSLIM_EXCHANGES or profile.is_etf is True:
+        raise ValueError(UNSUPPORTED_CANSLIM_TARGET_MESSAGE)
+
+
+def _build_c_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
+    if len(rows) < 2:
+        return _unknown_letter({"quarterly_eps_growth_percent": None})
+
+    latest_eps = rows[0].eps_diluted
+    prior_eps = rows[1].eps_diluted
+    if latest_eps is None or prior_eps is None or prior_eps == 0:
+        return _unknown_letter({"quarterly_eps_growth_percent": None})
+
+    growth = ((latest_eps - prior_eps) / abs(prior_eps)) * 100
+    if growth >= 25:
+        status = "pass"
+    elif growth >= 0:
+        status = "watch"
+    else:
+        status = "fail"
+
+    return {
+        "status": status,
+        "metrics": {
+            "latest_eps": latest_eps,
+            "comparison_eps": prior_eps,
+            "quarterly_eps_growth_percent": _rounded(growth),
+        },
+        "source": "fmp",
+        "as_of": rows[0].date,
+    }
+
+
+def _build_a_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
+    eps_values = [row.eps_diluted for row in rows[:3] if row.eps_diluted is not None]
+    if len(eps_values) < 3:
+        return _unknown_letter({"annual_eps_values": eps_values, "annual_eps_cagr_percent": None})
+
+    latest_eps, previous_eps, oldest_eps = eps_values
+    if latest_eps <= 0 or previous_eps <= 0 or oldest_eps <= 0:
+        return {
+            "status": "fail",
+            "metrics": {
+                "annual_eps_values": eps_values,
+                "annual_eps_cagr_percent": None,
+                "sequential_growth": False,
+            },
+            "source": "fmp",
+            "as_of": rows[0].date,
+        }
+
+    cagr = ((latest_eps / oldest_eps) ** (1 / 2) - 1) * 100
+    sequential_growth = latest_eps > previous_eps > oldest_eps
+    if sequential_growth and cagr >= 25:
+        status = "pass"
+    elif latest_eps > oldest_eps and cagr >= 0:
+        status = "watch"
+    else:
+        status = "fail"
+
+    return {
+        "status": status,
+        "metrics": {
+            "annual_eps_values": eps_values,
+            "annual_eps_cagr_percent": _rounded(cagr),
+            "sequential_growth": sequential_growth,
+        },
+        "source": "fmp",
+        "as_of": rows[0].date,
+    }
+
+
+def _build_n_letter(profile: FmpCompanyProfile) -> dict[str, object]:
+    return {
+        "status": "info",
+        "company_name": profile.company_name,
+        "exchange": profile.exchange,
+        "sector": profile.sector,
+        "industry": profile.industry,
+        "description": profile.description,
+        "source": "fmp",
+    }
+
+
+def _build_s_letter(prices: list[FmpPriceRow], float_data: FmpFloatData) -> dict[str, object]:
+    if len(prices) < 51 or float_data.float_shares is None:
+        return _unknown_letter(
+            {
+                "latest_close": None,
+                "latest_volume": None,
+                "average_volume_50d": None,
+                "volume_ratio": None,
+                "float_shares": float_data.float_shares,
+                "outstanding_shares": float_data.outstanding_shares,
+            }
+        )
+
+    latest = prices[0]
+    previous = prices[1]
+    average_volume = _average([row.volume for row in prices[1:51]])
+    if (
+        latest.close is None
+        or previous.close is None
+        or latest.volume is None
+        or average_volume is None
+        or average_volume <= 0
+    ):
+        return _unknown_letter(
+            {
+                "latest_close": latest.close,
+                "latest_volume": latest.volume,
+                "average_volume_50d": average_volume,
+                "volume_ratio": None,
+                "float_shares": float_data.float_shares,
+                "outstanding_shares": float_data.outstanding_shares,
+            }
+        )
+
+    volume_ratio = latest.volume / average_volume
+    latest_rose = latest.close > previous.close
+    if latest_rose and volume_ratio >= 1.5:
+        status = "pass"
+    elif latest_rose and volume_ratio >= 1.2:
+        status = "watch"
+    else:
+        status = "fail"
+
+    return {
+        "status": status,
+        "metrics": {
+            "latest_close": latest.close,
+            "previous_close": previous.close,
+            "latest_volume": latest.volume,
+            "average_volume_50d": _rounded(average_volume),
+            "volume_ratio": _rounded(volume_ratio),
+            "float_shares": float_data.float_shares,
+            "outstanding_shares": float_data.outstanding_shares,
+        },
+        "source": "fmp",
+        "as_of": latest.date,
+    }
+
+
+def _build_l_letter(
+    prices: list[FmpPriceRow],
+    spy_prices: list[FmpPriceRow],
+    peers: list[str],
+) -> dict[str, object]:
+    stock_return = _period_return_percent(prices)
+    spy_return = _period_return_percent(spy_prices)
+    if stock_return is None or spy_return is None:
+        return _unknown_letter(
+            {
+                "stock_period_return_percent": stock_return,
+                "spy_period_return_percent": spy_return,
+                "excess_return_percent": None,
+                "peer_count": len(peers),
+                "peer_rank_percentile": None,
+            }
+        )
+
+    excess_return = stock_return - spy_return
+    if excess_return >= 20:
+        status = "pass"
+    elif excess_return >= 0:
+        status = "watch"
+    else:
+        status = "fail"
+
+    return {
+        "status": status,
+        "metrics": {
+            "stock_period_return_percent": _rounded(stock_return),
+            "spy_period_return_percent": _rounded(spy_return),
+            "excess_return_percent": _rounded(excess_return),
+            "peer_count": len(peers),
+            "peer_rank_percentile": None,
+        },
+        "source": "fmp",
+        "as_of": prices[0].date if prices else None,
+    }
+
+
+def _build_i_letter(
+    positions_summary: FmpPositionsSummary | None,
+    top_holders: list[FmpTopHolder],
+) -> dict[str, object]:
+    if positions_summary is None:
+        return {
+            "status": "unknown",
+            "institutional_flow": None,
+            "top_performing_holders": [],
+            "source": "fmp",
+            "as_of": None,
+        }
+
+    institutional_flow = {
+        "holders_count_change": positions_summary.holders_count_change,
+        "shares_count_change": positions_summary.shares_count_change,
+        "ownership_percent": positions_summary.ownership_percent,
+        "market_value_change": positions_summary.market_value_change,
+    }
+    mapped_holders = [_map_top_holder(holder) for holder in top_holders]
+    flow_positive = any(
+        value is not None and value > 0
+        for value in (
+            positions_summary.holders_count_change,
+            positions_summary.shares_count_change,
+            positions_summary.market_value_change,
+        )
+    )
+    has_top_performing_holder = any(
+        holder.performance_1y_percent is not None and holder.performance_1y_percent > 0
+        for holder in top_holders
+    )
+    if flow_positive and has_top_performing_holder:
+        status = "pass"
+    elif flow_positive or has_top_performing_holder:
+        status = "watch"
+    else:
+        status = "fail"
+
+    return {
+        "status": status,
+        "institutional_flow": institutional_flow,
+        "top_performing_holders": mapped_holders,
+        "source": "fmp",
+        "as_of": _positions_as_of(positions_summary),
+    }
+
+
+def _build_m_letter(spy_prices: list[FmpPriceRow], market_range: str) -> dict[str, object]:
+    return {
+        "status": "info",
+        "symbol": "SPY",
+        "range": market_range,
+        "candles": [_map_candle(row) for row in spy_prices],
+        "source": "fmp",
+        "as_of": spy_prices[0].date if spy_prices else None,
+    }
+
+
+def _unknown_letter(metrics: dict[str, object]) -> dict[str, object]:
+    return {
+        "status": "unknown",
+        "metrics": metrics,
+        "source": "fmp",
+        "as_of": None,
+    }
+
+
+def _average(values: list[float | None]) -> float | None:
+    numbers = [value for value in values if value is not None]
+    if len(numbers) != len(values) or not numbers:
+        return None
+    return sum(numbers) / len(numbers)
+
+
+def _period_return_percent(rows: list[FmpPriceRow]) -> float | None:
+    if len(rows) < 2:
+        return None
+    latest = rows[0].close
+    oldest = rows[-1].close
+    if latest is None or oldest is None or oldest <= 0:
+        return None
+    return ((latest - oldest) / oldest) * 100
+
+
+def _map_top_holder(holder: FmpTopHolder) -> dict[str, object]:
+    return {
+        "holder_name": holder.holder,
+        "cik": holder.cik,
+        "shares": holder.shares,
+        "market_value": holder.market_value,
+        "position_change_percent": holder.change,
+        "portfolio_weight_percent": holder.weight,
+        "performance_1y_percent": holder.performance_1y_percent,
+        "performance_3y_percent": holder.performance_3y_percent,
+        "performance_5y_percent": holder.performance_5y_percent,
+        "excess_vs_sp500_percent": holder.performance_relative_to_sp500_percent,
+    }
+
+
+def _map_candle(row: FmpPriceRow) -> dict[str, object]:
+    return {
+        "date": row.date,
+        "open": row.open,
+        "high": row.high,
+        "low": row.low,
+        "close": row.close,
+        "volume": row.volume,
+        "traded_value_usd": row.traded_value_usd,
+    }
+
+
+def _positions_as_of(summary: FmpPositionsSummary) -> str | None:
+    if summary.year is None or summary.quarter is None:
+        return None
+    return f"{summary.year}-Q{summary.quarter}"
+
+
+def _rounded(value: float) -> float:
+    return round(value, 2)
 
 
 def _today_date(value: date | str) -> date:

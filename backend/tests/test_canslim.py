@@ -1,11 +1,21 @@
 import pytest
 
 from portfolio_app.config import Settings
+from portfolio_app.services import canslim as canslim_service
 from portfolio_app.services.canslim import (
+    FmpCanslimBundle,
     FmpCanslimProvider,
+    FmpCompanyProfile,
+    FmpFloatData,
+    FmpIncomeRow,
+    FmpPositionsSummary,
+    FmpPriceRow,
     FmpProviderError,
+    FmpTopHolder,
     normalize_symbol,
 )
+
+_DEFAULT_POSITIONS_SUMMARY = object()
 
 
 def test_settings_include_fmp_api_key(monkeypatch):
@@ -332,6 +342,169 @@ async def test_fmp_provider_raises_safe_error_for_http_failure(httpx_mock):
     assert "secret provider detail" not in str(exc_info.value)
 
 
+def test_build_canslim_analysis_classifies_strong_stock():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["symbol"] == "NVDA"
+    assert analysis["company_name"] == "NVIDIA Corporation"
+    assert analysis["exchange"] == "NASDAQ"
+    assert analysis["sector"] == "Technology"
+    assert analysis["industry"] == "Semiconductors"
+    assert analysis["description"] == "NVIDIA designs accelerated computing products."
+    assert analysis["currency"] == "USD"
+    assert analysis["provider"] == "fmp"
+    assert analysis["cached"] is False
+    assert analysis["generated_at"]
+
+    letters = analysis["letters"]
+    assert letters["c"]["status"] == "pass"
+    assert letters["c"]["metrics"]["quarterly_eps_growth_percent"] == 150.0
+    assert letters["a"]["status"] == "pass"
+    assert letters["a"]["metrics"]["annual_eps_values"] == [4.0, 2.5, 1.25]
+    assert letters["a"]["metrics"]["annual_eps_cagr_percent"] >= 25.0
+    assert letters["n"] == {
+        "status": "info",
+        "company_name": "NVIDIA Corporation",
+        "exchange": "NASDAQ",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "description": "NVIDIA designs accelerated computing products.",
+        "source": "fmp",
+    }
+    assert letters["s"]["status"] == "pass"
+    assert letters["s"]["metrics"]["latest_close"] == 155.0
+    assert letters["s"]["metrics"]["latest_volume"] == 180_000_000.0
+    assert letters["s"]["metrics"]["average_volume_50d"] == 100_000_000.0
+    assert letters["s"]["metrics"]["volume_ratio"] == 1.8
+    assert letters["s"]["metrics"]["float_shares"] == 22_000_000_000.0
+    assert letters["s"]["metrics"]["outstanding_shares"] == 24_000_000_000.0
+    assert letters["l"]["status"] == "pass"
+    assert letters["l"]["metrics"]["peer_count"] == 2
+    assert letters["l"]["metrics"]["peer_rank_percentile"] is None
+    assert letters["i"]["status"] == "pass"
+    assert letters["i"]["institutional_flow"] == {
+        "holders_count_change": 100.0,
+        "shares_count_change": 0.08,
+        "ownership_percent": 0.57,
+        "market_value_change": 0.11,
+    }
+    assert letters["i"]["top_performing_holders"] == [
+        {
+            "holder_name": "High Quality Capital",
+            "cik": "0000000001",
+            "shares": 10_000_000.0,
+            "market_value": 1_550_000_000.0,
+            "position_change_percent": 0.2,
+            "portfolio_weight_percent": 0.04,
+            "performance_1y_percent": 32.0,
+            "performance_3y_percent": 85.0,
+            "performance_5y_percent": 160.0,
+            "excess_vs_sp500_percent": 21.0,
+        }
+    ]
+    assert letters["m"]["status"] == "info"
+    assert letters["m"]["symbol"] == "SPY"
+    assert letters["m"]["range"] == "6m"
+    assert letters["m"]["source"] == "fmp"
+    assert letters["m"]["candles"][0]["traded_value_usd"] == 252_000_000_000.0
+    assert "recommendation" not in letters["m"]
+    assert "verdict" not in letters["m"]
+
+
+@pytest.mark.parametrize(
+    ("stock_latest", "stock_oldest", "spy_latest", "spy_oldest", "expected_status"),
+    [
+        (130.0, 100.0, 105.0, 100.0, "pass"),
+        (110.0, 100.0, 105.0, 100.0, "watch"),
+        (103.0, 100.0, 105.0, 100.0, "fail"),
+        (None, 100.0, 105.0, 100.0, "unknown"),
+    ],
+)
+def test_build_canslim_analysis_classifies_leader_statuses(
+    stock_latest,
+    stock_oldest,
+    spy_latest,
+    spy_oldest,
+    expected_status,
+):
+    bundle = _canslim_bundle(
+        prices=_price_rows(latest_close=stock_latest, oldest_close=stock_oldest),
+        spy_prices=_spy_price_rows(latest_close=spy_latest, oldest_close=spy_oldest),
+    )
+
+    analysis = canslim_service.build_canslim_analysis(
+        bundle,
+        market_range="1y",
+        cached=True,
+    )
+
+    assert analysis["letters"]["l"]["status"] == expected_status
+    assert analysis["letters"]["l"]["metrics"]["peer_count"] == 2
+
+
+def test_build_canslim_analysis_marks_missing_eps_unknown():
+    bundle = _canslim_bundle(quarterly_income=[], annual_income=[])
+
+    analysis = canslim_service.build_canslim_analysis(
+        bundle,
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["c"]["status"] == "unknown"
+    assert analysis["letters"]["a"]["status"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        FmpCompanyProfile(
+            symbol="005930",
+            company_name="Samsung Electronics",
+            exchange="KRX",
+            sector="Technology",
+            industry="Consumer Electronics",
+            description="Korean common stock.",
+            currency="KRW",
+            is_etf=False,
+        ),
+        FmpCompanyProfile(
+            symbol="SPY",
+            company_name="SPDR S&P 500 ETF Trust",
+            exchange="ARCA",
+            sector=None,
+            industry=None,
+            description="ETF.",
+            currency="USD",
+            is_etf=True,
+        ),
+    ],
+)
+def test_build_canslim_analysis_rejects_non_us_or_etf_targets(profile):
+    with pytest.raises(ValueError, match="CAN SLIM v1은 미국 상장 보통주만 지원합니다."):
+        canslim_service.build_canslim_analysis(
+            _canslim_bundle(profile=profile),
+            market_range="6m",
+            cached=False,
+        )
+
+
+def test_build_canslim_analysis_marks_missing_13f_data_unknown():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(positions_summary=None, top_holders=[]),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["i"]["status"] == "unknown"
+    assert analysis["letters"]["i"]["institutional_flow"] is None
+    assert analysis["letters"]["i"]["top_performing_holders"] == []
+
+
 def _add_required_fmp_bundle_responses(httpx_mock) -> None:
     httpx_mock.add_response(
         method="GET",
@@ -470,3 +643,162 @@ def _add_holder_ownership_response(httpx_mock) -> None:
             }
         ],
     )
+
+
+def _canslim_bundle(
+    *,
+    profile: FmpCompanyProfile | None = None,
+    quarterly_income: list[FmpIncomeRow] | None = None,
+    annual_income: list[FmpIncomeRow] | None = None,
+    prices: list[FmpPriceRow] | None = None,
+    spy_prices: list[FmpPriceRow] | None = None,
+    positions_summary: FmpPositionsSummary | None | object = _DEFAULT_POSITIONS_SUMMARY,
+    top_holders: list[FmpTopHolder] | None = None,
+) -> FmpCanslimBundle:
+    if positions_summary is _DEFAULT_POSITIONS_SUMMARY:
+        positions_summary = FmpPositionsSummary(
+            symbol="NVDA",
+            year=2026,
+            quarter=1,
+            holders_count=4100,
+            holders_count_change=100,
+            shares_count=14_000_000_000,
+            shares_count_change=0.08,
+            ownership_percent=0.57,
+            market_value_change=0.11,
+        )
+    if top_holders is None:
+        top_holders = [
+            FmpTopHolder(
+                holder="High Quality Capital",
+                cik="0000000001",
+                shares=10_000_000,
+                market_value=1_550_000_000,
+                change=0.20,
+                weight=0.04,
+                performance_1y_percent=32,
+                performance_3y_percent=85,
+                performance_5y_percent=160,
+                performance_relative_to_sp500_percent=21,
+            )
+        ]
+
+    return FmpCanslimBundle(
+        symbol="NVDA",
+        profile=profile or _profile(),
+        quarterly_income=quarterly_income
+        if quarterly_income is not None
+        else [
+            FmpIncomeRow(date="2026-04-30", period="Q1", calendar_year=2026, eps_diluted=1.25),
+            FmpIncomeRow(date="2025-04-30", period="Q1", calendar_year=2025, eps_diluted=0.50),
+        ],
+        annual_income=annual_income
+        if annual_income is not None
+        else [
+            FmpIncomeRow(date="2026-01-31", period="FY", calendar_year=2026, eps_diluted=4.00),
+            FmpIncomeRow(date="2025-01-31", period="FY", calendar_year=2025, eps_diluted=2.50),
+            FmpIncomeRow(date="2024-01-31", period="FY", calendar_year=2024, eps_diluted=1.25),
+        ],
+        prices=prices or _price_rows(),
+        spy_prices=spy_prices or _spy_price_rows(),
+        float_data=FmpFloatData(
+            symbol="NVDA",
+            float_shares=22_000_000_000,
+            outstanding_shares=24_000_000_000,
+        ),
+        peers=["AMD", "AVGO"],
+        positions_summary=(
+            positions_summary if isinstance(positions_summary, FmpPositionsSummary) else None
+        ),
+        top_holders=top_holders,
+    )
+
+
+def _profile() -> FmpCompanyProfile:
+    return FmpCompanyProfile(
+        symbol="NVDA",
+        company_name="NVIDIA Corporation",
+        exchange="NASDAQ",
+        sector="Technology",
+        industry="Semiconductors",
+        description="NVIDIA designs accelerated computing products.",
+        currency="USD",
+        is_etf=False,
+    )
+
+
+def _price_rows(
+    *,
+    latest_close: float | None = 155.0,
+    oldest_close: float | None = 100.0,
+) -> list[FmpPriceRow]:
+    rows = [
+        FmpPriceRow(
+            symbol="NVDA",
+            date="2026-07-02",
+            open=150,
+            high=156,
+            low=149,
+            close=latest_close,
+            volume=180_000_000,
+            vwap=153.5,
+            traded_value_usd=27_630_000_000,
+        ),
+        FmpPriceRow(
+            symbol="NVDA",
+            date="2026-07-01",
+            open=148,
+            high=151,
+            low=147,
+            close=150,
+            volume=100_000_000,
+            vwap=149.5,
+            traded_value_usd=14_950_000_000,
+        ),
+    ]
+    rows.extend(
+        FmpPriceRow(
+            symbol="NVDA",
+            date=f"2026-05-{day:02d}",
+            open=99,
+            high=101,
+            low=98,
+            close=oldest_close if day == 1 else 100,
+            volume=100_000_000,
+            vwap=100,
+            traded_value_usd=10_000_000_000,
+        )
+        for day in range(1, 50)
+    )
+    return rows
+
+
+def _spy_price_rows(
+    *,
+    latest_close: float | None = 420.0,
+    oldest_close: float | None = 400.0,
+) -> list[FmpPriceRow]:
+    return [
+        FmpPriceRow(
+            symbol="SPY",
+            date="2026-07-02",
+            open=418,
+            high=422,
+            low=417,
+            close=latest_close,
+            volume=600_000_000,
+            vwap=420,
+            traded_value_usd=252_000_000_000,
+        ),
+        FmpPriceRow(
+            symbol="SPY",
+            date="2026-01-06",
+            open=398,
+            high=401,
+            low=397,
+            close=oldest_close,
+            volume=500_000_000,
+            vwap=400,
+            traded_value_usd=200_000_000_000,
+        ),
+    ]
