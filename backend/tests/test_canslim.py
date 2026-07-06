@@ -385,7 +385,7 @@ def test_build_canslim_analysis_classifies_strong_stock():
     assert letters["s"]["metrics"]["volume_ratio"] == 1.8
     assert letters["s"]["metrics"]["float_shares"] == 22_000_000_000.0
     assert letters["s"]["metrics"]["outstanding_shares"] == 24_000_000_000.0
-    assert letters["l"]["status"] == "watch"
+    assert letters["l"]["status"] == "pass"
     assert letters["l"]["metrics"]["peer_count"] == 2
     assert letters["l"]["metrics"]["peer_rank_percentile"] is None
     assert letters["i"]["status"] == "pass"
@@ -438,7 +438,7 @@ def test_build_canslim_analysis_returns_common_letter_envelopes():
 @pytest.mark.parametrize(
     ("stock_latest", "stock_oldest", "spy_latest", "spy_oldest", "expected_status"),
     [
-        (130.0, 100.0, 105.0, 100.0, "watch"),
+        (130.0, 100.0, 105.0, 100.0, "pass"),
         (110.0, 100.0, 105.0, 100.0, "watch"),
         (103.0, 100.0, 105.0, 100.0, "fail"),
         (None, 100.0, 105.0, 100.0, "unknown"),
@@ -464,6 +464,69 @@ def test_build_canslim_analysis_classifies_leader_statuses(
 
     assert analysis["letters"]["l"]["status"] == expected_status
     assert analysis["letters"]["l"]["metrics"]["peer_count"] == 2
+
+
+def test_build_canslim_analysis_passes_leader_when_stock_strongly_outperforms_spy():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            prices=_price_rows(latest_close=130.0, oldest_close=100.0),
+            spy_prices=_spy_price_rows(latest_close=105.0, oldest_close=100.0),
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["l"]["status"] == "pass"
+    assert analysis["letters"]["l"]["metrics"]["excess_return_percent"] == 25.0
+
+
+def test_build_canslim_analysis_compares_l_against_matching_spy_period():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            prices=[
+                FmpPriceRow(
+                    symbol="NVDA",
+                    date="2026-07-02",
+                    open=130,
+                    high=132,
+                    low=128,
+                    close=130,
+                    volume=100_000_000,
+                    vwap=130,
+                    traded_value_usd=13_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="NVDA",
+                    date="2026-01-06",
+                    open=100,
+                    high=102,
+                    low=98,
+                    close=100,
+                    volume=100_000_000,
+                    vwap=100,
+                    traded_value_usd=10_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="NVDA",
+                    date="2025-07-06",
+                    open=10,
+                    high=11,
+                    low=9,
+                    close=10,
+                    volume=100_000_000,
+                    vwap=10,
+                    traded_value_usd=1_000_000_000,
+                ),
+            ],
+            spy_prices=_spy_price_rows(latest_close=105.0, oldest_close=100.0),
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["l"]["metrics"]["stock_period_return_percent"] == 30.0
+    assert analysis["letters"]["l"]["metrics"]["spy_period_return_percent"] == 5.0
+    assert analysis["letters"]["l"]["metrics"]["excess_return_percent"] == 25.0
 
 
 def test_build_canslim_analysis_marks_missing_eps_unknown():
@@ -586,6 +649,33 @@ def test_build_canslim_analysis_defaults_top_holder_non_nullable_fields():
             "excess_vs_sp500_percent": None,
         }
     ]
+
+
+def test_build_canslim_analysis_does_not_pass_i_without_top_performing_holder():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            top_holders=[
+                FmpTopHolder(
+                    holder="Weak Holder",
+                    cik="0000000002",
+                    shares=10_000_000,
+                    market_value=1_000_000_000,
+                    change=-0.15,
+                    weight=0.04,
+                    performance_1y_percent=-12,
+                    performance_3y_percent=-8,
+                    performance_5y_percent=-2,
+                    performance_relative_to_sp500_percent=-20,
+                )
+            ]
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["i"]["status"] == "watch"
+    assert analysis["letters"]["i"]["institutional_flow"]["shares_change_percent"] == 0.08
+    assert analysis["letters"]["i"]["top_performing_holders"][0]["performance_1y_percent"] == -12
 
 
 def test_build_canslim_analysis_filters_invalid_market_candles():
@@ -721,6 +811,36 @@ def test_build_canslim_analysis_marks_missing_13f_data_unknown():
         "institutional_flow",
         "top_performing_holders",
     }
+    assert analysis["letters"]["i"]["institutional_flow"] == {
+        "holders_count_change": None,
+        "shares_change_percent": None,
+        "ownership_percent": None,
+        "market_value_change_percent": None,
+    }
+    assert analysis["letters"]["i"]["top_performing_holders"] == []
+
+
+def test_build_canslim_analysis_marks_all_null_13f_summary_unknown():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            positions_summary=FmpPositionsSummary(
+                symbol="NVDA",
+                year=None,
+                quarter=None,
+                holders_count=None,
+                holders_count_change=None,
+                shares_count=None,
+                shares_count_change=None,
+                ownership_percent=None,
+                market_value_change=None,
+            ),
+            top_holders=[],
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["i"]["status"] == "unknown"
     assert analysis["letters"]["i"]["institutional_flow"] == {
         "holders_count_change": None,
         "shares_change_percent": None,

@@ -550,7 +550,8 @@ def _build_l_letter(
     spy_prices: list[FmpPriceRow],
     peers: list[str],
 ) -> dict[str, object]:
-    stock_return = _period_return_percent(prices)
+    comparable_prices = _prices_for_market_period(prices, spy_prices)
+    stock_return = _period_return_percent(comparable_prices)
     spy_return = _period_return_percent(spy_prices)
     if stock_return is None or spy_return is None:
         return _unknown_letter(
@@ -564,7 +565,12 @@ def _build_l_letter(
         )
 
     excess_return = stock_return - spy_return
-    status = "watch" if excess_return >= 0 else "fail"
+    if excess_return >= 20:
+        status = "pass"
+    elif excess_return >= 0:
+        status = "watch"
+    else:
+        status = "fail"
 
     return _letter(
         status=status,
@@ -577,7 +583,7 @@ def _build_l_letter(
             "peer_count": len(peers),
             "peer_rank_percentile": None,
         },
-        as_of=prices[0].date if prices else None,
+        as_of=comparable_prices[0].date if comparable_prices else None,
     )
 
 
@@ -585,7 +591,7 @@ def _build_i_letter(
     positions_summary: FmpPositionsSummary | None,
     top_holders: list[FmpTopHolder],
 ) -> dict[str, object]:
-    if positions_summary is None:
+    if positions_summary is None or _positions_summary_is_empty(positions_summary):
         return _letter(
             status="unknown",
             headline="Institutional sponsorship",
@@ -698,14 +704,46 @@ def _period_return_percent(rows: list[FmpPriceRow]) -> float | None:
     return ((latest - oldest) / oldest) * 100
 
 
+def _prices_for_market_period(
+    prices: list[FmpPriceRow],
+    spy_prices: list[FmpPriceRow],
+) -> list[FmpPriceRow]:
+    if len(spy_prices) < 2:
+        return prices
+
+    market_start = spy_prices[-1].date
+    if market_start is None:
+        return prices
+
+    comparable = [row for row in prices if row.date is not None and row.date >= market_start]
+    return comparable if len(comparable) >= 2 else prices
+
+
+def _positions_summary_is_empty(positions_summary: FmpPositionsSummary) -> bool:
+    return all(
+        value is None
+        for value in (
+            positions_summary.year,
+            positions_summary.quarter,
+            positions_summary.holders_count,
+            positions_summary.holders_count_change,
+            positions_summary.shares_count,
+            positions_summary.shares_count_change,
+            positions_summary.ownership_percent,
+            positions_summary.market_value_change,
+        )
+    )
+
+
 def _has_holder_support(holder: FmpTopHolder) -> bool:
     return any(
         value is not None and value > 0
         for value in (
             holder.performance_1y_percent,
+            holder.performance_3y_percent,
+            holder.performance_5y_percent,
+            holder.performance_relative_to_sp500_percent,
             holder.change,
-            holder.shares,
-            holder.market_value,
         )
     )
 
