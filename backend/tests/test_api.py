@@ -14,6 +14,7 @@ def create_test_client(tmp_path, **settings_overrides):
         "backup_dir": tmp_path / "backups",
         "toss_api_key": "",
         "toss_secret_key": "",
+        "fmp_api_key": "",
     }
     settings_values.update(settings_overrides)
     settings = Settings(**settings_values)
@@ -165,6 +166,255 @@ def test_openapi_exposes_toss_order_history_paths(tmp_path):
     assert "/api/toss/order-imports" in paths
     assert "/api/toss/orders" in paths
     assert "/api/transactions" not in paths
+
+
+def test_openapi_exposes_canslim_analysis_path(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    path = schema["paths"]["/api/canslim/analysis"]["get"]
+    assert path["tags"] == ["canslim"]
+    assert path["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/CanslimAnalysisResponse"
+    }
+    assert {
+        "name": "symbol",
+        "in": "query",
+        "required": True,
+        "schema": {"type": "string", "minLength": 1, "title": "Symbol"},
+    } in path["parameters"]
+
+
+def test_canslim_analysis_requires_fmp_key(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "FMP API 키를 설정해 주세요."
+
+
+def test_canslim_analysis_rejects_blank_symbol(tmp_path):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+
+    response = client.get("/api/canslim/analysis?symbol=%20%20")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "종목 심볼을 입력해 주세요."
+
+
+def test_canslim_analysis_rejects_bad_market_range(tmp_path):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+
+    response = client.get("/api/canslim/analysis?symbol=NVDA&market_range=2y")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "시장 컨텍스트 기간은 3m, 6m, 1y 중 하나여야 합니다."
+
+
+def test_canslim_analysis_returns_us_stock_analysis(tmp_path, httpx_mock):
+    client = create_test_client(tmp_path, fmp_api_key="fmp-key")
+    client.app.state.canslim_today = lambda: "2026-07-06"
+    _add_canslim_api_success_responses(httpx_mock)
+
+    response = client.get("/api/canslim/analysis?symbol=nvda&market_range=6m")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbol"] == "NVDA"
+    assert body["company_name"] == "NVIDIA Corporation"
+    assert body["currency"] == "USD"
+    assert body["provider"] == "fmp"
+    assert body["letters"]["c"]["status"] == "pass"
+    assert body["letters"]["c"]["headline"]
+    assert body["letters"]["i"]["institutional_flow"]["shares_change_percent"] == 0.08
+    assert body["letters"]["i"]["top_performing_holders"][0]["holder_name"] == (
+        "High Quality Capital"
+    )
+    assert body["letters"]["m"]["status"] == "info"
+    assert body["letters"]["m"]["symbol"] == "SPY"
+    assert body["letters"]["m"]["range"] == "6m"
+
+
+def _add_canslim_api_success_responses(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url="https://financialmodelingprep.com/stable/profile?symbol=NVDA&apikey=fmp-key",
+        json=[
+            {
+                "symbol": "NVDA",
+                "companyName": "NVIDIA Corporation",
+                "exchangeShortName": "NASDAQ",
+                "sector": "Technology",
+                "industry": "Semiconductors",
+                "description": "NVIDIA designs accelerated computing products.",
+                "currency": "USD",
+                "isEtf": False,
+            }
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/income-statement"
+            "?symbol=NVDA&period=quarter&limit=8&apikey=fmp-key"
+        ),
+        json=[
+            {"date": "2026-04-30", "period": "Q1", "calendarYear": "2026", "epsdiluted": 1.25},
+            {"date": "2025-12-31", "period": "Q4", "calendarYear": "2025", "epsdiluted": 1.00},
+            {"date": "2025-09-30", "period": "Q3", "calendarYear": "2025", "epsdiluted": 0.90},
+            {"date": "2025-06-30", "period": "Q2", "calendarYear": "2025", "epsdiluted": 0.80},
+            {"date": "2025-04-30", "period": "Q1", "calendarYear": "2025", "epsdiluted": 0.50},
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/income-statement"
+            "?symbol=NVDA&period=annual&limit=5&apikey=fmp-key"
+        ),
+        json=[
+            {"date": "2026-01-31", "calendarYear": "2026", "epsdiluted": 4.00},
+            {"date": "2025-01-31", "calendarYear": "2025", "epsdiluted": 2.50},
+            {"date": "2024-01-31", "calendarYear": "2024", "epsdiluted": 1.25},
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/historical-price-eod/full"
+            "?symbol=NVDA&from=2025-07-06&to=2026-07-06&apikey=fmp-key"
+        ),
+        json=_canslim_price_rows(),
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/historical-price-eod/full"
+            "?symbol=SPY&from=2026-01-06&to=2026-07-06&apikey=fmp-key"
+        ),
+        json=[
+            {
+                "symbol": "SPY",
+                "date": "2026-07-02",
+                "open": 620,
+                "high": 625,
+                "low": 618,
+                "close": 624,
+                "volume": 60_000_000,
+                "vwap": 622.5,
+            },
+            {
+                "symbol": "SPY",
+                "date": "2026-01-06",
+                "open": 500,
+                "high": 505,
+                "low": 498,
+                "close": 500,
+                "volume": 55_000_000,
+                "vwap": 501,
+            },
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://financialmodelingprep.com/stable/shares-float?symbol=NVDA&apikey=fmp-key",
+        json=[
+            {
+                "symbol": "NVDA",
+                "floatShares": 22_000_000_000,
+                "outstandingShares": 24_000_000_000,
+            }
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://financialmodelingprep.com/stable/stock-peers?symbol=NVDA&apikey=fmp-key",
+        json=["AMD", "AVGO"],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/institutional-ownership/"
+            "symbol-positions-summary?symbol=NVDA&year=2026&quarter=1&apikey=fmp-key"
+        ),
+        json=[
+            {
+                "symbol": "NVDA",
+                "year": 2026,
+                "quarter": 1,
+                "investorsHolding": 4100,
+                "investorsHoldingChange": 100,
+                "numberOfShares": 14_000_000_000,
+                "numberOfSharesChange": 0.08,
+                "ownershipPercent": 0.57,
+                "marketValueChange": 0.11,
+            }
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/api/v4/institutional-ownership/"
+            "institutional-holders/symbol-ownership"
+            "?page=0&date=2026-03-31&symbol=NVDA&apikey=fmp-key"
+        ),
+        json=[
+            {
+                "holder": "High Quality Capital",
+                "cik": "0000000001",
+                "shares": 10_000_000,
+                "marketValue": 1_550_000_000,
+                "change": 0.2,
+                "weight": 0.04,
+            }
+        ],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://financialmodelingprep.com/stable/institutional-ownership/"
+            "holder-performance-summary?cik=0000000001&page=0&apikey=fmp-key"
+        ),
+        json=[
+            {
+                "performance1year": 0.32,
+                "performance3year": 0.85,
+                "performance5year": 1.60,
+                "performanceRelativeToSP500": 0.21,
+            }
+        ],
+    )
+
+
+def _canslim_price_rows() -> list[dict[str, object]]:
+    latest = {
+        "symbol": "NVDA",
+        "date": "2026-07-02",
+        "open": 150,
+        "high": 156,
+        "low": 149,
+        "close": 155,
+        "volume": 180_000_000,
+        "vwap": 153.5,
+    }
+    history = [
+        {
+            "symbol": "NVDA",
+            "date": f"2026-05-{day:02d}",
+            "open": 120,
+            "high": 125,
+            "low": 119,
+            "close": 120,
+            "volume": 100_000_000,
+            "vwap": 121,
+        }
+        for day in range(1, 52)
+    ]
+    return [latest, *history]
 
 
 @pytest.mark.parametrize(
