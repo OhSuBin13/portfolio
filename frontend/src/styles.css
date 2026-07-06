@@ -1529,6 +1529,263 @@ textarea:focus {
   outline: none;
 }
 
+.canslim-screen {
+  max-width: 1280px;
+}
+
+.canslim-header {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.canslim-search-panel {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(160px, 1fr) auto auto auto;
+}
+
+.canslim-search-panel .primary-button,
+.canslim-search-panel .secondary-button {
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.canslim-search-panel button svg {
+  flex: 0 0 auto;
+}
+
+.canslim-range-toggle {
+  align-self: end;
+  background: #f1f5f9;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  white-space: nowrap;
+}
+
+.canslim-range-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  height: 30px;
+  min-width: 42px;
+  padding: 0 10px;
+}
+
+.canslim-range-toggle button:hover,
+.canslim-range-toggle button:focus-visible {
+  background: #e2e8f0;
+  color: #111827;
+  outline: none;
+}
+
+.canslim-range-toggle button[aria-pressed="true"] {
+  background: #111827;
+  color: #ffffff;
+}
+
+.canslim-company-meta,
+.canslim-flow-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.canslim-company-meta div,
+.canslim-flow-grid div {
+  border-top: 1px solid #eef2f7;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.canslim-company-meta dt,
+.canslim-flow-grid dt,
+.canslim-metric-list dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.canslim-company-meta dd,
+.canslim-flow-grid dd,
+.canslim-metric-list dd {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.canslim-description {
+  border-top: 1px solid #eef2f7;
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.canslim-description p {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.canslim-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.canslim-letter-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.canslim-letter-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.canslim-letter-heading > span {
+  align-items: center;
+  background: #111827;
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 900;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.canslim-letter-heading div {
+  min-width: 0;
+}
+
+.canslim-letter-heading h3 {
+  color: #111827;
+  font-size: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.canslim-letter-heading small {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.canslim-letter-card > strong {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.canslim-detail-list {
+  color: #334155;
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.canslim-detail-list li {
+  overflow-wrap: anywhere;
+}
+
+.canslim-metric-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.canslim-metric-list div {
+  border-top: 1px solid #eef2f7;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.canslim-status-pass {
+  border-left-color: #047857;
+}
+
+.canslim-status-watch {
+  border-left-color: #d97706;
+}
+
+.canslim-status-fail {
+  border-left-color: #b91c1c;
+}
+
+.canslim-status-unknown {
+  border-left-color: #64748b;
+}
+
+.canslim-status-info {
+  border-left-color: #0f766e;
+}
+
+.canslim-institution-panel,
+.canslim-market-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.canslim-holder-table {
+  min-width: 980px;
+}
+
+.canslim-market-table {
+  min-width: 720px;
+}
+
+.canslim-market-chart {
+  aspect-ratio: 100 / 52;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: block;
+  min-height: 180px;
+  width: 100%;
+}
+
+.canslim-market-line {
+  stroke: #047857;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.canslim-market-volume {
+  fill: #d97706;
+  opacity: 0.35;
+}
+
 @media (max-width: 1100px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1536,6 +1793,10 @@ textarea:focus {
 
   .summary-grid .hero-panel {
     grid-column: 1 / -1;
+  }
+
+  .canslim-grid {
+    grid-template-columns: 1fr;
   }
 
 }
@@ -1570,6 +1831,11 @@ textarea:focus {
   .growth-header,
   .form-grid,
   .growth-entry-grid,
+  .canslim-header,
+  .canslim-search-panel,
+  .canslim-company-meta,
+  .canslim-flow-grid,
+  .canslim-metric-list,
   .chart-panel-layout,
   .chart-settings-grid,
   .marker-detail-grid,
@@ -1584,6 +1850,15 @@ textarea:focus {
   }
 
   .currency-toggle button {
+    flex: 1;
+  }
+
+  .canslim-range-toggle {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .canslim-range-toggle button {
     flex: 1;
   }
 

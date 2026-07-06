@@ -1,3 +1,5 @@
+import type { CanslimAnalysis, CanslimMarketRange } from "./types"
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000"
 
 const stringifyErrorItem = (item: unknown) => {
@@ -76,4 +78,23 @@ export async function apiDelete(path: string): Promise<void> {
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response))
   }
+}
+
+export function fetchCanslimAnalysis({
+  symbol,
+  marketRange,
+  refresh = false,
+}: {
+  symbol: string
+  marketRange: CanslimMarketRange
+  refresh?: boolean
+}) {
+  const params = new URLSearchParams({
+    symbol,
+    market_range: marketRange,
+  })
+  if (refresh) {
+    params.set("refresh", "true")
+  }
+  return apiGet<CanslimAnalysis>(`/api/canslim/analysis?${params.toString()}`)
 }
