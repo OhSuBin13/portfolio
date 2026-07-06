@@ -16,6 +16,7 @@ from portfolio_app.services.canslim import (
 )
 
 _DEFAULT_POSITIONS_SUMMARY = object()
+_COMMON_LETTER_KEYS = {"status", "headline", "details", "metrics", "source", "as_of"}
 
 
 def test_settings_include_fmp_api_key(monkeypatch):
@@ -366,14 +367,13 @@ def test_build_canslim_analysis_classifies_strong_stock():
     assert letters["a"]["status"] == "pass"
     assert letters["a"]["metrics"]["annual_eps_values"] == [4.0, 2.5, 1.25]
     assert letters["a"]["metrics"]["annual_eps_cagr_percent"] >= 25.0
-    assert letters["n"] == {
-        "status": "info",
+    assert letters["n"]["status"] == "info"
+    assert letters["n"]["metrics"] == {
         "company_name": "NVIDIA Corporation",
         "exchange": "NASDAQ",
         "sector": "Technology",
         "industry": "Semiconductors",
         "description": "NVIDIA designs accelerated computing products.",
-        "source": "fmp",
     }
     assert letters["s"]["status"] == "pass"
     assert letters["s"]["metrics"]["latest_close"] == 155.0
@@ -382,7 +382,7 @@ def test_build_canslim_analysis_classifies_strong_stock():
     assert letters["s"]["metrics"]["volume_ratio"] == 1.8
     assert letters["s"]["metrics"]["float_shares"] == 22_000_000_000.0
     assert letters["s"]["metrics"]["outstanding_shares"] == 24_000_000_000.0
-    assert letters["l"]["status"] == "pass"
+    assert letters["l"]["status"] == "watch"
     assert letters["l"]["metrics"]["peer_count"] == 2
     assert letters["l"]["metrics"]["peer_rank_percentile"] is None
     assert letters["i"]["status"] == "pass"
@@ -415,10 +415,27 @@ def test_build_canslim_analysis_classifies_strong_stock():
     assert "verdict" not in letters["m"]
 
 
+def test_build_canslim_analysis_returns_common_letter_envelopes():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(),
+        market_range="6m",
+        cached=False,
+    )
+
+    letters = analysis["letters"]
+    for key in ["c", "a", "n", "s", "l"]:
+        assert set(letters[key]) >= _COMMON_LETTER_KEYS
+
+    assert set(letters["i"]) >= _COMMON_LETTER_KEYS | {
+        "institutional_flow",
+        "top_performing_holders",
+    }
+
+
 @pytest.mark.parametrize(
     ("stock_latest", "stock_oldest", "spy_latest", "spy_oldest", "expected_status"),
     [
-        (130.0, 100.0, 105.0, 100.0, "pass"),
+        (130.0, 100.0, 105.0, 100.0, "watch"),
         (110.0, 100.0, 105.0, 100.0, "watch"),
         (103.0, 100.0, 105.0, 100.0, "fail"),
         (None, 100.0, 105.0, 100.0, "unknown"),
@@ -530,6 +547,131 @@ def test_build_canslim_analysis_compares_quarterly_eps_to_same_prior_year_period
     assert analysis["letters"]["c"]["metrics"]["quarterly_eps_growth_percent"] == 150.0
 
 
+def test_build_canslim_analysis_defaults_top_holder_non_nullable_fields():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            top_holders=[
+                FmpTopHolder(
+                    holder=None,
+                    cik=None,
+                    shares=None,
+                    market_value=None,
+                    change=None,
+                    weight=None,
+                    performance_1y_percent=None,
+                    performance_3y_percent=None,
+                    performance_5y_percent=None,
+                    performance_relative_to_sp500_percent=None,
+                )
+            ]
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["i"]["top_performing_holders"] == [
+        {
+            "holder_name": "",
+            "cik": "",
+            "shares": 0.0,
+            "market_value": 0.0,
+            "position_change_percent": None,
+            "portfolio_weight_percent": None,
+            "performance_1y_percent": None,
+            "performance_3y_percent": None,
+            "performance_5y_percent": None,
+            "excess_vs_sp500_percent": None,
+        }
+    ]
+
+
+def test_build_canslim_analysis_filters_invalid_market_candles():
+    analysis = canslim_service.build_canslim_analysis(
+        _canslim_bundle(
+            spy_prices=[
+                FmpPriceRow(
+                    symbol="SPY",
+                    date="2026-07-02",
+                    open=418,
+                    high=422,
+                    low=417,
+                    close=420,
+                    volume=600_000_000,
+                    vwap=420,
+                    traded_value_usd=252_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="SPY",
+                    date=None,
+                    open=418,
+                    high=422,
+                    low=417,
+                    close=420,
+                    volume=600_000_000,
+                    vwap=420,
+                    traded_value_usd=252_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="SPY",
+                    date="2026-06-30",
+                    open=0,
+                    high=422,
+                    low=417,
+                    close=420,
+                    volume=600_000_000,
+                    vwap=420,
+                    traded_value_usd=252_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="SPY",
+                    date="2026-06-29",
+                    open=418,
+                    high=422,
+                    low=417,
+                    close=420,
+                    volume=None,
+                    vwap=420,
+                    traded_value_usd=252_000_000_000,
+                ),
+                FmpPriceRow(
+                    symbol="SPY",
+                    date="2026-06-28",
+                    open=418,
+                    high=422,
+                    low=417,
+                    close=420,
+                    volume=600_000_000,
+                    vwap=420,
+                    traded_value_usd=None,
+                ),
+            ]
+        ),
+        market_range="6m",
+        cached=False,
+    )
+
+    assert analysis["letters"]["m"]["candles"] == [
+        {
+            "date": "2026-07-02",
+            "open": 418,
+            "high": 422,
+            "low": 417,
+            "close": 420,
+            "volume": 600_000_000,
+            "traded_value_usd": 252_000_000_000,
+        }
+    ]
+
+
+def test_build_canslim_analysis_rejects_invalid_market_range():
+    with pytest.raises(ValueError, match="시장 컨텍스트 기간은 3m, 6m, 1y 중 하나여야 합니다."):
+        canslim_service.build_canslim_analysis(
+            _canslim_bundle(),
+            market_range="2y",
+            cached=False,
+        )
+
+
 @pytest.mark.parametrize(
     "profile",
     [
@@ -572,6 +714,10 @@ def test_build_canslim_analysis_marks_missing_13f_data_unknown():
     )
 
     assert analysis["letters"]["i"]["status"] == "unknown"
+    assert set(analysis["letters"]["i"]) >= _COMMON_LETTER_KEYS | {
+        "institutional_flow",
+        "top_performing_holders",
+    }
     assert analysis["letters"]["i"]["institutional_flow"] == {
         "holders_count_change": None,
         "shares_change_percent": None,

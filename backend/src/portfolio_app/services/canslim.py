@@ -110,6 +110,7 @@ class FmpProviderError(RuntimeError):
 Today = Callable[[], date | str]
 SUPPORTED_CANSLIM_EXCHANGES = {"NYSE", "NASDAQ", "AMEX", "ARCA", "BATS"}
 UNSUPPORTED_CANSLIM_TARGET_MESSAGE = "CAN SLIM v1은 미국 상장 보통주만 지원합니다."
+INVALID_MARKET_RANGE_MESSAGE = "시장 컨텍스트 기간은 3m, 6m, 1y 중 하나여야 합니다."
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -126,6 +127,7 @@ def build_canslim_analysis(
     cached: bool,
 ) -> dict[str, object]:
     _validate_canslim_target(bundle.profile)
+    market_range = _validate_analysis_market_range(market_range)
 
     profile = bundle.profile
     return {
@@ -326,6 +328,13 @@ def _validate_canslim_target(profile: FmpCompanyProfile) -> None:
         raise ValueError(UNSUPPORTED_CANSLIM_TARGET_MESSAGE)
 
 
+def _validate_analysis_market_range(market_range: str) -> str:
+    normalized_range = market_range.strip().lower()
+    if normalized_range not in FMP_MARKET_RANGE_DAYS:
+        raise ValueError(INVALID_MARKET_RANGE_MESSAGE)
+    return normalized_range
+
+
 def _build_c_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
     if len(rows) < 2:
         return _unknown_letter({"quarterly_eps_growth_percent": None})
@@ -345,16 +354,17 @@ def _build_c_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
     else:
         status = "fail"
 
-    return {
-        "status": status,
-        "metrics": {
+    return _letter(
+        status=status,
+        headline="Quarterly EPS growth",
+        details=[],
+        metrics={
             "latest_eps": latest_eps,
             "comparison_eps": prior_eps,
             "quarterly_eps_growth_percent": _rounded(growth),
         },
-        "source": "fmp",
-        "as_of": latest.date,
-    }
+        as_of=latest.date,
+    )
 
 
 def _comparison_quarterly_income_row(rows: list[FmpIncomeRow]) -> FmpIncomeRow | None:
@@ -375,16 +385,17 @@ def _build_a_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
 
     latest_eps, previous_eps, oldest_eps = eps_values
     if latest_eps <= 0 or previous_eps <= 0 or oldest_eps <= 0:
-        return {
-            "status": "fail",
-            "metrics": {
+        return _letter(
+            status="fail",
+            headline="Annual EPS growth",
+            details=[],
+            metrics={
                 "annual_eps_values": eps_values,
                 "annual_eps_cagr_percent": None,
                 "sequential_growth": False,
             },
-            "source": "fmp",
-            "as_of": rows[0].date,
-        }
+            as_of=rows[0].date,
+        )
 
     cagr = ((latest_eps / oldest_eps) ** (1 / 2) - 1) * 100
     sequential_growth = latest_eps > previous_eps > oldest_eps
@@ -395,28 +406,33 @@ def _build_a_letter(rows: list[FmpIncomeRow]) -> dict[str, object]:
     else:
         status = "fail"
 
-    return {
-        "status": status,
-        "metrics": {
+    return _letter(
+        status=status,
+        headline="Annual EPS growth",
+        details=[],
+        metrics={
             "annual_eps_values": eps_values,
             "annual_eps_cagr_percent": _rounded(cagr),
             "sequential_growth": sequential_growth,
         },
-        "source": "fmp",
-        "as_of": rows[0].date,
-    }
+        as_of=rows[0].date,
+    )
 
 
 def _build_n_letter(profile: FmpCompanyProfile) -> dict[str, object]:
-    return {
-        "status": "info",
-        "company_name": profile.company_name,
-        "exchange": profile.exchange,
-        "sector": profile.sector,
-        "industry": profile.industry,
-        "description": profile.description,
-        "source": "fmp",
-    }
+    return _letter(
+        status="info",
+        headline="Company context",
+        details=[],
+        metrics={
+            "company_name": profile.company_name,
+            "exchange": profile.exchange,
+            "sector": profile.sector,
+            "industry": profile.industry,
+            "description": profile.description,
+        },
+        as_of=None,
+    )
 
 
 def _build_s_letter(prices: list[FmpPriceRow], float_data: FmpFloatData) -> dict[str, object]:
@@ -462,9 +478,11 @@ def _build_s_letter(prices: list[FmpPriceRow], float_data: FmpFloatData) -> dict
     else:
         status = "fail"
 
-    return {
-        "status": status,
-        "metrics": {
+    return _letter(
+        status=status,
+        headline="Supply and demand",
+        details=[],
+        metrics={
             "latest_close": latest.close,
             "previous_close": previous.close,
             "latest_volume": latest.volume,
@@ -473,9 +491,8 @@ def _build_s_letter(prices: list[FmpPriceRow], float_data: FmpFloatData) -> dict
             "float_shares": float_data.float_shares,
             "outstanding_shares": float_data.outstanding_shares,
         },
-        "source": "fmp",
-        "as_of": latest.date,
-    }
+        as_of=latest.date,
+    )
 
 
 def _build_l_letter(
@@ -497,25 +514,21 @@ def _build_l_letter(
         )
 
     excess_return = stock_return - spy_return
-    if excess_return >= 20:
-        status = "pass"
-    elif excess_return >= 0:
-        status = "watch"
-    else:
-        status = "fail"
+    status = "watch" if excess_return >= 0 else "fail"
 
-    return {
-        "status": status,
-        "metrics": {
+    return _letter(
+        status=status,
+        headline="Leadership versus market",
+        details=[],
+        metrics={
             "stock_period_return_percent": _rounded(stock_return),
             "spy_period_return_percent": _rounded(spy_return),
             "excess_return_percent": _rounded(excess_return),
             "peer_count": len(peers),
             "peer_rank_percentile": None,
         },
-        "source": "fmp",
-        "as_of": prices[0].date if prices else None,
-    }
+        as_of=prices[0].date if prices else None,
+    )
 
 
 def _build_i_letter(
@@ -523,13 +536,15 @@ def _build_i_letter(
     top_holders: list[FmpTopHolder],
 ) -> dict[str, object]:
     if positions_summary is None:
-        return {
-            "status": "unknown",
-            "institutional_flow": _institutional_flow(None),
-            "top_performing_holders": [],
-            "source": "fmp",
-            "as_of": None,
-        }
+        return _letter(
+            status="unknown",
+            headline="Institutional sponsorship",
+            details=[],
+            metrics={},
+            as_of=None,
+            institutional_flow=_institutional_flow(None),
+            top_performing_holders=[],
+        )
 
     institutional_flow = _institutional_flow(positions_summary)
     mapped_holders = [_map_top_holder(holder) for holder in top_holders]
@@ -541,24 +556,23 @@ def _build_i_letter(
             positions_summary.market_value_change,
         )
     )
-    has_top_performing_holder = any(
-        holder.performance_1y_percent is not None and holder.performance_1y_percent > 0
-        for holder in top_holders
-    )
-    if flow_positive and has_top_performing_holder:
+    has_holder_support = any(_has_holder_support(holder) for holder in top_holders)
+    if flow_positive and has_holder_support:
         status = "pass"
-    elif flow_positive or has_top_performing_holder:
+    elif flow_positive or has_holder_support:
         status = "watch"
     else:
         status = "fail"
 
-    return {
-        "status": status,
-        "institutional_flow": institutional_flow,
-        "top_performing_holders": mapped_holders,
-        "source": "fmp",
-        "as_of": _positions_as_of(positions_summary),
-    }
+    return _letter(
+        status=status,
+        headline="Institutional sponsorship",
+        details=[],
+        metrics={},
+        as_of=_positions_as_of(positions_summary),
+        institutional_flow=institutional_flow,
+        top_performing_holders=mapped_holders,
+    )
 
 
 def _institutional_flow(
@@ -581,22 +595,39 @@ def _institutional_flow(
 
 
 def _build_m_letter(spy_prices: list[FmpPriceRow], market_range: str) -> dict[str, object]:
+    candles = [_map_candle(row) for row in spy_prices if _is_valid_market_candle(row)]
     return {
         "status": "info",
         "symbol": "SPY",
         "range": market_range,
-        "candles": [_map_candle(row) for row in spy_prices],
+        "candles": candles,
         "source": "fmp",
-        "as_of": spy_prices[0].date if spy_prices else None,
+        "as_of": candles[0]["date"] if candles else None,
     }
 
 
 def _unknown_letter(metrics: dict[str, object]) -> dict[str, object]:
+    return _letter(status="unknown", headline="Insufficient data", details=[], metrics=metrics)
+
+
+def _letter(
+    *,
+    status: str,
+    headline: str,
+    details: list[str],
+    metrics: dict[str, object],
+    as_of: str | None = None,
+    source: str = "fmp",
+    **extra: object,
+) -> dict[str, object]:
     return {
-        "status": "unknown",
+        "status": status,
+        "headline": headline,
+        "details": details,
         "metrics": metrics,
-        "source": "fmp",
-        "as_of": None,
+        "source": source,
+        "as_of": as_of,
+        **extra,
     }
 
 
@@ -617,12 +648,24 @@ def _period_return_percent(rows: list[FmpPriceRow]) -> float | None:
     return ((latest - oldest) / oldest) * 100
 
 
+def _has_holder_support(holder: FmpTopHolder) -> bool:
+    return any(
+        value is not None and value > 0
+        for value in (
+            holder.performance_1y_percent,
+            holder.change,
+            holder.shares,
+            holder.market_value,
+        )
+    )
+
+
 def _map_top_holder(holder: FmpTopHolder) -> dict[str, object]:
     return {
-        "holder_name": holder.holder,
-        "cik": holder.cik,
-        "shares": holder.shares,
-        "market_value": holder.market_value,
+        "holder_name": holder.holder or "",
+        "cik": holder.cik or "",
+        "shares": holder.shares if holder.shares is not None else 0.0,
+        "market_value": holder.market_value if holder.market_value is not None else 0.0,
         "position_change_percent": holder.change,
         "portfolio_weight_percent": holder.weight,
         "performance_1y_percent": holder.performance_1y_percent,
@@ -630,6 +673,22 @@ def _map_top_holder(holder: FmpTopHolder) -> dict[str, object]:
         "performance_5y_percent": holder.performance_5y_percent,
         "excess_vs_sp500_percent": holder.performance_relative_to_sp500_percent,
     }
+
+
+def _is_valid_market_candle(row: FmpPriceRow) -> bool:
+    return (
+        row.date is not None
+        and _is_positive(row.open)
+        and _is_positive(row.high)
+        and _is_positive(row.low)
+        and _is_positive(row.close)
+        and row.volume is not None
+        and row.traded_value_usd is not None
+    )
+
+
+def _is_positive(value: float | None) -> bool:
+    return value is not None and value > 0
 
 
 def _map_candle(row: FmpPriceRow) -> dict[str, object]:
