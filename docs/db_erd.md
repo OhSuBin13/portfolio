@@ -1,7 +1,7 @@
 # DB ERD
 
 이 문서는 `backend/src/portfolio_app/schema.sql`의 현재 SQLite 스키마를 기준으로 작성했습니다.
-현재 애플리케이션 스키마 버전은 `14`입니다.
+현재 애플리케이션 스키마 버전은 `17`입니다.
 
 ```mermaid
 erDiagram
@@ -77,6 +77,15 @@ erDiagram
       text imported_at
       text updated_at
     }
+    chart_marker_memos {
+      integer id PK
+      text account_seq
+      text symbol
+      text marker_key
+      text memo
+      text created_at
+      text updated_at
+    }
     growth_month_history {
       integer id PK
       text account_seq
@@ -109,20 +118,21 @@ not a local holdings, transaction, or portfolio snapshot source table.
 
 | 테이블 | 역할 |
 | --- | --- |
-| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 14`입니다. |
+| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 17`입니다. |
 | `settings` | 앱 설정을 key-value 형태로 저장합니다. |
 | `fx_rates` | Toss USD/KRW 환율과 선택적 전일대비 변경율 스냅샷을 저장합니다. |
 | `goals` | 순자산 목표와 월 소득 목표를 저장합니다. |
 | `backups` | 앱이 생성하거나 감지한 SQLite 백업 파일의 메타데이터를 저장합니다. |
 | `toss_order_import_runs` | 계좌별 Toss 주문내역 가져오기 실행 상태와 실패 메시지를 저장합니다. |
 | `toss_orders` | Toss 주문 응답을 `(account_seq, order_id)` 기준으로 upsert한 읽기 전용 주문내역 캐시입니다. |
+| `chart_marker_memos` | 차트의 주문 marker별 사용자 메모를 Toss 계좌, 심볼, marker key 기준으로 저장합니다. |
 | `growth_month_history` | Toss `account_seq`별 수동 월간 성장 기록입니다. 연간 성장 기록은 이 테이블에서 연도별 마지막 저장 월을 선택해 파생합니다. |
 | `sp500_proxy_prices` | `S&P 500 연 성장률` 계산용 VOO 연말 가격을 저장합니다. fresh schema와 v13→v14 migration은 2021~2025 VOO 연말 가격을 `insert or ignore`로 seed합니다. |
 
 ## 제거된 로컬 원장 테이블
 
-다음 테이블은 Toss-only brokerage slice에서 더 이상 fresh schema에 생성되지 않으며,
-마이그레이션 v10에서 제거됩니다.
+다음 테이블은 더 이상 fresh schema에 생성되지 않습니다. 기존 로컬 원장 테이블은
+마이그레이션 v10에서 제거되고, CAN SLIM cache table은 v17에서 제거됩니다.
 
 - `accounts`
 - `assets`
@@ -132,6 +142,7 @@ not a local holdings, transaction, or portfolio snapshot source table.
 - `portfolio_snapshots`
 - legacy `import_runs`
 - legacy `import_rows`
+- CAN SLIM `canslim_cache_entries`
 
 ## 주요 제약
 
@@ -146,6 +157,7 @@ not a local holdings, transaction, or portfolio snapshot source table.
 | `toss_order_import_runs.imported_count` | 0 이상이어야 합니다. |
 | `toss_orders(account_seq, order_id)` | 계좌별 Toss 주문 식별자는 중복될 수 없습니다. |
 | `toss_orders.import_run_id` | 참조한 가져오기 실행이 삭제되면 `NULL`로 보존됩니다. |
+| `chart_marker_memos(account_seq, symbol, marker_key)` | 같은 계좌, 종목, marker key의 메모는 중복될 수 없습니다. |
 | `growth_month_history.year` | 2000 이상 2099 이하이어야 합니다. |
 | `growth_month_history.month` | 1 이상 12 이하이어야 합니다. |
 | `growth_month_history.net_worth_krw` | 0 이상이어야 합니다. |
@@ -165,6 +177,7 @@ not a local holdings, transaction, or portfolio snapshot source table.
 | `idx_toss_orders_account_ordered_at` | 계좌별 주문내역을 주문 시각 역순으로 조회합니다. |
 | `idx_toss_orders_account_status` | 계좌와 Toss 주문 상태별 조회를 보조합니다. |
 | `idx_toss_orders_account_symbol` | 계좌와 종목별 주문내역 조회를 보조합니다. |
+| `idx_chart_marker_memos_account_symbol` | 계좌와 종목별 차트 marker 메모 조회를 보조합니다. |
 | `idx_growth_month_history_account_period` | Toss 계좌별 월간 성장 기록을 연월순으로 조회합니다. |
 | `idx_sp500_proxy_prices_symbol_year` | 프록시 ETF별 연도순 가격 조회를 보조합니다. |
 

@@ -311,7 +311,7 @@ async def test_toss_fx_rate_provider_retries_after_429(httpx_mock):
 
 
 @pytest.mark.asyncio
-async def test_toss_market_data_provider_retries_prices_after_429(httpx_mock):
+async def test_toss_market_data_provider_retries_candles_after_429(httpx_mock):
     sleeps: list[float] = []
 
     async def fake_sleep(seconds: float) -> None:
@@ -324,22 +324,27 @@ async def test_toss_market_data_provider_retries_prices_after_429(httpx_mock):
     )
     httpx_mock.add_response(
         method="GET",
-        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        url="https://openapi.tossinvest.com/api/v1/candles?symbol=005930&interval=1d&count=2&adjusted=true",
         status_code=429,
         headers={"X-RateLimit-Reset": "0.75"},
         json={"error": {"code": "rate-limit-exceeded"}},
     )
     httpx_mock.add_response(
         method="GET",
-        url="https://openapi.tossinvest.com/api/v1/prices?symbols=005930",
+        url="https://openapi.tossinvest.com/api/v1/candles?symbol=005930&interval=1d&count=2&adjusted=true",
         json={
-            "result": [
-                {
-                    "symbol": "005930",
-                    "currency": "KRW",
-                    "lastPrice": "75000",
-                }
-            ]
+            "result": {
+                "candles": [
+                    {
+                        "timestamp": "2026-07-01T00:00:00+09:00",
+                        "open": "70000",
+                        "high": "76000",
+                        "low": "69000",
+                        "close": "75000",
+                        "volume": "123456",
+                    }
+                ]
+            }
         },
     )
     provider = TossMarketDataProvider(
@@ -349,12 +354,12 @@ async def test_toss_market_data_provider_retries_prices_after_429(httpx_mock):
         sleep=fake_sleep,
     )
 
-    quotes = await provider.fetch_equity_quotes(["005930"])
+    candles = await provider.fetch_candles("005930", limit=2)
 
-    assert len(quotes) == 1
-    assert quotes[0].symbol == "005930"
-    assert quotes[0].price == 75000
-    assert quotes[0].currency == "KRW"
+    assert len(candles) == 1
+    assert candles[0].symbol == "005930"
+    assert candles[0].close == 75000
+    assert candles[0].volume == 123456
     assert sleeps == [0.75]
 
 

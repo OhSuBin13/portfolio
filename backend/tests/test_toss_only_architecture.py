@@ -4,6 +4,15 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 BACKEND_SRC = ROOT / "src/portfolio_app"
 FRONTEND_SRC = ROOT.parents[0] / "frontend/src"
+REMOVED_BACKEND_FILES = (
+    "api/accounts.py",
+    "api/assets.py",
+    "api/transactions.py",
+    "api/market_data.py",
+    "services/transactions.py",
+    "services/stock_metadata.py",
+    "services/market_sync_scheduler.py",
+)
 
 
 def test_fresh_schema_no_longer_defines_local_ledger_tables():
@@ -33,6 +42,11 @@ def test_main_registers_toss_portfolio_instead_of_local_ledger_routers():
     assert "app.include_router(transactions.router)" not in source
     assert "app.include_router(growth.router)" not in source
     assert "app.include_router(market_data.router)" not in source
+
+
+def test_removed_local_ledger_backend_modules_are_gone():
+    for relative_path in REMOVED_BACKEND_FILES:
+        assert not (BACKEND_SRC / relative_path).exists()
 
 
 def test_registered_api_surface_includes_toss_orders_not_transactions():

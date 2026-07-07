@@ -305,11 +305,7 @@ def test_backup_api_ignores_backup_like_file_with_invalid_timestamp(tmp_path):
 
 
 def test_backup_api_ignores_unknown_reason_file_over_http(tmp_path):
-    app, settings = create_test_app(
-        tmp_path,
-        backup_enabled=False,
-        market_sync_enabled=False,
-    )
+    app, settings = create_test_app(tmp_path, backup_enabled=False)
     unknown_reason_path = (
         settings.backup_dir / "portfolio-20260612-120000-000000-test.sqlite"
     )
