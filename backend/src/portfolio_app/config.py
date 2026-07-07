@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     market_sync_interval_seconds: int = Field(default=300, gt=0)
     toss_api_key: str = ""
     toss_secret_key: str = ""
-    fmp_api_key: str = ""
     backup_enabled: bool = True
     backup_interval_seconds: int = Field(default=3600, gt=0)
 

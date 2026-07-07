@@ -26,8 +26,6 @@ BackupReason = Literal["startup", "automatic", "manual"]
 BACKUP_REASONS = frozenset(get_args(BackupReason))
 PriceSnapshotStatus = Literal["ok", "stale", "failed", "manual"]
 OrderHistoryStatus = Literal["OPEN", "CLOSED"]
-CanslimLetterStatus = Literal["pass", "watch", "fail", "unknown", "info"]
-CanslimMarketRange = Literal["3m", "6m", "1y"]
 
 
 class HoldingValue(BaseModel):
@@ -272,94 +270,3 @@ class TossOrderResponse(BaseModel):
     settlement_date: str | None
     imported_at: str
     updated_at: str
-
-
-class CanslimLetterResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: CanslimLetterStatus
-    headline: str
-    details: list[str]
-    metrics: dict[str, object]
-    source: str
-    as_of: str | None
-
-
-class CanslimInstitutionalFlow(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    holders_count_change: float | None = Field(default=None, allow_inf_nan=False)
-    shares_change_percent: float | None = Field(default=None, allow_inf_nan=False)
-    ownership_percent: float | None = Field(default=None, allow_inf_nan=False)
-    market_value_change_percent: float | None = Field(default=None, allow_inf_nan=False)
-
-
-class CanslimTopPerformingHolder(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    holder_name: str
-    cik: str
-    shares: float = Field(allow_inf_nan=False)
-    market_value: float = Field(allow_inf_nan=False)
-    position_change_percent: float | None = Field(default=None, allow_inf_nan=False)
-    portfolio_weight_percent: float | None = Field(default=None, allow_inf_nan=False)
-    performance_1y_percent: float | None = Field(default=None, allow_inf_nan=False)
-    performance_3y_percent: float | None = Field(default=None, allow_inf_nan=False)
-    performance_5y_percent: float | None = Field(default=None, allow_inf_nan=False)
-    excess_vs_sp500_percent: float | None = Field(default=None, allow_inf_nan=False)
-
-
-class CanslimInstitutionalLetterResponse(CanslimLetterResponse):
-    institutional_flow: CanslimInstitutionalFlow
-    top_performing_holders: list[CanslimTopPerformingHolder]
-
-
-class CanslimMarketCandle(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    date: str
-    open: float = Field(allow_inf_nan=False)
-    high: float = Field(allow_inf_nan=False)
-    low: float = Field(allow_inf_nan=False)
-    close: float = Field(allow_inf_nan=False)
-    volume: float = Field(allow_inf_nan=False)
-    traded_value_usd: float = Field(allow_inf_nan=False)
-
-
-class CanslimMarketContextResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: Literal["info"]
-    symbol: str
-    range: CanslimMarketRange
-    candles: list[CanslimMarketCandle]
-    source: str
-    as_of: str | None
-
-
-class CanslimLettersResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    c: CanslimLetterResponse
-    a: CanslimLetterResponse
-    n: CanslimLetterResponse
-    s: CanslimLetterResponse
-    leader: CanslimLetterResponse = Field(alias="l")
-    i: CanslimInstitutionalLetterResponse
-    m: CanslimMarketContextResponse
-
-
-class CanslimAnalysisResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    symbol: str
-    company_name: str | None
-    exchange: str | None
-    sector: str | None
-    industry: str | None
-    description: str | None
-    currency: str
-    provider: Literal["fmp"]
-    generated_at: str
-    cached: bool
-    letters: CanslimLettersResponse

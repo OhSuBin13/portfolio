@@ -134,14 +134,6 @@ create table if not exists sp500_proxy_prices (
 create index if not exists idx_sp500_proxy_prices_symbol_year
 on sp500_proxy_prices(proxy_symbol, year);
 
-create table if not exists canslim_cache_entries (
-  cache_key text primary key,
-  provider text not null,
-  payload_json text not null,
-  fetched_at text not null,
-  expires_at text not null
-);
-
 insert or ignore into sp500_proxy_prices(year, price)
 values
   (2021, 436.57),

@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 
 from portfolio_app.api import (
     backups,
-    canslim,
     goals,
     growth_history,
     summary,
@@ -22,16 +21,6 @@ from portfolio_app.services.market_data import TossAuthClient
 from portfolio_app.services.toss_portfolio import TossAccountsCache
 
 LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
-CANSLIM_SYMBOL_REQUIRED_MESSAGE = "종목 심볼을 입력해 주세요."
-
-
-def _is_canslim_symbol_min_length_error(request: Request, error: dict[str, object]) -> bool:
-    location = error.get("loc", ())
-    return (
-        request.url.path == "/api/canslim/analysis"
-        and tuple(location) == ("query", "symbol")
-        and error.get("type") == "string_too_short"
-    )
 
 
 def _validation_error_message(error: dict[str, object]) -> str:
@@ -100,19 +89,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     def validation_exception_handler(
-        request: Request,
+        _request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        errors = exc.errors()
-        if len(errors) == 1 and _is_canslim_symbol_min_length_error(request, errors[0]):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": CANSLIM_SYMBOL_REQUIRED_MESSAGE},
-            )
-
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": [_validation_error_message(error) for error in errors]},
+            content={"detail": [_validation_error_message(error) for error in exc.errors()]},
         )
 
     app.include_router(summary.router)
@@ -120,6 +102,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(growth_history.router)
     app.include_router(goals.router)
     app.include_router(backups.router)
-    app.include_router(canslim.router)
 
     return app

@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { AppShell } from "./components/AppShell"
-import { CanslimPage } from "./components/CanslimPage"
 import { ChartsPage } from "./components/ChartsPage"
 import { Dashboard } from "./components/Dashboard"
 import { GoalsPage } from "./components/GoalsPage"
@@ -18,7 +17,6 @@ export default function App() {
       {active === "holdings" && <HoldingsPage />}
       {active === "charts" && <ChartsPage />}
       {active === "orders" && <OrderHistoryPage />}
-      {active === "canslim" && <CanslimPage />}
       {active === "growth" && <GrowthHistoryPage />}
       {active === "goals" && <GoalsPage />}
       {active === "settings" && <SettingsPage />}

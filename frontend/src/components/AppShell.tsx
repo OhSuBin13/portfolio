@@ -1,13 +1,4 @@
-import {
-  BarChart3,
-  Database,
-  Flag,
-  LineChart,
-  ReceiptText,
-  SearchCheck,
-  Settings,
-  TrendingUp,
-} from "lucide-react"
+import { BarChart3, Database, Flag, LineChart, ReceiptText, Settings, TrendingUp } from "lucide-react"
 
 type Props = {
   active: string
@@ -20,7 +11,6 @@ const navItems = [
   { id: "holdings", label: "보유자산", icon: Database },
   { id: "charts", label: "차트", icon: LineChart },
   { id: "orders", label: "주문내역", icon: ReceiptText },
-  { id: "canslim", label: "CAN SLIM", icon: SearchCheck },
   { id: "growth", label: "성장기록", icon: TrendingUp },
   { id: "goals", label: "목표", icon: Flag },
   { id: "settings", label: "설정", icon: Settings },
