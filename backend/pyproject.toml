@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "portfolio-app-backend"
 version = "0.1.0"
@@ -32,3 +36,6 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.setuptools.package-data]
+portfolio_app = ["schema.sql"]
