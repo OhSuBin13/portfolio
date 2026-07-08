@@ -72,7 +72,9 @@ the Toss order-history import cache tables. Migration v12 adds
 `growth_month_history`. Migration v13 adds `sp500_proxy_prices`; migration v14
 seeds 2021~2025 VOO year-end prices without overwriting existing user-edited
 proxy prices. Migration v15 adds `chart_marker_memos` for chart note text keyed
-by Toss account, held symbol, and order marker key.
+by Toss account, held symbol, and order marker key. Migration v18 rebuilds
+`fx_rates` with a positive-rate constraint and preserves only valid positive
+rows.
 
 Imported Toss order history is read-only historical data. It does not mutate
 holdings, replace the removed `/api/transactions` command path, drive current
@@ -126,11 +128,12 @@ also includes the seeded VOO-based `S&P 500 연 성장률` benchmark for complet
 years.
 
 The order-history page loads imported orders from the local read-only cache and
-can start an order-history import for the selected Toss account. OPEN order
-imports are supported through the Toss order list API. CLOSED imports can fail
-while the Toss OpenAPI reports `closed-not-supported`; the app records the failed
-import run and surfaces the provider failure instead of assuming closed history
-is available.
+can start an order-history import for the selected Toss account. The backend
+import API accepts `OPEN` or `CLOSED`, while the current page starts a `CLOSED`
+import for the selected period and optional symbol. CLOSED imports can fail while
+the Toss OpenAPI reports `closed-not-supported`; the app records the failed import
+run and surfaces the provider failure instead of assuming closed history is
+available.
 
 The chart page starts from the selected Toss account's holdings. It keeps a
 single chart panel, lets the user select one held stock/ETF, and requests up to

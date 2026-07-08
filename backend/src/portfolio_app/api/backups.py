@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from portfolio_app.api import get_db, row_to_dict
-from portfolio_app.models import BackupRecord
+from portfolio_app.models import BackupRecord, BackupStatus
 from portfolio_app.services.backups import list_backup_records, reconcile_backup_records
 
 router = APIRouter(prefix="/api/backups", tags=["backups"])
@@ -25,3 +25,12 @@ def list_backups(request: Request, db: Db) -> list[dict[str, object]]:
         ) from exc
 
     return [row_to_dict(row) for row in rows]
+
+
+@router.get("/status", response_model=BackupStatus)
+def get_backup_status(request: Request) -> BackupStatus:
+    settings = request.app.state.settings
+    return BackupStatus(
+        enabled=settings.backup_enabled,
+        interval_seconds=settings.backup_interval_seconds,
+    )

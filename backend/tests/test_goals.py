@@ -141,6 +141,40 @@ def test_create_goal_endpoint_maps_database_integrity_errors(monkeypatch):
     assert exc_info.value.detail == "목표 정보를 저장할 수 없습니다."
 
 
+def test_summary_and_goal_models_reject_extra_fields():
+    summary_payload = {
+        "net_worth_krw": 1_000_000,
+        "gross_assets_krw": 1_000_000,
+        "debt_krw": 0,
+        "monthly_income_krw": 100_000,
+    }
+    goal = Goal(
+        id=1,
+        name="월 소득 100만",
+        type="monthly_income",
+        target_amount_krw=1_000_000,
+    )
+    progress_payload = {
+        "goal": goal,
+        "current_amount_krw": 100_000,
+        "percent": 10,
+        "remaining_krw": 900_000,
+    }
+
+    with pytest.raises(ValidationError):
+        PortfolioSummary(**summary_payload, unexpected=True)
+    with pytest.raises(ValidationError):
+        Goal(
+            id=2,
+            name="순자산 1억",
+            type="net_worth",
+            target_amount_krw=100_000_000,
+            unexpected=True,
+        )
+    with pytest.raises(ValidationError):
+        GoalProgress(**progress_payload, unexpected=True)
+
+
 @pytest.mark.asyncio
 async def test_summary_endpoint_uses_goal_progress_service_for_supplied_summary(monkeypatch):
     from portfolio_app.api import summary as summary_api

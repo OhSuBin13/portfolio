@@ -11,6 +11,9 @@ frontend/dist/
 data/*.sqlite
 data/*.sqlite-*
 data/backups/*.sqlite
+backend/data/*.sqlite
+backend/data/*.sqlite-*
+backend/data/backups/*.sqlite
 .env
 .env.*
 .superpowers/

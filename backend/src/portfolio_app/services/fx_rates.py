@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from portfolio_app.services.market_data import (
+    FxRate,
     FxRateProvider,
     default_fx_rate_provider,
     normalize_fetched_at_to_utc,
@@ -17,6 +18,7 @@ class FxRefreshResult:
     rate: float | None
     fetched_at: str | None
     change_percent: float | None = None
+    source: str = ""
     error_message: str = ""
 
 
@@ -35,7 +37,7 @@ def latest_fx_rate(
 ) -> sqlite3.Row | None:
     return db.execute(
         """
-        select rate, fetched_at, change_percent
+        select rate, source, fetched_at, change_percent
         from fx_rates
         where base_currency = ?
           and quote_currency = ?
@@ -100,6 +102,7 @@ async def refresh_fx_rate_if_stale(
             rate=float(latest["rate"]),
             fetched_at=str(latest["fetched_at"]),
             change_percent=latest["change_percent"],
+            source=str(latest["source"]),
         )
 
     try:
@@ -117,6 +120,7 @@ async def refresh_fx_rate_if_stale(
             rate=float(latest["rate"]),
             fetched_at=str(latest["fetched_at"]),
             change_percent=latest["change_percent"],
+            source=str(latest["source"]),
             error_message=str(exc),
         )
 
@@ -136,4 +140,39 @@ async def refresh_fx_rate_if_stale(
         rate=fetched.rate,
         fetched_at=fetched_at,
         change_percent=fetched.change_percent,
+        source=fetched.source,
     )
+
+
+class CachedFxRateProvider:
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        *,
+        ttl_seconds: int = FX_REFRESH_TTL_SECONDS,
+        provider: FxRateProvider | None = None,
+    ) -> None:
+        self.db = db
+        self.ttl_seconds = ttl_seconds
+        self.provider = provider
+
+    async def fetch_rate(self, base_currency: str, quote_currency: str = "KRW") -> FxRate:
+        base = base_currency.strip().upper()
+        quote = quote_currency.strip().upper()
+        result = await refresh_fx_rate_if_stale(
+            self.db,
+            base_currency=base,
+            quote_currency=quote,
+            ttl_seconds=self.ttl_seconds,
+            provider=self.provider,
+        )
+        if result.rate is None:
+            raise ValueError(result.error_message or "환율 정보를 가져올 수 없습니다.")
+        return FxRate(
+            base_currency=base,
+            quote_currency=quote,
+            rate=result.rate,
+            source=result.source or "cache",
+            change_percent=result.change_percent,
+            fetched_at=result.fetched_at,
+        )
