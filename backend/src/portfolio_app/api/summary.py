@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from portfolio_app.api import get_db
-from portfolio_app.api.toss_portfolio import toss_http_error_detail
+from portfolio_app.api.errors import toss_http_error_detail
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import SummaryResponse
 from portfolio_app.services import goals as goal_service

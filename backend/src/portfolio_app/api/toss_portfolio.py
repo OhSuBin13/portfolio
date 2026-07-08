@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from portfolio_app.api import get_db, row_to_dict
+from portfolio_app.api.errors import toss_http_error_detail
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import (
     Currency,
@@ -101,12 +102,6 @@ class ChartMarkerMemoResponse(BaseModel):
     memo: str
     created_at: str
     updated_at: str
-
-
-def toss_http_error_detail(exc: httpx.HTTPError) -> str:
-    if isinstance(exc, httpx.HTTPStatusError):
-        return f"Toss 요청 실패: HTTP {exc.response.status_code} {exc.response.reason_phrase}"
-    return f"Toss 요청 실패: {exc.__class__.__name__}"
 
 
 def _provider(request: Request) -> TossBrokerageProvider:
