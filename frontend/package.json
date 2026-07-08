@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "node tests/api-error-message.test.mjs && node tests/holdings-page-form.test.mjs && node tests/dashboard-currency-toggle.test.mjs && node tests/settings-market-sync.test.mjs && node tests/goals-page-form.test.mjs && node tests/growth-history-page.test.mjs && node tests/transactions-nullable-relations.test.mjs && node tests/transaction-payload-builder.test.mjs && node tests/toss-order-history-page.test.mjs && node tests/chart-markers.test.mjs && node tests/charts-page.test.mjs",
+    "test": "node tests/app-tab-state.test.mjs && node tests/api-error-message.test.mjs && node tests/holdings-page-form.test.mjs && node tests/dashboard-currency-toggle.test.mjs && node tests/settings-market-sync.test.mjs && node tests/goals-page-form.test.mjs && node tests/growth-history-page.test.mjs && node tests/transactions-nullable-relations.test.mjs && node tests/transaction-payload-builder.test.mjs && node tests/toss-order-history-page.test.mjs && node tests/chart-markers.test.mjs && node tests/charts-page.test.mjs",
     "lint": "eslint .",
     "preview": "vite preview --host 127.0.0.1"
   },
