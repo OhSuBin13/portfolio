@@ -11,6 +11,14 @@ assert.ok(shellSource.includes('id: "charts"'), "Navigation should expose the ch
 assert.ok(shellSource.includes("차트"), "Navigation should label the charts screen in Korean")
 assert.ok(appSource.includes("ChartsPage"), "App should mount the charts page")
 assert.ok(appSource.includes('active === "charts"'), "App should route the charts screen")
+assert.ok(
+  appSource.includes("chartsMounted") && appSource.includes('hidden={active !== "charts"}'),
+  "App should keep the charts page mounted after first visit for fast return navigation",
+)
+assert.ok(
+  !appSource.includes('{active === "charts" && <ChartsPage />}'),
+  "App should not remount the charts page when navigating back from another page",
+)
 
 for (const expectedText of [
   "/api/toss/accounts",
@@ -130,6 +138,13 @@ for (const expectedText of [
   "체결가",
   "판단 메모",
   "placeholder",
+  "chartFrameLoading",
+  "chartFrameStatusMessage",
+  "candle-chart-placeholder",
+  "candle-placeholder-line",
+  "candle-placeholder-bar",
+  "chart-frame-status",
+  "aria-busy={chartFrameLoading}",
 ]) {
   assert.ok(source.includes(expectedText), `Charts page should include ${expectedText}`)
 }
@@ -339,8 +354,12 @@ assert.match(
 )
 assert.match(
   source,
-  /<div className=\{`chart-panel-layout\$\{memoListExpanded \? " memo-expanded" : ""\}`\}>[\s\S]*?<section className="panel chart-panel">[\s\S]*?<\/section>\s*\{visibleChartCandles\.length > 0 && selectedHolding && \([\s\S]*?<div className="marker-memo-drawer">[\s\S]*?<button[\s\S]*?className="marker-memo-toggle"[\s\S]*?\{memoListExpanded \? ">>" : "<<"}[\s\S]*?\{memoListExpanded && \([\s\S]*?<aside className="marker-memo-list-panel"/,
-  "Written marker memo drawer should stay outside the chart panel and render the list only when expanded",
+  /<div className=\{`chart-panel-layout\$\{memoListExpanded \? " memo-expanded" : ""\}`\}>[\s\S]*?<section className="panel chart-panel">[\s\S]*?<\/section>\s*<div className="marker-memo-drawer">[\s\S]*?<button[\s\S]*?className="marker-memo-toggle"[\s\S]*?\{memoListExpanded \? ">>" : "<<"}[\s\S]*?\{memoListExpanded && \([\s\S]*?<aside className="marker-memo-list-panel"/,
+  "Written marker memo drawer should stay outside the chart panel, render immediately, and expand the list only when requested",
+)
+assert.ok(
+  !source.includes("{visibleChartCandles.length > 0 && selectedHolding && ("),
+  "Charts page should not hide the memo drawer or chart frame until candle data arrives",
 )
 assert.ok(
   !source.includes('className="chart-main-grid"'),
@@ -481,6 +500,10 @@ assert.ok(
   "Frontend types should include chart marker memos",
 )
 assert.ok(styles.includes(".candle-chart-svg"), "Styles should size the candlestick SVG")
+assert.ok(styles.includes(".candle-chart-placeholder"), "Styles should size the loading chart frame")
+assert.ok(styles.includes(".candle-placeholder-line"), "Styles should draw placeholder chart lines")
+assert.ok(styles.includes(".candle-placeholder-bar"), "Styles should draw placeholder candle bars")
+assert.ok(styles.includes(".chart-frame-status"), "Styles should define the chart frame status line")
 assert.ok(styles.includes(".chart-symbol-summary"), "Styles should define compact chart symbol summary")
 assert.ok(!styles.includes(".candle-summary-grid"), "Styles should not keep old candle summary grid")
 assert.ok(styles.includes(".chart-period-toggle"), "Styles should define the chart period button group")

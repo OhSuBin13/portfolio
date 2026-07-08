@@ -10,12 +10,24 @@ import { SettingsPage } from "./components/SettingsPage"
 
 export default function App() {
   const [active, setActive] = useState("dashboard")
+  const [chartsMounted, setChartsMounted] = useState(false)
+
+  const navigate = (screen: string) => {
+    if (screen === "charts") {
+      setChartsMounted(true)
+    }
+    setActive(screen)
+  }
 
   return (
-    <AppShell active={active} onNavigate={setActive}>
+    <AppShell active={active} onNavigate={navigate}>
       {active === "dashboard" && <Dashboard />}
       {active === "holdings" && <HoldingsPage />}
-      {active === "charts" && <ChartsPage />}
+      {(active === "charts" || chartsMounted) && (
+        <div hidden={active !== "charts"}>
+          <ChartsPage />
+        </div>
+      )}
       {active === "orders" && <OrderHistoryPage />}
       {active === "growth" && <GrowthHistoryPage />}
       {active === "goals" && <GoalsPage />}

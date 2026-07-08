@@ -907,6 +907,27 @@ select:focus {
   width: 100%;
 }
 
+.candle-chart-placeholder {
+  aspect-ratio: 1040 / 500;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: block;
+  max-width: 100%;
+  width: 100%;
+}
+
+.candle-placeholder-line {
+  stroke: #dbe3ef;
+  stroke-dasharray: 6 8;
+  stroke-width: 1;
+}
+
+.candle-placeholder-bar {
+  fill: #cbd5e1;
+  opacity: 0.5;
+}
+
 .candle-chart-viewport {
   cursor: grab;
   min-width: 0;
@@ -916,6 +937,13 @@ select:focus {
 
 .candle-chart-viewport.dragging {
   cursor: grabbing;
+}
+
+.chart-frame-status {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
 }
 
 .candle-axis {

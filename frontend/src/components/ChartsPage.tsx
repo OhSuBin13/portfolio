@@ -877,6 +877,8 @@ export function ChartsPage() {
   )
   const selectedMarker = tradeMarkers.find((marker) => marker.key === selectedMarkerKey)
   const latest = visibleChartCandles[visibleChartCandles.length - 1]
+  const accountsLoading = !accountsLoaded && !accountsError
+  const chartFrameLoading = accountsLoading || holdingsLoading || candlesLoading
   const chartEmptyMessage = holdingsLoading
     ? "보유 종목을 불러오는 중입니다."
     : candlesLoading
@@ -884,6 +886,20 @@ export function ChartsPage() {
       : holdings.length === 0
         ? "선택한 Toss 계좌의 보유 종목이 없습니다."
         : "선택한 종목의 캔들 데이터가 없습니다."
+  const chartFrameStatusMessage = accountsLoading
+    ? "Toss 계좌를 불러오는 중입니다."
+    : accounts.length === 0 && accountsLoaded
+      ? "Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요."
+      : chartEmptyMessage
+  const chartSummaryName = selectedHolding?.name ?? "차트 준비 중"
+  const chartSummaryPrice =
+    latest && selectedHolding
+      ? formatPrice(latest.close, selectedHolding.currency)
+      : chartFrameStatusMessage
+  const chartSummaryLabel =
+    latest && selectedHolding
+      ? `${selectedHolding.name} 현재 가격 ${formatPrice(latest.close, selectedHolding.currency)}`
+      : chartFrameStatusMessage
 
   const handleChartWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (chartCandles.length === 0) {
@@ -1122,27 +1138,32 @@ export function ChartsPage() {
             </div>
           </div>
 
-          {accounts.length === 0 && accountsLoaded ? (
-            <p className="empty-state">Toss 계좌가 없습니다. 서버의 Toss API 인증 정보를 확인하세요.</p>
-          ) : visibleChartCandles.length > 0 && selectedHolding ? (
-            <div className="candle-chart-area">
-              <div
-                aria-label={`${selectedHolding.name} 현재 가격 ${formatPrice(latest.close, selectedHolding.currency)}`}
-                className="chart-symbol-summary"
-              >
-                <strong>{selectedHolding.name}</strong>
-                <span>|</span>
-                <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
-              </div>
-              <div
-                className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
-                onClick={handleChartBlankClick}
-                onMouseDown={handleChartMouseDown}
-                onMouseLeave={handleChartMouseUp}
-                onMouseMove={handleChartMouseMove}
-                onMouseUp={handleChartMouseUp}
-                onWheel={handleChartWheel}
-              >
+          <div className="candle-chart-area" aria-busy={chartFrameLoading}>
+            <div aria-label={chartSummaryLabel} className="chart-symbol-summary">
+              {latest && selectedHolding ? (
+                <>
+                  <strong>{selectedHolding.name}</strong>
+                  <span>|</span>
+                  <strong>{formatPrice(latest.close, selectedHolding.currency)}</strong>
+                </>
+              ) : (
+                <>
+                  <strong>{chartSummaryName}</strong>
+                  <span>|</span>
+                  <strong>{chartSummaryPrice}</strong>
+                </>
+              )}
+            </div>
+            <div
+              className={`candle-chart-viewport${chartDragState ? " dragging" : ""}`}
+              onClick={handleChartBlankClick}
+              onMouseDown={handleChartMouseDown}
+              onMouseLeave={handleChartMouseUp}
+              onMouseMove={handleChartMouseMove}
+              onMouseUp={handleChartMouseUp}
+              onWheel={handleChartWheel}
+            >
+              {visibleChartCandles.length > 0 && selectedHolding ? (
                 <CandleChart
                   candles={visibleChartCandles}
                   currency={selectedHolding.currency}
@@ -1155,100 +1176,130 @@ export function ChartsPage() {
                   showVolume={showVolume}
                   onSelectMarker={selectMarker}
                 />
-              </div>
+              ) : (
+                <svg
+                  aria-label={chartFrameStatusMessage}
+                  className="candle-chart-placeholder"
+                  role="img"
+                  viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+                >
+                  {[80, 180, 280, 380].map((y) => (
+                    <line
+                      className="candle-placeholder-line"
+                      key={y}
+                      x1={PLOT_LEFT}
+                      x2={CHART_WIDTH - PLOT_RIGHT}
+                      y1={y}
+                      y2={y}
+                    />
+                  ))}
+                  {Array.from({ length: 26 }, (_, index) => {
+                    const x = PLOT_LEFT + index * 36
+                    const height = 36 + (index % 5) * 18
+                    return (
+                      <rect
+                        className="candle-placeholder-bar"
+                        height={height}
+                        key={index}
+                        rx={2}
+                        width={14}
+                        x={x}
+                        y={PRICE_BOTTOM_WITH_VOLUME - height}
+                      />
+                    )
+                  })}
+                </svg>
+              )}
             </div>
-          ) : (
-            <p className="empty-state">
-              {accountsLoaded ? chartEmptyMessage : "Toss 계좌를 불러오는 중입니다."}
-            </p>
-          )}
-        </section>
-
-        {visibleChartCandles.length > 0 && selectedHolding && (
-          <div className="marker-memo-drawer">
-            <button
-              aria-expanded={memoListExpanded}
-              aria-label={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
-              className="marker-memo-toggle"
-              onClick={toggleMemoListExpanded}
-              title={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
-              type="button"
-            >
-              {memoListExpanded ? ">>" : "<<"}
-            </button>
-            {selectedMarker && (
-              <button
-                aria-label="선택한 매매 마커 판단 메모 작성"
-                className="icon-button marker-memo-compose-button"
-                onClick={openMarkerMemoDialog}
-                title="선택한 매매 마커 판단 메모 작성"
-                type="button"
-              >
-                <Plus size={17} />
-              </button>
-            )}
-            {memoListExpanded && (
-              <aside className="marker-memo-list-panel" aria-label="작성된 판단 메모">
-                <div className="marker-memo-list-heading">
-                  <div>
-                    <h4>작성된 판단 메모</h4>
-                    <span>{memoMarkers.length.toLocaleString("ko-KR")}건</span>
-                  </div>
-                  <button
-                    aria-label="작성된 판단 메모 관리"
-                    aria-pressed={memoManageMode}
-                    className={`secondary-button marker-memo-manage-button${memoManageMode ? " active" : ""}`}
-                    onClick={() => setMemoManageMode((current) => !current)}
-                    title={memoManageMode ? "삭제 모드 끄기" : "삭제 모드 켜기"}
-                    type="button"
-                  >
-                    관리
-                  </button>
-                </div>
-                {memoMarkers.length > 0 ? (
-                  <div className="marker-memo-list">
-                    {memoMarkers.map((marker) => (
-                      <div
-                        className={`marker-memo-list-item marker-memo-list-item-${marker.tone}${
-                          selectedMarkerKey === marker.key ? " selected" : ""
-                        }${memoManageMode ? " manage-mode" : ""}`}
-                        key={marker.key}
-                        onClick={() => openMarkerMemoDetail(marker)}
-                        onKeyDown={(event) => handleMemoListItemKeyDown(event, marker)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <span className="marker-memo-list-item-body">
-                          <span className="marker-memo-list-item-header">
-                            <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
-                              {marker.label}
-                            </span>
-                            <time>{formatDateTime(marker.timestamp)}</time>
-                          </span>
-                          <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
-                          <span className="marker-memo-preview">{marker.memo.trim()}</span>
-                        </span>
-                        {memoManageMode && (
-                          <button
-                            aria-label={`${marker.label} 판단 메모 삭제`}
-                            className="icon-button marker-memo-delete-button"
-                            onClick={(event) => deleteMarkerMemo(event, marker)}
-                            title="판단 메모 삭제"
-                            type="button"
-                          >
-                            <X size={15} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="empty-state compact-empty">작성된 판단 메모가 없습니다.</p>
-                )}
-              </aside>
+            {visibleChartCandles.length === 0 && (
+              <p className="chart-frame-status">{chartFrameStatusMessage}</p>
             )}
           </div>
-        )}
+        </section>
+
+        <div className="marker-memo-drawer">
+          <button
+            aria-expanded={memoListExpanded}
+            aria-label={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
+            className="marker-memo-toggle"
+            onClick={toggleMemoListExpanded}
+            title={memoListExpanded ? "작성된 판단 메모 접기" : "작성된 판단 메모 펼치기"}
+            type="button"
+          >
+            {memoListExpanded ? ">>" : "<<"}
+          </button>
+          {selectedMarker && (
+            <button
+              aria-label="선택한 매매 마커 판단 메모 작성"
+              className="icon-button marker-memo-compose-button"
+              onClick={openMarkerMemoDialog}
+              title="선택한 매매 마커 판단 메모 작성"
+              type="button"
+            >
+              <Plus size={17} />
+            </button>
+          )}
+          {memoListExpanded && (
+            <aside className="marker-memo-list-panel" aria-label="작성된 판단 메모">
+              <div className="marker-memo-list-heading">
+                <div>
+                  <h4>작성된 판단 메모</h4>
+                  <span>{memoMarkers.length.toLocaleString("ko-KR")}건</span>
+                </div>
+                <button
+                  aria-label="작성된 판단 메모 관리"
+                  aria-pressed={memoManageMode}
+                  className={`secondary-button marker-memo-manage-button${memoManageMode ? " active" : ""}`}
+                  onClick={() => setMemoManageMode((current) => !current)}
+                  title={memoManageMode ? "삭제 모드 끄기" : "삭제 모드 켜기"}
+                  type="button"
+                >
+                  관리
+                </button>
+              </div>
+              {memoMarkers.length > 0 && selectedHolding ? (
+                <div className="marker-memo-list">
+                  {memoMarkers.map((marker) => (
+                    <div
+                      className={`marker-memo-list-item marker-memo-list-item-${marker.tone}${
+                        selectedMarkerKey === marker.key ? " selected" : ""
+                      }${memoManageMode ? " manage-mode" : ""}`}
+                      key={marker.key}
+                      onClick={() => openMarkerMemoDetail(marker)}
+                      onKeyDown={(event) => handleMemoListItemKeyDown(event, marker)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className="marker-memo-list-item-body">
+                        <span className="marker-memo-list-item-header">
+                          <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
+                            {marker.label}
+                          </span>
+                          <time>{formatDateTime(marker.timestamp)}</time>
+                        </span>
+                        <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
+                        <span className="marker-memo-preview">{marker.memo.trim()}</span>
+                      </span>
+                      {memoManageMode && (
+                        <button
+                          aria-label={`${marker.label} 판단 메모 삭제`}
+                          className="icon-button marker-memo-delete-button"
+                          onClick={(event) => deleteMarkerMemo(event, marker)}
+                          title="판단 메모 삭제"
+                          type="button"
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-state compact-empty">작성된 판단 메모가 없습니다.</p>
+              )}
+            </aside>
+          )}
+        </div>
       </div>
 
       {chartSettingsOpen && (
