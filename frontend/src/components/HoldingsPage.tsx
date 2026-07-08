@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
+import { getErrorMessage } from "../errors"
 import type { TossAccount, TossBuyingPower, TossHolding } from "../types"
-
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const formatNumber = (value: number) =>
   value.toLocaleString("ko-KR", {

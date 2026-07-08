@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
+import { getErrorMessage } from "../errors"
 import type { BackupRecord, BackupStatus } from "../types"
-
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const formatBackupInterval = (seconds: number) => {
   const totalSeconds = Math.max(1, Math.round(seconds))
