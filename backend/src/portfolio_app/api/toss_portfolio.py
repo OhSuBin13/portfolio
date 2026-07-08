@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from portfolio_app.api import get_db, row_to_dict
+from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import (
     Currency,
     TossMarket,
@@ -35,7 +36,6 @@ from portfolio_app.services.toss_portfolio import (
 router = APIRouter(prefix="/api/toss", tags=["toss"])
 AccountSeq = Annotated[str, Query(min_length=1)]
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
-ACCOUNT_SEQ_REQUIRED_MESSAGE = "Toss 계좌 식별자를 입력해 주세요."
 CANDLE_SYMBOL_REQUIRED_MESSAGE = "Toss 캔들 조회 종목 심볼을 입력해 주세요."
 CHART_MARKER_REQUIRED_MESSAGE = "차트 마커 식별자를 입력해 주세요."
 DATE_RANGE_MESSAGE = "조회 시작일은 종료일보다 늦을 수 없습니다."
@@ -107,16 +107,6 @@ def toss_http_error_detail(exc: httpx.HTTPError) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         return f"Toss 요청 실패: HTTP {exc.response.status_code} {exc.response.reason_phrase}"
     return f"Toss 요청 실패: {exc.__class__.__name__}"
-
-
-def normalize_account_seq(account_seq: str) -> str:
-    normalized = account_seq.strip()
-    if not normalized:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ACCOUNT_SEQ_REQUIRED_MESSAGE,
-        )
-    return normalized
 
 
 def _provider(request: Request) -> TossBrokerageProvider:
