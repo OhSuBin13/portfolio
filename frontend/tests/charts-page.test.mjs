@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/ChartsPage.tsx", import.meta.url), "utf8")
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
+const chartSeriesSource = readFileSync(new URL("../src/chartSeries.ts", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
 const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
@@ -36,7 +37,7 @@ for (const expectedText of [
   "연봉",
   "shortLabel",
   "monthly",
-  "chartPeriodGroupKey",
+  "aggregateCandles",
   "formatChartDateLabel",
   "formatChartDateTime",
   "movingAverageConfigs",
@@ -285,8 +286,12 @@ assert.ok(
   "Charts page should not use a select change handler for the chart period",
 )
 assert.ok(
-  source.includes("chartPeriodGroupKey(candle.timestamp, selectedChartPeriod)"),
-  "Charts page should aggregate candles with source-date period grouping",
+  source.includes("aggregateCandles(candles, selectedChartPeriod)"),
+  "Charts page should aggregate candles through the chart series helper",
+)
+assert.ok(
+  chartSeriesSource.includes("chartPeriodGroupKey(candle.timestamp, selectedChartPeriod)"),
+  "Chart series helper should aggregate candles with source-date period grouping",
 )
 for (const expectedDateFormat of [
   "formatChartDateLabel(first.timestamp, selectedChartPeriod)",
