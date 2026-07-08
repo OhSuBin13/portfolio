@@ -518,6 +518,54 @@ async def test_toss_brokerage_provider_fetches_order_page(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_toss_brokerage_provider_accepts_open_order_without_execution(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/orders",
+        match_params={"status": "OPEN", "limit": "100"},
+        json={
+            "result": {
+                "orders": [
+                    {
+                        "orderId": "order-open-1",
+                        "symbol": "005930",
+                        "side": "BUY",
+                        "orderType": "LIMIT",
+                        "timeInForce": "DAY",
+                        "status": "OPEN",
+                        "price": "70000",
+                        "quantity": "10",
+                        "orderAmount": None,
+                        "currency": "KRW",
+                        "orderedAt": "2026-06-29T09:30:00+09:00",
+                        "canceledAt": None,
+                    }
+                ],
+                "nextCursor": None,
+                "hasNext": False,
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    page = await provider.fetch_orders("acct-1", status="OPEN")
+
+    assert page.orders[0].order_id == "order-open-1"
+    assert page.orders[0].execution.filled_quantity == "0"
+    assert page.orders[0].execution.average_filled_price is None
+    assert page.orders[0].execution.filled_at is None
+
+
+@pytest.mark.asyncio
 async def test_toss_brokerage_provider_fetches_order_page_with_cursor(httpx_mock):
     httpx_mock.add_response(
         method="POST",
