@@ -72,8 +72,15 @@ assert.ok(
 assert.ok(!source.includes("/api/toss/buying-power"), "Dashboard should not fetch buying power separately")
 assert.ok(source.includes("encodeURIComponent(selectedAccountSeq)"), "Dashboard should encode account_seq")
 const selectedSummaryFetchStart = source.indexOf("if (!selectedAccountSeq)")
+const selectedSummaryLoadingReset = source.indexOf("setSummaryLoading(false)", selectedSummaryFetchStart)
 const selectedSummaryClear = source.indexOf("setSummary(emptySummary)", selectedSummaryFetchStart)
 const selectedSummaryFetchRequest = source.indexOf("apiGet<PortfolioSummary>", selectedSummaryFetchStart)
+assert.ok(
+  selectedSummaryFetchStart >= 0 &&
+    selectedSummaryLoadingReset > selectedSummaryFetchStart &&
+    selectedSummaryLoadingReset < selectedSummaryFetchRequest,
+  "Dashboard should clear summary loading when account selection becomes empty",
+)
 assert.ok(
   selectedSummaryFetchStart >= 0 &&
     selectedSummaryClear > selectedSummaryFetchStart &&

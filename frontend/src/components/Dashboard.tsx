@@ -301,11 +301,21 @@ export function Dashboard() {
   }, [])
 
   useEffect(() => {
-    if (!selectedAccountSeq) {
-      return
-    }
-
     let ignore = false
+
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore) {
+          return
+        }
+
+        setSummaryLoading(false)
+        setSummary(emptySummary)
+      })
+      return () => {
+        ignore = true
+      }
+    }
 
     void Promise.resolve().then(() => {
       if (ignore) {
