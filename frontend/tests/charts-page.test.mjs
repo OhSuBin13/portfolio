@@ -97,6 +97,9 @@ for (const expectedText of [
   "거래량",
   "chart-symbol-summary",
   "chart-markers",
+  "chartMemoScopeKey",
+  "currentMemoScopeKeyRef",
+  "memoSaveRequestIdRef",
   "markerPlacementInputs",
   "visibleMarkers",
   "markerMemoDraft",
@@ -436,6 +439,11 @@ assert.match(
 )
 assert.match(
   source,
+  /const requestScopeKey = chartMemoScopeKey\(selectedAccountSeq, selectedHolding\.symbol\)[\s\S]*?apiDelete\(path\)[\s\S]*?currentMemoScopeKeyRef\.current !== requestScopeKey/,
+  "Deleting a marker memo should ignore stale results after the selected account or symbol changes",
+)
+assert.match(
+  source,
   /const openMarkerMemoDetail = \(marker: TradeMarker\) => \{[\s\S]*?setSelectedMarkerKey\(marker\.key\)[\s\S]*?setMarkerMemoDraft\(marker\.memo\)[\s\S]*?setMemoError\(""\)[\s\S]*?setMarkerMemoOpen\(true\)[\s\S]*?\}/,
   "Opening written marker memo details should select the marker, load its memo, and show the dialog",
 )
@@ -485,6 +493,16 @@ assert.match(
   source,
   /apiPost<ChartMarkerMemo>\("\/api\/toss\/chart-marker-memos"[\s\S]*?\.then\(\(saved\) => \{[\s\S]*?setSelectedMarkerKey\(saved\.marker_key\)[\s\S]*?setMarkerMemoOpen\(false\)/,
   "Saving a marker memo should persist it and close the dialog",
+)
+assert.match(
+  source,
+  /const requestId = memoSaveRequestIdRef\.current \+ 1[\s\S]*?memoSaveRequestIdRef\.current = requestId[\s\S]*?apiPost<ChartMarkerMemo>[\s\S]*?memoSaveRequestIdRef\.current !== requestId/,
+  "Saving a marker memo should ignore stale save results after a newer save starts",
+)
+assert.match(
+  source,
+  /apiPost<ChartMarkerMemo>[\s\S]*?currentMemoScopeKeyRef\.current !== requestScopeKey/,
+  "Saving a marker memo should ignore stale save results after the selected account or symbol changes",
 )
 assert.match(
   source,
