@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { formatTossAccountLabel } from "../accountLabels"
 import { apiDelete, apiGet, apiPut } from "../api"
+import { getErrorMessage } from "../errors"
 import type {
   GrowthAnnualHistoryRow,
   GrowthMonthHistoryRow,
@@ -39,7 +40,6 @@ const defaultSp500ProxyForm = (): Sp500ProxyForm => {
   }
 }
 
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const formatKrw = (value: number) =>
   `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} 원`
 const formatReturnPercent = (value: number | null) => {
