@@ -1,5 +1,4 @@
 import asyncio
-import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -18,6 +17,11 @@ from portfolio_app.services.market_data import (
     TossAuthClient,
     default_fx_rate_provider,
     request_with_toss_retry,
+)
+from portfolio_app.services.toss_payloads import (
+    non_negative_number,
+    optional_text,
+    required_text,
 )
 from portfolio_app.services.toss_summary import TossSummaryResult, build_toss_summary
 
@@ -192,12 +196,12 @@ class TossBrokerageProvider:
         for item in result:
             if not isinstance(item, dict):
                 raise ValueError("Toss 계좌 항목은 객체여야 합니다.")
-            account_no = _required_text(item.get("accountNo"), "Toss 계좌번호가 필요합니다.")
-            account_seq = _required_text(
+            account_no = required_text(item.get("accountNo"), "Toss 계좌번호가 필요합니다.")
+            account_seq = required_text(
                 item.get("accountSeq"),
                 "Toss 계좌 식별자가 필요합니다.",
             )
-            account_type = _required_text(
+            account_type = required_text(
                 item.get("accountType"),
                 "Toss 계좌 유형이 필요합니다.",
             )
@@ -314,7 +318,7 @@ class TossBrokerageProvider:
             raise ValueError("Toss 주문 목록 hasNext 값은 참/거짓이어야 합니다.")
         return TossOrderPage(
             orders=[_parse_order(item) for item in orders],
-            next_cursor=_optional_text(result.get("nextCursor")),
+            next_cursor=optional_text(result.get("nextCursor")),
             has_next=has_next,
         )
 
@@ -371,35 +375,35 @@ async def fetch_toss_summary(
 def _parse_order(item: dict[str, Any]) -> TossOrder:
     if not isinstance(item, dict):
         raise ValueError("Toss 주문 항목은 객체여야 합니다.")
-    status = _required_text(item.get("status"), "Toss 주문 상태가 필요합니다.")
+    status = required_text(item.get("status"), "Toss 주문 상태가 필요합니다.")
     execution = _execution_payload_for_order(item.get("execution"), status)
-    filled_quantity = _optional_text(execution.get("filledQuantity"))
+    filled_quantity = optional_text(execution.get("filledQuantity"))
     if filled_quantity is None:
         if _allows_empty_execution(status):
             filled_quantity = "0"
         else:
             raise ValueError("Toss 체결 수량이 필요합니다.")
     return TossOrder(
-        order_id=_required_text(item.get("orderId"), "Toss 주문 식별자가 필요합니다."),
-        symbol=_required_text(item.get("symbol"), "Toss 주문 종목 심볼이 필요합니다.").upper(),
-        side=_required_text(item.get("side"), "Toss 주문 방향이 필요합니다."),
-        order_type=_required_text(item.get("orderType"), "Toss 주문 유형이 필요합니다."),
-        time_in_force=_required_text(item.get("timeInForce"), "Toss 주문 유효 조건이 필요합니다."),
+        order_id=required_text(item.get("orderId"), "Toss 주문 식별자가 필요합니다."),
+        symbol=required_text(item.get("symbol"), "Toss 주문 종목 심볼이 필요합니다.").upper(),
+        side=required_text(item.get("side"), "Toss 주문 방향이 필요합니다."),
+        order_type=required_text(item.get("orderType"), "Toss 주문 유형이 필요합니다."),
+        time_in_force=required_text(item.get("timeInForce"), "Toss 주문 유효 조건이 필요합니다."),
         status=status,
-        price=_optional_text(item.get("price")),
-        quantity=_required_text(item.get("quantity"), "Toss 주문 수량이 필요합니다."),
-        order_amount=_optional_text(item.get("orderAmount")),
-        currency=_required_text(item.get("currency"), "Toss 주문 통화가 필요합니다."),
-        ordered_at=_required_text(item.get("orderedAt"), "Toss 주문 시간이 필요합니다."),
-        canceled_at=_optional_text(item.get("canceledAt")),
+        price=optional_text(item.get("price")),
+        quantity=required_text(item.get("quantity"), "Toss 주문 수량이 필요합니다."),
+        order_amount=optional_text(item.get("orderAmount")),
+        currency=required_text(item.get("currency"), "Toss 주문 통화가 필요합니다."),
+        ordered_at=required_text(item.get("orderedAt"), "Toss 주문 시간이 필요합니다."),
+        canceled_at=optional_text(item.get("canceledAt")),
         execution=TossOrderExecution(
             filled_quantity=filled_quantity,
-            average_filled_price=_optional_text(execution.get("averageFilledPrice")),
-            filled_amount=_optional_text(execution.get("filledAmount")),
-            commission=_optional_text(execution.get("commission")),
-            tax=_optional_text(execution.get("tax")),
-            filled_at=_optional_text(execution.get("filledAt")),
-            settlement_date=_optional_text(execution.get("settlementDate")),
+            average_filled_price=optional_text(execution.get("averageFilledPrice")),
+            filled_amount=optional_text(execution.get("filledAmount")),
+            commission=optional_text(execution.get("commission")),
+            tax=optional_text(execution.get("tax")),
+            filled_at=optional_text(execution.get("filledAt")),
+            settlement_date=optional_text(execution.get("settlementDate")),
         ),
         raw=dict(item),
     )
@@ -422,7 +426,7 @@ def _parse_buying_power(payload: Any, requested_currency: str) -> TossBuyingPowe
     if not isinstance(result, dict):
         raise ValueError("Toss 응답에서 매수 가능 금액을 찾을 수 없습니다.")
 
-    currency = _required_text(
+    currency = required_text(
         result.get("currency"),
         "Toss 매수 가능 금액 통화가 필요합니다.",
     ).upper()
@@ -433,7 +437,7 @@ def _parse_buying_power(payload: Any, requested_currency: str) -> TossBuyingPowe
 
     return TossBuyingPower(
         currency=currency,
-        cash_buying_power=_non_negative_number(
+        cash_buying_power=non_negative_number(
             result.get("cashBuyingPower"),
             "Toss 매수 가능 금액은 0 이상이어야 합니다.",
         ),
@@ -449,21 +453,21 @@ def _parse_holding(item: dict[str, Any]) -> TossHolding:
 
     last_price = item.get("lastPrice")
     return TossHolding(
-        symbol=_required_text(item.get("symbol"), "Toss 보유자산 심볼이 필요합니다.").upper(),
-        name=_required_text(item.get("name"), "Toss 보유자산명이 필요합니다."),
+        symbol=required_text(item.get("symbol"), "Toss 보유자산 심볼이 필요합니다.").upper(),
+        name=required_text(item.get("name"), "Toss 보유자산명이 필요합니다."),
         market=market,
         currency=currency,
-        quantity=_non_negative_number(item.get("quantity"), "Toss 보유수량은 0 이상이어야 합니다."),
-        average_purchase_price=_non_negative_number(
+        quantity=non_negative_number(item.get("quantity"), "Toss 보유수량은 0 이상이어야 합니다."),
+        average_purchase_price=non_negative_number(
             item.get("averagePurchasePrice"),
             "Toss 평균매입가는 0 이상이어야 합니다.",
         ),
         last_price=(
-            _non_negative_number(last_price, "Toss 현재가는 0 이상이어야 합니다.")
+            non_negative_number(last_price, "Toss 현재가는 0 이상이어야 합니다.")
             if last_price is not None
             else None
         ),
-        market_value=_non_negative_number(
+        market_value=non_negative_number(
             market_value.get("amount"),
             "Toss 평가금액은 0 이상이어야 합니다.",
         ),
@@ -471,8 +475,8 @@ def _parse_holding(item: dict[str, Any]) -> TossHolding:
 
 
 def _market_currency_pair(item: dict[str, Any]) -> tuple[TossMarket, Currency]:
-    market = _required_text(item.get("marketCountry"), "Toss 시장 국가가 필요합니다.").upper()
-    currency = _required_text(item.get("currency"), "Toss 보유자산 통화가 필요합니다.").upper()
+    market = required_text(item.get("marketCountry"), "Toss 시장 국가가 필요합니다.").upper()
+    currency = required_text(item.get("currency"), "Toss 보유자산 통화가 필요합니다.").upper()
     if (market, currency) == ("KR", "KRW"):
         return "KR", "KRW"
     if (market, currency) == ("US", "USD"):
@@ -482,27 +486,3 @@ def _market_currency_pair(item: dict[str, Any]) -> tuple[TossMarket, Currency]:
     if currency not in {"KRW", "USD"}:
         raise ValueError("Toss 보유자산 통화는 KRW 또는 USD여야 합니다.")
     raise ValueError("Toss 보유자산 시장과 통화 조합이 일치하지 않습니다.")
-
-
-def _optional_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _required_text(value: Any, message: str) -> str:
-    text = str(value).strip() if value is not None else ""
-    if not text:
-        raise ValueError(message)
-    return text
-
-
-def _non_negative_number(value: Any, message: str) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(message) from exc
-    if not math.isfinite(number) or number < 0:
-        raise ValueError(message)
-    return number
