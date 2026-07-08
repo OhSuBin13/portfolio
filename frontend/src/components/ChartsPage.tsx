@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPost } from "../api"
+import { formatTossAccountLabel } from "../accountLabels"
 import {
   chartDateKey,
   chartPeriodGroupKey,
@@ -90,9 +91,6 @@ type ChartHoverState = {
   previousClose: number | null
   changeRates: OhlcChangeRates
 }
-
-const accountLabel = (account: TossAccount) =>
-  `${account.display_name} (${account.account_type})`
 
 const holdingKey = (holding: TossHolding) => `${holding.market}:${holding.symbol}`
 
@@ -1110,7 +1108,7 @@ export function ChartsPage() {
           <div className="section-heading chart-heading">
             <div>
               <h3>보유 종목 차트</h3>
-              <span>{selectedAccount ? accountLabel(selectedAccount) : "Toss 계좌"}</span>
+              <span>{selectedAccount ? formatTossAccountLabel(selectedAccount) : "Toss 계좌"}</span>
             </div>
             <div className="section-heading-actions chart-heading-actions">
               <div aria-label="봉 선택" className="chart-period-toggle" role="group">

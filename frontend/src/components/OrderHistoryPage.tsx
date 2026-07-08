@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
+import { formatTossAccountLabel } from "../accountLabels"
 import { apiGet, apiPost } from "../api"
 import { getErrorMessage } from "../errors"
 import type { TossAccount, TossOrder, TossOrderImportRun } from "../types"
@@ -19,9 +20,6 @@ type OrderQuerySnapshot = {
   fromDate: string
   toDate: string
 }
-
-const accountLabel = (account: TossAccount) =>
-  `${account.display_name} (${account.account_type})`
 
 const displayValue = (value: string | null) => value || "-"
 
@@ -493,7 +491,7 @@ export function OrderHistoryPage() {
                 >
                   {accounts.map((account) => (
                     <option key={account.account_seq} value={account.account_seq}>
-                      {accountLabel(account)}
+                      {formatTossAccountLabel(account)}
                     </option>
                   ))}
                 </select>
