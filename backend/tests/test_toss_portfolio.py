@@ -364,6 +364,31 @@ async def test_toss_market_data_provider_retries_candles_after_429(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_toss_market_data_provider_treats_empty_candle_page_as_empty_result(
+    httpx_mock,
+):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/candles?symbol=005930&interval=1d&count=200&adjusted=true",
+        json={"result": {"candles": []}},
+    )
+    provider = TossMarketDataProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    candles = await provider.fetch_candles("005930")
+
+    assert candles == []
+
+
+@pytest.mark.asyncio
 async def test_toss_brokerage_provider_fetches_accounts(httpx_mock):
     httpx_mock.add_response(
         method="POST",

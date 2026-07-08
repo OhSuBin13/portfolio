@@ -361,7 +361,10 @@ def _candle_page(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
         items = result
         next_before = None
     elif isinstance(result, dict):
-        items = result.get("candles") or result.get("items") or result.get("data")
+        items = next(
+            (result[key] for key in ("candles", "items", "data") if key in result),
+            None,
+        )
         next_before_value = result.get("nextBefore") or result.get("next_before")
         next_before = (
             next_before_value.strip()
