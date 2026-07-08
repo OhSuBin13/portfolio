@@ -96,6 +96,21 @@ assert.ok(
     pageSource.includes("requestAccountSeq !== selectedAccountSeqRef.current"),
   "Page should ignore stale selected-account async results",
 )
+assert.ok(
+  pageSource.includes("const defaultGrowthForm = ()") &&
+    pageSource.includes("useState<GrowthForm>(defaultGrowthForm)"),
+  "Page should calculate the default growth form date when the component mounts",
+)
+assert.ok(
+  pageSource.includes("const defaultSp500ProxyForm = ()") &&
+    pageSource.includes("useState<Sp500ProxyForm>(defaultSp500ProxyForm)"),
+  "Page should calculate the default S&P 500 proxy year when the component mounts",
+)
+assert.ok(
+  !pageSource.includes("const initialForm") &&
+    !pageSource.includes("const initialSp500ProxyForm"),
+  "Page should not freeze default form values at module load time",
+)
 
 const emptyAccountGuardStart = pageSource.indexOf("if (!selectedAccountSeq)")
 const emptyAccountLoadingReset = pageSource.indexOf("setHistoryLoading(false)", emptyAccountGuardStart)
