@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from portfolio_app.api import get_db
-from portfolio_app.api.toss_portfolio import normalize_account_seq
+from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import (
     GrowthAnnualHistoryRow,
     GrowthMonthHistoryRow,
