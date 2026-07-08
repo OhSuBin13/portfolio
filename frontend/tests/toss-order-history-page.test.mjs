@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/OrderHistoryPage.tsx", import.meta.url), "utf8")
+const querySource = readFileSync(new URL("../src/orderHistoryQuery.ts", import.meta.url), "utf8")
+const orderHistoryFeatureSource = `${source}\n${querySource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
 
@@ -23,10 +25,13 @@ for (const expectedText of [
   "월",
   "년",
 ]) {
-  assert.ok(source.includes(expectedText), `Order history page should include ${expectedText}`)
+  assert.ok(
+    orderHistoryFeatureSource.includes(expectedText),
+    `Order history feature should include ${expectedText}`,
+  )
 }
 
-assert.ok(!source.includes("/api/transactions"), "Order history page should not use local transactions")
+assert.ok(!orderHistoryFeatureSource.includes("/api/transactions"), "Order history page should not use local transactions")
 for (const removedControl of [
   'type="date"',
   "시작일",
@@ -45,7 +50,7 @@ for (const removedControl of [
   )
 }
 assert.ok(
-  !source.includes('params.set("order_status", statusFilter)'),
+  !orderHistoryFeatureSource.includes('params.set("order_status", statusFilter)'),
   "Saved Toss orders should not be filtered by the import OPEN/CLOSED status",
 )
 assert.ok(
