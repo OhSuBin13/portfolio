@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/Dashboard.tsx", import.meta.url), "utf8")
+const allocationChartSource = readFileSync(new URL("../src/allocationChart.ts", import.meta.url), "utf8")
+const dashboardFeatureSource = `${source}\n${allocationChartSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const goalsSource = readFileSync(new URL("../src/components/GoalsPage.tsx", import.meta.url), "utf8")
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
@@ -115,19 +117,19 @@ assert.ok(
   "Dashboard should read buying power from the summary response",
 )
 assert.ok(
-  source.includes("assetMix.cash"),
+  dashboardFeatureSource.includes("assetMix.cash"),
   "Dashboard allocation segments should include cash from buying power",
 )
 assert.ok(
-  source.includes("const stockSegments = assetAllocations.map"),
+  allocationChartSource.includes("const stockSegments = assetAllocations.map"),
   "Dashboard should derive ticker allocation segments before adding cash",
 )
 assert.ok(
-  source.includes("value: positivePercent(assetMix.cash)"),
+  allocationChartSource.includes("value: positivePercent(assetMix.cash)"),
   "Dashboard should include cash from asset_mix in allocation segments",
 )
 assert.ok(
-  source.includes("normalizeAllocationSegments([...stockSegments, cashSegment, otherSegment])"),
+  allocationChartSource.includes("normalizeAllocationSegments([...stockSegments, cashSegment, otherSegment])"),
   "Dashboard should normalize ticker, cash, and other allocation segments together",
 )
 assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
@@ -142,15 +144,15 @@ assert.ok(goalsSource.includes("useState<Goal[]>([])"), "Goals page should store
 assert.ok(!goalsSource.includes("current_amount_krw"), "Goals page should not render current progress amount")
 assert.ok(!goalsSource.includes("remaining_krw"), "Goals page should not render remaining progress amount")
 assert.ok(
-  source.includes("key: allocation.asset_key"),
+  allocationChartSource.includes("key: allocation.asset_key"),
   "Dashboard should key allocation segments by Toss asset_key",
 )
 assert.ok(
-  source.includes("allocation.symbol || allocation.name"),
+  allocationChartSource.includes("allocation.symbol || allocation.name"),
   "Dashboard should prefer ticker labels for stock/ETF allocation segments",
 )
-assert.ok(source.includes("getPieSlicePath"), "Dashboard should render pie slices as SVG paths")
-assert.ok(source.includes("getAllocationCallouts"), "Dashboard should calculate outside label callouts")
+assert.ok(dashboardFeatureSource.includes("getPieSlicePath"), "Dashboard should render pie slices as SVG paths")
+assert.ok(dashboardFeatureSource.includes("getAllocationCallouts"), "Dashboard should calculate outside label callouts")
 assert.ok(source.includes("allocation-slice"), "Dashboard should render visible allocation slices")
 assert.ok(source.includes("allocation-label-line"), "Dashboard should draw leader lines to allocation labels")
 assert.ok(source.includes("allocation-label-name"), "Dashboard should show allocation ticker labels around the pie")
