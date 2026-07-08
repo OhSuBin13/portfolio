@@ -329,7 +329,12 @@ function CandleChart({
       )
       .map((point) => ({ ...point, index: point.index - visibleCandleStartIndex })),
   )
-  const bounds = priceBounds(candles, movingAverageSeries, markers)
+  const markerPlacementInputs = markers.flatMap((marker) => {
+    const candleIndex = markerIndex(candles, marker)
+    return candleIndex >= 0 ? [{ marker, candleIndex }] : []
+  })
+  const visibleMarkers = markerPlacementInputs.map(({ marker }) => marker)
+  const bounds = priceBounds(candles, movingAverageSeries, visibleMarkers)
   const priceBottom = showVolume ? PRICE_BOTTOM_WITH_VOLUME : PRICE_BOTTOM_WITHOUT_VOLUME
   const priceRange = bounds.max - bounds.min || 1
   const plotWidth = CHART_WIDTH - PLOT_LEFT - PLOT_RIGHT
@@ -352,12 +357,7 @@ function CandleChart({
         return `${command}${xForIndex(point.index).toFixed(2)},${yForPrice(point.value).toFixed(2)}`
       })
       .join(" ")
-  const markerPlacements = spreadOverlappingMarkers(
-    markers.flatMap((marker) => {
-      const candleIndex = markerIndex(candles, marker)
-      return candleIndex >= 0 ? [{ marker, candleIndex }] : []
-    }),
-  )
+  const markerPlacements = spreadOverlappingMarkers(markerPlacementInputs)
   const [chartHoverState, setChartHoverState] = useState<ChartHoverState | null>(null)
 
   const handleChartHoverMove = (event: ReactMouseEvent<SVGSVGElement>) => {

@@ -96,6 +96,8 @@ for (const expectedText of [
   "거래량",
   "chart-symbol-summary",
   "chart-markers",
+  "markerPlacementInputs",
+  "visibleMarkers",
   "markerMemoDraft",
   "markerMemoOpen",
   "setMarkerMemoOpen",
@@ -148,6 +150,19 @@ for (const expectedText of [
 ]) {
   assert.ok(source.includes(expectedText), `Charts page should include ${expectedText}`)
 }
+
+assert.ok(
+  source.includes("const visibleMarkers = markerPlacementInputs.map"),
+  "Candle chart should derive visible markers before calculating price bounds",
+)
+assert.ok(
+  source.includes("priceBounds(candles, movingAverageSeries, visibleMarkers)"),
+  "Candle chart should scale the price axis from visible marker prices only",
+)
+assert.ok(
+  !source.includes("priceBounds(candles, movingAverageSeries, markers)"),
+  "Candle chart should not scale the visible price axis from off-window marker prices",
+)
 
 assert.ok(source.includes("TossCandle"), "Charts page should type candle data")
 assert.ok(source.includes("TossOrder"), "Charts page should use Toss orders for trade markers")
