@@ -48,8 +48,8 @@ def mock_zero_buying_power(httpx_mock) -> None:
     )
 
 
-def test_health_returns_ok():
-    client = TestClient(create_app())
+def test_health_returns_ok(tmp_path):
+    client = create_test_client(tmp_path)
 
     response = client.get("/health")
 
@@ -591,6 +591,59 @@ def test_toss_order_import_endpoint_imports_open_orders(tmp_path, httpx_mock):
     orders = orders_response.json()
     assert orders[0]["order_id"] == "order-1"
     assert orders[0]["filled_amount"] == "210300"
+
+
+def test_toss_order_import_endpoint_rejects_reversed_date_range(tmp_path, httpx_mock):
+    client = create_test_client(
+        tmp_path,
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_optional=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://openapi.tossinvest.com/api/v1/orders"
+            "?status=CLOSED&from=2026-07-01&to=2026-06-01&limit=100"
+        ),
+        json={"result": {"orders": [], "nextCursor": None, "hasNext": False}},
+        is_optional=True,
+    )
+
+    response = client.post(
+        "/api/toss/order-imports",
+        json={
+            "account_seq": "acct-1",
+            "status": "CLOSED",
+            "from_date": "2026-07-01",
+            "to_date": "2026-06-01",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "조회 시작일은 종료일보다 늦을 수 없습니다."
+    order_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.method == "GET" and request.url.path == "/api/v1/orders"
+    ]
+    assert order_requests == []
+
+
+def test_toss_orders_endpoint_rejects_reversed_date_range(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/toss/orders?account_seq=acct-1&from=2026-07-01&to=2026-06-01"
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "조회 시작일은 종료일보다 늦을 수 없습니다."
 
 
 def test_summary_endpoint_uses_toss_account_seq(tmp_path, httpx_mock):

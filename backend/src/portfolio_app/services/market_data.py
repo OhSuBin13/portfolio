@@ -138,12 +138,13 @@ class TossAuthClient:
             if not isinstance(access_token, str) or not access_token.strip():
                 raise ValueError("Toss 토큰 응답에서 access_token을 찾을 수 없습니다.")
 
-            self._access_token = access_token.strip()
-            self._access_token_expires_at = self._now() + max(
-                _token_expires_in_seconds(payload)
-                - TOSS_TOKEN_EXPIRY_SAFETY_MARGIN_SECONDS,
-                0.0,
+            expires_in = _token_expires_in_seconds(payload)
+            refresh_margin = min(
+                TOSS_TOKEN_EXPIRY_SAFETY_MARGIN_SECONDS,
+                expires_in / 2,
             )
+            self._access_token = access_token.strip()
+            self._access_token_expires_at = self._now() + max(expires_in - refresh_margin, 0.0)
             return self._access_token
 
 
@@ -361,7 +362,10 @@ def _candle_page(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
         items = result
         next_before = None
     elif isinstance(result, dict):
-        items = result.get("candles") or result.get("items") or result.get("data")
+        items = next(
+            (result[key] for key in ("candles", "items", "data") if key in result),
+            None,
+        )
         next_before_value = result.get("nextBefore") or result.get("next_before")
         next_before = (
             next_before_value.strip()

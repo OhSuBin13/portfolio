@@ -118,7 +118,7 @@ not a local holdings, transaction, or portfolio snapshot source table.
 
 | 테이블 | 역할 |
 | --- | --- |
-| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 17`입니다. |
+| `schema_migrations` | 적용된 스키마 버전을 기록합니다. 현재 `SCHEMA_VERSION = 18`입니다. |
 | `settings` | 앱 설정을 key-value 형태로 저장합니다. |
 | `fx_rates` | Toss USD/KRW 환율과 선택적 전일대비 변경율 스냅샷을 저장합니다. |
 | `goals` | 순자산 목표와 월 소득 목표를 저장합니다. |
@@ -150,6 +150,7 @@ not a local holdings, transaction, or portfolio snapshot source table.
 | --- | --- |
 | `fx_rates(base_currency, quote_currency, fetched_at)` | 같은 시각의 동일 통화쌍 환율은 중복될 수 없습니다. |
 | `fx_rates.base_currency`, `fx_rates.quote_currency` | 각각 `USD`, `KRW` 중 하나여야 합니다. |
+| `fx_rates.rate` | 0보다 커야 합니다. |
 | `goals.type` | `net_worth`, `monthly_income` 중 하나여야 합니다. |
 | `goals.target_amount_krw` | 0보다 커야 합니다. |
 | `toss_order_import_runs.status_filter` | `OPEN`, `CLOSED` 중 하나여야 합니다. |
