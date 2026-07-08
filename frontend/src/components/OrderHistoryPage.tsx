@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
 import { apiGet, apiPost } from "../api"
+import { getErrorMessage } from "../errors"
 import type { TossAccount, TossOrder, TossOrderImportRun } from "../types"
 
 const periodOptions = [
@@ -18,8 +19,6 @@ type OrderQuerySnapshot = {
   fromDate: string
   toDate: string
 }
-
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const accountLabel = (account: TossAccount) =>
   `${account.display_name} (${account.account_type})`

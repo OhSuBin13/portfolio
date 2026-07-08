@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { apiDelete, apiGet, apiPut } from "../api"
+import { getErrorMessage } from "../errors"
 import type {
   GrowthAnnualHistoryRow,
   GrowthMonthHistoryRow,
@@ -38,7 +39,6 @@ const defaultSp500ProxyForm = (): Sp500ProxyForm => {
   }
 }
 
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const accountLabel = (account: TossAccount) => `${account.display_name} (${account.account_type})`
 const formatKrw = (value: number) =>
   `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} 원`

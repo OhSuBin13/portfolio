@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
+import { getErrorMessage } from "../errors"
 import type { Goal } from "../types"
 
 const goalTypes = [
@@ -7,7 +8,6 @@ const goalTypes = [
   ["monthly_income", "월 배당/소득"],
 ]
 
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const formatKrw = (value: number) => `${value.toLocaleString("ko-KR")} 원`
 const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
 const normalizeNumericInput = (value: string) => value.replaceAll(",", "").trim()

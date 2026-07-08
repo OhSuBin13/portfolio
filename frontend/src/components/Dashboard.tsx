@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { apiGet } from "../api"
+import { getErrorMessage } from "../errors"
 import type { AssetAllocation, PortfolioSummary, TossAccount } from "../types"
 
 const emptySummary: PortfolioSummary = {
@@ -50,7 +51,6 @@ const pieChart = {
   radius: 92,
   width: 360,
 }
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const formatUsdCurrency = (valueUsd: number) =>
   valueUsd.toLocaleString("en-US", {
     currency: "USD",

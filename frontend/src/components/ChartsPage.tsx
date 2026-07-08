@@ -28,6 +28,7 @@ import {
   type ChartPeriod,
 } from "../chartDates"
 import { buildTradeMarkers, spreadOverlappingMarkers, type TradeMarker } from "../chartMarkers"
+import { getErrorMessage } from "../errors"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
 const CHART_WIDTH = 1040
@@ -89,8 +90,6 @@ type ChartHoverState = {
   previousClose: number | null
   changeRates: OhlcChangeRates
 }
-
-const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const accountLabel = (account: TossAccount) =>
   `${account.display_name} (${account.account_type})`
