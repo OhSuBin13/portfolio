@@ -4,6 +4,11 @@ import { existsSync, readFileSync } from "node:fs"
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
 const pageFile = new URL("../src/components/GrowthHistoryPage.tsx", import.meta.url)
+const growthHistoryFormatSource = readFileSync(
+  new URL("../src/growthHistoryFormat.ts", import.meta.url),
+  "utf8",
+)
+const featureSource = `${readFileSync(pageFile, "utf8")}\n${growthHistoryFormatSource}`
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
 
 assert.ok(appSource.includes('active === "growth"'), "App should mount growth history")
@@ -43,9 +48,9 @@ assert.ok(
 )
 assert.ok(pageSource.includes("삭제"), "Page should expose month history delete controls")
 assert.ok(!pageSource.includes("handleEditMonth"), "Page should not keep month history edit handlers")
-assert.ok(pageSource.includes("formatReturnPercent"), "Page should format returns as percentages")
+assert.ok(featureSource.includes("formatReturnPercent"), "Page should format returns as percentages")
 assert.ok(
-  pageSource.includes("(value - 1) * 100"),
+  featureSource.includes("(value - 1) * 100"),
   "Page should convert stored return ratios into percent changes",
 )
 assert.ok(!pageSource.includes("toFixed(4)}x"), "Page should not show returns as ratio multiples")
@@ -60,13 +65,13 @@ assert.ok(
   "Page should show annual average return only on the latest annual row",
 )
 assert.ok(
-  pageSource.includes("getReturnToneClass") &&
-    pageSource.includes("value > 1") &&
-    pageSource.includes("value < 1"),
+  featureSource.includes("getReturnToneClass") &&
+    featureSource.includes("value > 1") &&
+    featureSource.includes("value < 1"),
   "Page should classify positive and negative returns from stored ratios",
 )
 assert.ok(
-  pageSource.includes("return-tone-positive") && pageSource.includes("return-tone-negative"),
+  featureSource.includes("return-tone-positive") && featureSource.includes("return-tone-negative"),
   "Page should apply return tone classes to return cells",
 )
 assert.ok(
