@@ -8,13 +8,8 @@ import {
   useState,
 } from "react"
 import {
-  Calendar,
-  DollarSign,
-  Hash,
   Plus,
-  Save,
   Settings as SettingsIcon,
-  StickyNote,
   X,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPost } from "../api"
@@ -42,6 +37,7 @@ import {
   PRICE_BOTTOM_WITH_VOLUME,
 } from "./CandleChart"
 import { ChartSettingsDialog, type MovingAverageForm } from "./ChartSettingsDialog"
+import { MarkerMemoDialog } from "./MarkerMemoDialog"
 
 const chartPeriodOptions: ReadonlyArray<{
   value: ChartPeriod
@@ -849,94 +845,16 @@ export function ChartsPage() {
       )}
 
       {markerMemoOpen && selectedMarker && (
-        <div className="marker-memo-overlay">
-          <section
-            aria-label="판단 메모 세부 정보"
-            aria-modal="true"
-            className="panel marker-memo-dialog"
-            role="dialog"
-          >
-            <div className="section-heading marker-memo-dialog-heading">
-              <div>
-                <h3>판단 메모 세부 정보</h3>
-                <span>{selectedMarker.label} 판단 기록</span>
-              </div>
-              <button
-                aria-label="판단 메모 작성 화면 닫기"
-                className="icon-button"
-                onClick={() => setMarkerMemoOpen(false)}
-                title="판단 메모 작성 화면 닫기"
-                type="button"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="marker-memo-panel">
-              <div className={`marker-selected-header marker-selected-header-${selectedMarker.tone}`}>
-                <div>
-                  <span className="marker-selected-badge">{selectedMarker.label}</span>
-                  <h4>{selectedMarker.label} 판단 기록</h4>
-                  <p>{formatChartDateTime(selectedMarker.timestamp)}</p>
-                </div>
-                <div className="marker-selected-price">
-                  <span>체결가</span>
-                  <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
-                </div>
-              </div>
-
-              <div className="marker-detail-grid">
-                <div className="marker-detail-item">
-                  <Calendar size={18} />
-                  <div>
-                    <span>시점</span>
-                    <strong>{formatChartDateTime(selectedMarker.timestamp)}</strong>
-                  </div>
-                </div>
-                <div className="marker-detail-item">
-                  <DollarSign size={18} />
-                  <div>
-                    <span>가격</span>
-                    <strong>{formatPrice(selectedMarker.price, selectedHolding?.currency)}</strong>
-                  </div>
-                </div>
-                <div className="marker-detail-item">
-                  <Hash size={18} />
-                  <div>
-                    <span>수량</span>
-                    <strong>{selectedMarker.quantity}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <label className="marker-note-field">
-                <span>
-                  <StickyNote size={16} />
-                  판단 메모
-                </span>
-                <textarea
-                  onChange={(event) => setMarkerMemoDraft(event.target.value)}
-                  placeholder={`${selectedMarker.label} 판단 근거, 리스크, 다음 행동을 적어두세요.`}
-                  rows={4}
-                  value={markerMemoDraft}
-                />
-              </label>
-              <div className="marker-note-actions">
-                <span className="marker-note-state">
-                  {markerMemoDraft.trim() ? "메모 작성 중" : "메모 없음"}
-                </span>
-                <button
-                  className="primary-button compact-button"
-                  disabled={memoSaving}
-                  onClick={saveMarkerMemo}
-                  type="button"
-                >
-                  <Save size={16} />
-                  저장
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
+        <MarkerMemoDialog
+          selectedMarker={selectedMarker}
+          currency={selectedHolding?.currency}
+          markerMemoDraft={markerMemoDraft}
+          memoSaving={memoSaving}
+          formatPrice={formatPrice}
+          onClose={() => setMarkerMemoOpen(false)}
+          onDraftChange={setMarkerMemoDraft}
+          onSave={saveMarkerMemo}
+        />
       )}
     </section>
   )
