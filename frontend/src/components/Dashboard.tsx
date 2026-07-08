@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
-import { getAllocationCallouts, getAllocationSegments, pieChart } from "../allocationChart"
+import { getAllocationSegments } from "../allocationChart"
 import { apiGet } from "../api"
 import { getErrorMessage } from "../errors"
 import type { PortfolioSummary, TossAccount } from "../types"
+import { AllocationChart } from "./AllocationChart"
 
 const emptySummary: PortfolioSummary = {
   net_worth_krw: 0,
@@ -153,8 +154,6 @@ export function Dashboard() {
   const goalProgress = summary.goal_progress
   const assetMixEntries = Object.entries(summary.asset_mix)
   const allocationSegments = getAllocationSegments(summary.asset_mix, summary.asset_allocations)
-  const visibleAllocationSegments = allocationSegments.filter((segment) => segment.value > 0)
-  const allocationCallouts = getAllocationCallouts(visibleAllocationSegments)
 
   return (
     <section className="screen-stack">
@@ -302,56 +301,7 @@ export function Dashboard() {
             </div>
             {assetMixEntries.length > 0 ? (
               <div className="asset-mix-stack">
-                <div className="allocation-chart">
-                  <svg
-                    aria-label="주식/ETF와 현금 비중"
-                    className="allocation-pie-svg"
-                    role="img"
-                    viewBox={`0 0 ${pieChart.width} ${pieChart.height}`}
-                  >
-                    {allocationCallouts.map((callout) => (
-                      <path
-                        className="allocation-slice"
-                        d={callout.path}
-                        fill={callout.color}
-                        key={callout.key}
-                      />
-                    ))}
-                    {allocationCallouts.map((callout) => (
-                      <g className="allocation-callout" key={`label-${callout.key}`}>
-                        <polyline className="allocation-label-line" points={callout.linePoints} />
-                        <text textAnchor={callout.textAnchor} x={callout.textX} y={callout.textY}>
-                          <tspan className="allocation-label-name">{callout.label}</tspan>
-                          <tspan className="allocation-label-percent" x={callout.textX} y={callout.percentY}>
-                            {callout.value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%
-                          </tspan>
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                  <div className="allocation-details">
-                    <div className="allocation-meter" aria-hidden="true">
-                      {visibleAllocationSegments.map((segment) => (
-                        <span
-                          className="allocation-segment"
-                          key={segment.key}
-                          style={{ backgroundColor: segment.color, width: `${segment.value}%` }}
-                        />
-                      ))}
-                    </div>
-                    <div className="allocation-legend">
-                      {allocationSegments.map((segment) => (
-                        <div className="allocation-legend-row" key={segment.key}>
-                          <span className="allocation-swatch" style={{ backgroundColor: segment.color }} />
-                          <span>{segment.label}</span>
-                          <strong>
-                            {segment.value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} %
-                          </strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <AllocationChart allocationSegments={allocationSegments} />
 
                 <div className="mix-list">
                   {assetMixEntries.map(([type, value]) => (
