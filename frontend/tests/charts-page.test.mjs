@@ -14,7 +14,11 @@ const markerMemoDialogSource = readFileSync(
   new URL("../src/components/MarkerMemoDialog.tsx", import.meta.url),
   "utf8",
 )
-const chartFeatureSource = `${source}\n${candleChartSource}\n${chartSettingsDialogSource}\n${markerMemoDialogSource}`
+const markerMemoDrawerSource = readFileSync(
+  new URL("../src/components/MarkerMemoDrawer.tsx", import.meta.url),
+  "utf8",
+)
+const chartFeatureSource = `${source}\n${candleChartSource}\n${chartSettingsDialogSource}\n${markerMemoDialogSource}\n${markerMemoDrawerSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const chartSeriesSource = readFileSync(new URL("../src/chartSeries.ts", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
@@ -370,15 +374,15 @@ assert.ok(
   "Charts page should build a newest-first list of markers with written memos",
 )
 assert.ok(
-  source.includes("memoMarkers.map((marker) =>"),
+  markerMemoDrawerSource.includes("memoMarkers.map((marker) =>"),
   "Charts page should render the written marker memo list",
 )
 assert.ok(
-  source.includes('onClick={() => openMarkerMemoDetail(marker)}'),
+  markerMemoDrawerSource.includes("onClick={() => onOpenMarkerMemoDetail(marker)}"),
   "Written marker memo list items should open marker memo detail editing",
 )
 assert.ok(
-  source.includes('selectedMarkerKey === marker.key ? " selected" : ""'),
+  markerMemoDrawerSource.includes('selectedMarkerKey === marker.key ? " selected" : ""'),
   "Written marker memo list should reflect the selected marker",
 )
 assert.ok(
@@ -394,31 +398,36 @@ assert.ok(
   "Written marker memo management mode should be disabled by default",
 )
 assert.ok(
-  source.includes('aria-expanded={memoListExpanded}'),
+  markerMemoDrawerSource.includes('aria-expanded={memoListExpanded}'),
   "Written marker memo toggle should expose its expanded state",
 )
 assert.ok(
-  source.includes('{memoListExpanded ? ">>" : "<<"}'),
+  markerMemoDrawerSource.includes('{memoListExpanded ? ">>" : "<<"}'),
   "Written marker memo toggle should switch from << to >> when expanded",
 )
 assert.ok(
-  source.includes("{memoListExpanded && ("),
+  markerMemoDrawerSource.includes("{memoListExpanded && ("),
   "Written marker memo list should only render while expanded",
 )
 assert.match(
-  source,
-  /\{memoListExpanded && \([\s\S]*?<button[\s\S]*?aria-label="작성된 판단 메모 관리"[\s\S]*?aria-pressed=\{memoManageMode\}[\s\S]*?className=\{`secondary-button marker-memo-manage-button\$\{memoManageMode \? " active" : ""\}`\}[\s\S]*?onClick=\{\(\) => setMemoManageMode\(\(current\) => !current\)\}[\s\S]*?>[\s\S]*?관리[\s\S]*?<\/button>/,
+  markerMemoDrawerSource,
+  /\{memoListExpanded && \([\s\S]*?<button[\s\S]*?aria-label="작성된 판단 메모 관리"[\s\S]*?aria-pressed=\{memoManageMode\}[\s\S]*?className=\{`secondary-button marker-memo-manage-button\$\{memoManageMode \? " active" : ""\}`\}[\s\S]*?onClick=\{onToggleMemoManageMode\}[\s\S]*?>[\s\S]*?관리[\s\S]*?<\/button>/,
   "Expanded written marker memo list should expose a manage-mode toggle",
 )
 assert.match(
-  source,
-  /\{memoManageMode && \([\s\S]*?<button[\s\S]*?aria-label=\{`\$\{marker\.label\} 판단 메모 삭제`\}[\s\S]*?className="icon-button marker-memo-delete-button"[\s\S]*?onClick=\{\(event\) => deleteMarkerMemo\(event, marker\)\}[\s\S]*?<X size=\{15\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
+  markerMemoDrawerSource,
+  /\{memoManageMode && \([\s\S]*?<button[\s\S]*?aria-label=\{`\$\{marker\.label\} 판단 메모 삭제`\}[\s\S]*?className="icon-button marker-memo-delete-button"[\s\S]*?onClick=\{\(event\) => onDeleteMarkerMemo\(event, marker\)\}[\s\S]*?<X size=\{15\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
   "Manage mode should reveal an X delete button on each written marker memo",
 )
 assert.match(
   source,
-  /<div className=\{`chart-panel-layout\$\{memoListExpanded \? " memo-expanded" : ""\}`\}>[\s\S]*?<section className="panel chart-panel">[\s\S]*?<\/section>\s*<div className="marker-memo-drawer">[\s\S]*?<button[\s\S]*?className="marker-memo-toggle"[\s\S]*?\{memoListExpanded \? ">>" : "<<"}[\s\S]*?\{memoListExpanded && \([\s\S]*?<aside className="marker-memo-list-panel"/,
+  /<div className=\{`chart-panel-layout\$\{memoListExpanded \? " memo-expanded" : ""\}`\}>[\s\S]*?<section className="panel chart-panel">[\s\S]*?<\/section>\s*<MarkerMemoDrawer[\s\S]*?memoListExpanded=\{memoListExpanded\}/,
   "Written marker memo drawer should stay outside the chart panel, render immediately, and expand the list only when requested",
+)
+assert.match(
+  markerMemoDrawerSource,
+  /<div className="marker-memo-drawer">[\s\S]*?<button[\s\S]*?className="marker-memo-toggle"[\s\S]*?\{memoListExpanded \? ">>" : "<<"}[\s\S]*?\{memoListExpanded && \([\s\S]*?<aside className="marker-memo-list-panel"/,
+  "Marker memo drawer should own the drawer shell, toggle, and expanded list",
 )
 assert.ok(
   !source.includes("{visibleChartCandles.length > 0 && selectedHolding && ("),
@@ -472,7 +481,7 @@ assert.match(
   "Opening written marker memo details should select the marker, load its memo, and show the dialog",
 )
 assert.ok(
-  source.includes("onKeyDown={(event) => handleMemoListItemKeyDown(event, marker)}"),
+  markerMemoDrawerSource.includes("onKeyDown={(event) => onMemoListItemKeyDown(event, marker)}"),
   "Written marker memo list items should remain keyboard accessible while hosting a delete button",
 )
 assert.ok(
@@ -496,16 +505,16 @@ assert.ok(
   "Trade marker clicks should not bubble to the chart blank-click handler",
 )
 assert.match(
-  source,
-  /\{selectedMarker && \([\s\S]*?<button[\s\S]*?aria-label="선택한 매매 마커 판단 메모 작성"[\s\S]*?className="icon-button marker-memo-compose-button"[\s\S]*?onClick=\{openMarkerMemoDialog\}[\s\S]*?<Plus size=\{17\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
+  markerMemoDrawerSource,
+  /\{selectedMarker && \([\s\S]*?<button[\s\S]*?aria-label="선택한 매매 마커 판단 메모 작성"[\s\S]*?className="icon-button marker-memo-compose-button"[\s\S]*?onClick=\{onOpenMarkerMemoDialog\}[\s\S]*?<Plus size=\{17\} \/>[\s\S]*?<\/button>[\s\S]*?\)\}/,
   "Marker memo drawer should only show the plus button for a selected marker",
 )
 assert.ok(
-  !source.includes("disabled={!selectedMarker}"),
+  !chartFeatureSource.includes("disabled={!selectedMarker}"),
   "Marker memo plus button should be hidden instead of rendered disabled",
 )
 assert.ok(
-  !source.includes("매매 마커를 선택하면 판단 메모를 작성할 수 있습니다."),
+  !chartFeatureSource.includes("매매 마커를 선택하면 판단 메모를 작성할 수 있습니다."),
   "Charts page should not keep hidden-state copy for a disabled plus button",
 )
 assert.match(
