@@ -1,15 +1,14 @@
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-from portfolio_app.api import get_db
+from portfolio_app.api.dependencies import Db
 from portfolio_app.models import Goal, GoalType
 from portfolio_app.services import goals as goal_service
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
 def _strip_string(value: object) -> object:

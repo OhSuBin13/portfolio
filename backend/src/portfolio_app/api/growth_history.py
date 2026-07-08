@@ -2,10 +2,10 @@ import sqlite3
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from portfolio_app.api import get_db
+from portfolio_app.api.dependencies import Db
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import (
     GrowthAnnualHistoryRow,
@@ -27,7 +27,6 @@ from portfolio_app.services.growth_history import (
 )
 
 router = APIRouter(prefix="/api/growth", tags=["growth"])
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
 AccountSeq = Annotated[str, Query(min_length=1)]
 YearPath = Annotated[int, Path(ge=2000, le=2099)]
 MonthPath = Annotated[int, Path(ge=1, le=12)]
