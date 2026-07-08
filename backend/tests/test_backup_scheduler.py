@@ -5,7 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from portfolio_app.config import Settings
-from portfolio_app.services.backup_scheduler import run_periodic_backups, start_backup_task
+from portfolio_app.services.backup_scheduler import (
+    run_backup_once,
+    run_periodic_backups,
+    start_backup_task,
+)
 
 
 def make_settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -23,6 +27,17 @@ def test_backup_interval_defaults_to_one_hour(tmp_path, monkeypatch):
     settings = make_settings(tmp_path)
 
     assert settings.backup_interval_seconds == 3600
+
+
+@pytest.mark.asyncio
+async def test_run_backup_once_does_not_create_missing_database(tmp_path):
+    settings = make_settings(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="데이터베이스 파일"):
+        await run_backup_once(settings=settings, db_path=settings.database_path)
+
+    assert not settings.database_path.exists()
+    assert not settings.backup_dir.exists()
 
 
 @pytest.mark.asyncio
