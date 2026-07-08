@@ -1,4 +1,3 @@
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -10,6 +9,7 @@ from portfolio_app.models import (
     TossAssetAllocation,
     TossMarket,
 )
+from portfolio_app.services.toss_payloads import positive_number
 
 
 class SummaryHolding(Protocol):
@@ -45,7 +45,7 @@ def build_toss_summary(
         row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power_rows
     )
     if needs_usd_rate:
-        rate = _positive_number(usd_krw_rate, "USD 보유자산에는 USD/KRW 환율이 필요합니다.")
+        rate = positive_number(usd_krw_rate, "USD 보유자산에는 USD/KRW 환율이 필요합니다.")
     else:
         rate = usd_krw_rate
 
@@ -105,13 +105,3 @@ def build_toss_summary(
         asset_mix=asset_mix,
         asset_allocations=asset_allocations,
     )
-
-
-def _positive_number(value: Any, message: str) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(message) from exc
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(message)
-    return number
