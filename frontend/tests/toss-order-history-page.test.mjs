@@ -71,6 +71,30 @@ assert.ok(
   source.includes("loadedOrderQueryKey === currentOrderQueryKey"),
   "Order history table should only render rows for the current visible query",
 )
+const ordersEffectStart = source.indexOf("useEffect(() => {\n    let ignore = false\n\n    if (!selectedAccountSeq)")
+const ordersEffectLoadingReset = source.indexOf("setOrdersLoading(false)", ordersEffectStart)
+const ordersEffectRowsClear = source.indexOf("setOrders([])", ordersEffectStart)
+const ordersEffectRequestStart = source.indexOf("const requestSnapshot", ordersEffectStart)
+assert.ok(
+  ordersEffectStart >= 0 &&
+    ordersEffectLoadingReset > ordersEffectStart &&
+    ordersEffectRowsClear > ordersEffectStart &&
+    ordersEffectLoadingReset < ordersEffectRequestStart &&
+    ordersEffectRowsClear < ordersEffectRequestStart,
+  "Order history page should clear order loading and rows when account selection becomes empty",
+)
+const importRunsEffectStart = source.indexOf(
+  "useEffect(() => {\n    let ignore = false\n\n    if (!selectedAccountSeq)",
+  ordersEffectRequestStart,
+)
+const importRunsClear = source.indexOf("setImportRuns([])", importRunsEffectStart)
+const importRunsRequestStart = source.indexOf("apiGet<TossOrderImportRun[]>", importRunsEffectStart)
+assert.ok(
+  importRunsEffectStart >= 0 &&
+    importRunsClear > importRunsEffectStart &&
+    importRunsClear < importRunsRequestStart,
+  "Order history page should clear import runs when account selection becomes empty",
+)
 assert.ok(
   source.includes("refreshImportRunsForSnapshot(submittedSnapshot, importRequestId)"),
   "Failed imports should refresh import-run history for the submitted account",

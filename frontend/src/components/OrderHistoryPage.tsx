@@ -198,46 +198,60 @@ export function OrderHistoryPage() {
   useEffect(() => {
     let ignore = false
 
-    if (selectedAccountSeq) {
-      const requestSnapshot: OrderQuerySnapshot = {
-        accountSeq: selectedAccountSeq,
-        symbolFilter,
-        fromDate: periodRange.fromDate,
-        toDate: periodRange.toDate,
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore || latestSelectedAccountSeqRef.current) {
+          return
+        }
+
+        setOrdersLoading(false)
+        setOrders([])
+        setOrdersError("")
+        setLoadedOrderQueryKey("")
+      })
+      return () => {
+        ignore = true
       }
-      const requestQueryKey = currentOrderQueryKey
-      void Promise.resolve()
-        .then(() => {
-          if (ignore) {
-            return []
-          }
-
-          setOrdersLoading(true)
-          setOrdersError("")
-          return apiGet<TossOrder[]>(buildOrderQueryFromSnapshot(requestSnapshot))
-        })
-        .then((orderData) => {
-          if (ignore) {
-            return
-          }
-
-          setOrders(orderData)
-          setOrdersError("")
-          setLoadedOrderQueryKey(requestQueryKey)
-        })
-        .catch((err) => {
-          if (!ignore) {
-            setOrders([])
-            setOrdersError(getErrorMessage(err))
-            setLoadedOrderQueryKey("")
-          }
-        })
-        .finally(() => {
-          if (!ignore) {
-            setOrdersLoading(false)
-          }
-        })
     }
+
+    const requestSnapshot: OrderQuerySnapshot = {
+      accountSeq: selectedAccountSeq,
+      symbolFilter,
+      fromDate: periodRange.fromDate,
+      toDate: periodRange.toDate,
+    }
+    const requestQueryKey = currentOrderQueryKey
+    void Promise.resolve()
+      .then(() => {
+        if (ignore) {
+          return []
+        }
+
+        setOrdersLoading(true)
+        setOrdersError("")
+        return apiGet<TossOrder[]>(buildOrderQueryFromSnapshot(requestSnapshot))
+      })
+      .then((orderData) => {
+        if (ignore) {
+          return
+        }
+
+        setOrders(orderData)
+        setOrdersError("")
+        setLoadedOrderQueryKey(requestQueryKey)
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setOrders([])
+          setOrdersError(getErrorMessage(err))
+          setLoadedOrderQueryKey("")
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setOrdersLoading(false)
+        }
+      })
 
     return () => {
       ignore = true
@@ -253,21 +267,33 @@ export function OrderHistoryPage() {
   useEffect(() => {
     let ignore = false
 
-    if (selectedAccountSeq) {
-      apiGet<TossOrderImportRun[]>(buildImportRunsQuery(selectedAccountSeq))
-        .then((runData) => {
-          if (!ignore) {
-            setImportRuns(runData)
-            setImportError("")
-          }
-        })
-        .catch((err) => {
-          if (!ignore) {
-            setImportRuns([])
-            setImportError(getErrorMessage(err))
-          }
-        })
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore || latestSelectedAccountSeqRef.current) {
+          return
+        }
+
+        setImportRuns([])
+        setImportError("")
+      })
+      return () => {
+        ignore = true
+      }
     }
+
+    apiGet<TossOrderImportRun[]>(buildImportRunsQuery(selectedAccountSeq))
+      .then((runData) => {
+        if (!ignore) {
+          setImportRuns(runData)
+          setImportError("")
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setImportRuns([])
+          setImportError(getErrorMessage(err))
+        }
+      })
 
     return () => {
       ignore = true
