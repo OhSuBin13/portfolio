@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/Dashboard.tsx", import.meta.url), "utf8")
 const allocationChartSource = readFileSync(new URL("../src/allocationChart.ts", import.meta.url), "utf8")
-const dashboardFeatureSource = `${source}\n${allocationChartSource}`
+const allocationChartComponentSource = readFileSync(
+  new URL("../src/components/AllocationChart.tsx", import.meta.url),
+  "utf8",
+)
+const dashboardFeatureSource = `${source}\n${allocationChartSource}\n${allocationChartComponentSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const goalsSource = readFileSync(new URL("../src/components/GoalsPage.tsx", import.meta.url), "utf8")
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
@@ -132,8 +136,8 @@ assert.ok(
   allocationChartSource.includes("normalizeAllocationSegments([...stockSegments, cashSegment, otherSegment])"),
   "Dashboard should normalize ticker, cash, and other allocation segments together",
 )
-assert.ok(source.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
-assert.ok(source.includes("주식/ETF"), "Dashboard should label the stock/ETF allocation")
+assert.ok(dashboardFeatureSource.includes('aria-label="주식/ETF와 현금 비중"'), "Dashboard allocation metric should be accessible")
+assert.ok(dashboardFeatureSource.includes("주식/ETF"), "Dashboard should label the stock/ETF allocation")
 assert.ok(source.includes("allocationSegments"), "Dashboard should render allocation segments")
 assert.ok(source.includes("summary.asset_allocations"), "Dashboard should use per-asset allocation rows")
 assert.ok(source.includes("summary.goal_progress"), "Dashboard should use goal progress from the summary response")
@@ -153,10 +157,10 @@ assert.ok(
 )
 assert.ok(dashboardFeatureSource.includes("getPieSlicePath"), "Dashboard should render pie slices as SVG paths")
 assert.ok(dashboardFeatureSource.includes("getAllocationCallouts"), "Dashboard should calculate outside label callouts")
-assert.ok(source.includes("allocation-slice"), "Dashboard should render visible allocation slices")
-assert.ok(source.includes("allocation-label-line"), "Dashboard should draw leader lines to allocation labels")
-assert.ok(source.includes("allocation-label-name"), "Dashboard should show allocation ticker labels around the pie")
-assert.ok(source.includes("<svg"), "Dashboard allocation chart should use SVG for callout labels")
+assert.ok(dashboardFeatureSource.includes("allocation-slice"), "Dashboard should render visible allocation slices")
+assert.ok(dashboardFeatureSource.includes("allocation-label-line"), "Dashboard should draw leader lines to allocation labels")
+assert.ok(dashboardFeatureSource.includes("allocation-label-name"), "Dashboard should show allocation ticker labels around the pie")
+assert.ok(dashboardFeatureSource.includes("<svg"), "Dashboard allocation chart should use SVG for callout labels")
 
 for (const field of [
   "summary.net_worth_krw",
