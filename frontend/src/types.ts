@@ -160,6 +160,6 @@ export type Sp500ProxyPriceRow = {
 
 export type BackupRecord = {
   path: string
-  reason: string
+  reason: "startup" | "automatic" | "manual"
   created_at: string
 }
