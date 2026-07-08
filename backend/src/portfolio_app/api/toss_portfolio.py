@@ -8,10 +8,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from portfolio_app.api import row_to_dict
 from portfolio_app.api.dependencies import Db
 from portfolio_app.api.errors import toss_http_error_detail
+from portfolio_app.api.toss_responses import (
+    ChartMarkerMemoResponse,
+    TossAccountResponse,
+    TossBuyingPowerResponse,
+    TossCandleResponse,
+    TossHoldingResponse,
+    account_response,
+    buying_power_response,
+    candle_response,
+    holding_response,
+)
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import (
-    Currency,
-    TossMarket,
     TossOrderImportCreate,
     TossOrderImportRunResponse,
     TossOrderResponse,
@@ -24,14 +33,11 @@ from portfolio_app.repositories import (
     fetch_toss_orders,
     upsert_chart_marker_memo,
 )
-from portfolio_app.services.market_data import MarketCandle, TossMarketDataProvider
+from portfolio_app.services.market_data import TossMarketDataProvider
 from portfolio_app.services.toss_order_imports import import_toss_orders
 from portfolio_app.services.toss_portfolio import (
-    TossAccount,
     TossAccountsCache,
     TossBrokerageProvider,
-    TossBuyingPower,
-    TossHolding,
 )
 
 router = APIRouter(prefix="/api/toss", tags=["toss"])
@@ -41,47 +47,6 @@ CHART_MARKER_REQUIRED_MESSAGE = "차트 마커 식별자를 입력해 주세요.
 DATE_RANGE_MESSAGE = "조회 시작일은 종료일보다 늦을 수 없습니다."
 
 
-class TossAccountResponse(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    account_seq: str
-    account_no: str
-    account_type: str
-    display_name: str
-
-
-class TossHoldingResponse(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    symbol: str
-    name: str
-    market: TossMarket
-    currency: Currency
-    quantity: float = Field(ge=0, allow_inf_nan=False)
-    average_purchase_price: float = Field(ge=0, allow_inf_nan=False)
-    last_price: float | None = Field(default=None, ge=0, allow_inf_nan=False)
-    market_value: float = Field(ge=0, allow_inf_nan=False)
-
-
-class TossBuyingPowerResponse(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    currency: Currency
-    cash_buying_power: float = Field(ge=0, allow_inf_nan=False)
-
-
-class TossCandleResponse(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    symbol: str
-    timestamp: str = Field(min_length=1)
-    open: float = Field(gt=0, allow_inf_nan=False)
-    high: float = Field(gt=0, allow_inf_nan=False)
-    low: float = Field(gt=0, allow_inf_nan=False)
-    close: float = Field(gt=0, allow_inf_nan=False)
-    volume: float = Field(ge=0, allow_inf_nan=False)
-
-
 class ChartMarkerMemoUpsert(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -89,18 +54,6 @@ class ChartMarkerMemoUpsert(BaseModel):
     symbol: str = Field(min_length=1)
     marker_key: str = Field(min_length=1, max_length=200)
     memo: str = Field(max_length=2000)
-
-
-class ChartMarkerMemoResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: int
-    account_seq: str
-    symbol: str
-    marker_key: str
-    memo: str
-    created_at: str
-    updated_at: str
 
 
 def _provider(request: Request) -> TossBrokerageProvider:
@@ -130,47 +83,6 @@ def _normalize_optional_uppercase(value: str | None) -> str | None:
         return None
     normalized = value.strip().upper()
     return normalized or None
-
-
-def _account_response(account: TossAccount) -> TossAccountResponse:
-    return TossAccountResponse(
-        account_seq=account.account_seq,
-        account_no=account.account_no,
-        account_type=account.account_type,
-        display_name=account.display_name,
-    )
-
-
-def _holding_response(holding: TossHolding) -> TossHoldingResponse:
-    return TossHoldingResponse(
-        symbol=holding.symbol,
-        name=holding.name,
-        market=holding.market,
-        currency=holding.currency,
-        quantity=holding.quantity,
-        average_purchase_price=holding.average_purchase_price,
-        last_price=holding.last_price,
-        market_value=holding.market_value,
-    )
-
-
-def _buying_power_response(row: TossBuyingPower) -> TossBuyingPowerResponse:
-    return TossBuyingPowerResponse(
-        currency=row.currency,
-        cash_buying_power=row.cash_buying_power,
-    )
-
-
-def _candle_response(candle: MarketCandle) -> TossCandleResponse:
-    return TossCandleResponse(
-        symbol=candle.symbol,
-        timestamp=candle.timestamp,
-        open=candle.open,
-        high=candle.high,
-        low=candle.low,
-        close=candle.close,
-        volume=candle.volume,
-    )
 
 
 def _normalize_marker_key(marker_key: str) -> str:
@@ -283,7 +195,7 @@ async def list_toss_accounts(request: Request) -> list[TossAccountResponse]:
             detail=toss_http_error_detail(exc),
         ) from exc
 
-    return [_account_response(account) for account in accounts]
+    return [account_response(account) for account in accounts]
 
 
 @router.get("/holdings", response_model=list[TossHoldingResponse])
@@ -305,7 +217,7 @@ async def list_toss_holdings(
             detail=toss_http_error_detail(exc),
         ) from exc
 
-    return [_holding_response(holding) for holding in holdings]
+    return [holding_response(holding) for holding in holdings]
 
 
 @router.get("/candles", response_model=list[TossCandleResponse])
@@ -339,7 +251,7 @@ async def list_toss_candles(
             detail=toss_http_error_detail(exc),
         ) from exc
 
-    return [_candle_response(candle) for candle in candles]
+    return [candle_response(candle) for candle in candles]
 
 
 @router.get("/chart-marker-memos", response_model=list[ChartMarkerMemoResponse])
@@ -427,4 +339,4 @@ async def list_toss_buying_power(
             detail=toss_http_error_detail(exc),
         ) from exc
 
-    return [_buying_power_response(row) for row in rows]
+    return [buying_power_response(row) for row in rows]
