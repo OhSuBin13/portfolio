@@ -10,6 +10,7 @@ const goalTypes = [
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const formatKrw = (value: number) => `${value.toLocaleString("ko-KR")} 원`
 const goalTypeLabel = (type: string) => (type === "monthly_income" ? "월 배당/소득" : "순자산")
+const normalizeNumericInput = (value: string) => value.replaceAll(",", "").trim()
 
 type GoalForm = {
   name: string
@@ -56,7 +57,7 @@ export function GoalsPage() {
     setMessage("")
     setError("")
 
-    const targetAmountKrw = Number(form.targetAmountKrw)
+    const targetAmountKrw = Number(normalizeNumericInput(form.targetAmountKrw))
 
     if (!form.name.trim()) {
       setError("목표 이름을 입력하세요.")
