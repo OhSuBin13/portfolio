@@ -48,8 +48,8 @@ def mock_zero_buying_power(httpx_mock) -> None:
     )
 
 
-def test_health_returns_ok():
-    client = TestClient(create_app())
+def test_health_returns_ok(tmp_path):
+    client = create_test_client(tmp_path)
 
     response = client.get("/health")
 
