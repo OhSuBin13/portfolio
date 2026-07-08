@@ -9,6 +9,11 @@ from typing import Any, Protocol
 import httpx
 
 from portfolio_app.config import Settings, get_settings
+from portfolio_app.services.toss_payloads import (
+    non_negative_number,
+    positive_number,
+    required_text,
+)
 
 TOSS_CANDLE_PAGE_LIMIT = 200
 TOSS_CANDLE_LIMIT = 1000
@@ -158,33 +163,6 @@ def _token_expires_in_seconds(payload: dict[str, Any]) -> float:
     return expires_in
 
 
-def _positive_number(value: Any, message: str) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(message) from exc
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(message)
-    return number
-
-
-def _required_text(value: Any, message: str) -> str:
-    text = str(value).strip() if value is not None else ""
-    if not text:
-        raise ValueError(message)
-    return text
-
-
-def _non_negative_number(value: Any, message: str) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(message) from exc
-    if not math.isfinite(number) or number < 0:
-        raise ValueError(message)
-    return number
-
-
 def _first_present(item: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         value = item.get(key)
@@ -249,7 +227,7 @@ class TossFxRateProvider:
         return FxRate(
             base_currency=response_base,
             quote_currency=response_quote,
-            rate=_positive_number(
+            rate=positive_number(
                 result.get("rate"),
                 "Toss 환율은 0보다 큰 숫자여야 합니다.",
             ),
@@ -384,27 +362,27 @@ def _candle_page(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
 
 
 def _parse_candle(symbol: str, item: dict[str, Any]) -> MarketCandle:
-    timestamp = _required_text(
+    timestamp = required_text(
         _first_present(item, "timestamp", "time", "date", "datetime", "dateTime"),
         "Toss 캔들 시간 값이 필요합니다.",
     )
-    open_price = _positive_number(
+    open_price = positive_number(
         _first_present(item, "openPrice", "open"),
         "Toss 캔들 시가는 0보다 큰 숫자여야 합니다.",
     )
-    high_price = _positive_number(
+    high_price = positive_number(
         _first_present(item, "highPrice", "high"),
         "Toss 캔들 고가는 0보다 큰 숫자여야 합니다.",
     )
-    low_price = _positive_number(
+    low_price = positive_number(
         _first_present(item, "lowPrice", "low"),
         "Toss 캔들 저가는 0보다 큰 숫자여야 합니다.",
     )
-    close_price = _positive_number(
+    close_price = positive_number(
         _first_present(item, "closePrice", "close"),
         "Toss 캔들 종가는 0보다 큰 숫자여야 합니다.",
     )
-    volume = _non_negative_number(
+    volume = non_negative_number(
         _first_present(item, "volume", "tradeVolume"),
         "Toss 캔들 거래량은 0 이상의 숫자여야 합니다.",
     )
