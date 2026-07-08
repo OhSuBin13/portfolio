@@ -112,6 +112,15 @@ assert.deepEqual(
 )
 
 assert.deepEqual(
+  markerOrderKeys([
+    order({ order_id: "20", side: "SELL", filled_quantity: "1", ordered_at: "2026-01-27T09:00:00Z" }),
+    order({ order_id: "19", side: "BUY", filled_quantity: "1", ordered_at: "2026-01-27T09:00:00Z" }),
+    order({ order_id: "21", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-28T09:00:00Z" }),
+  ]),
+  ["order:21"],
+)
+
+assert.deepEqual(
   spreadOverlappingMarkers([
     { marker: marker("first"), candleIndex: 3 },
     { marker: marker("second"), candleIndex: 3 },
