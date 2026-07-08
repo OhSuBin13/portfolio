@@ -36,8 +36,9 @@ for (const expectedText of [
   "연봉",
   "shortLabel",
   "monthly",
-  "monthGroupKey",
+  "chartPeriodGroupKey",
   "formatChartDateLabel",
+  "formatChartDateTime",
   "movingAverageConfigs",
   "movingAverageForm",
   "type=\"color\"",
@@ -246,14 +247,14 @@ assert.ok(
   "Charts page should not use a select change handler for the chart period",
 )
 assert.ok(
-  source.includes('selectedChartPeriod === "monthly" ? monthGroupKey'),
-  "Charts page should aggregate monthly candles with monthGroupKey",
+  source.includes("chartPeriodGroupKey(candle.timestamp, selectedChartPeriod)"),
+  "Charts page should aggregate candles with source-date period grouping",
 )
 for (const expectedDateFormat of [
-  'selectedChartPeriod === "annual"',
-  'selectedChartPeriod === "monthly"',
-  "`${year}-${month}-${day}`",
-  "`${year}-${month}`",
+  "formatChartDateLabel(first.timestamp, selectedChartPeriod)",
+  "formatChartDateLabel(last.timestamp, selectedChartPeriod)",
+  "formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)",
+  "formatChartDateTime(marker.timestamp)",
 ]) {
   assert.ok(source.includes(expectedDateFormat), `Charts page should format dates with ${expectedDateFormat}`)
 }
