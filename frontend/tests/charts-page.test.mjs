@@ -153,6 +153,26 @@ assert.ok(source.includes("TossCandle"), "Charts page should type candle data")
 assert.ok(source.includes("TossOrder"), "Charts page should use Toss orders for trade markers")
 assert.ok(source.includes("ChartMarkerMemo"), "Charts page should type marker memos")
 assert.ok(source.includes("selectedHoldingKey"), "Charts page should select a held symbol")
+const holdingsEffectStart = source.indexOf("useEffect(() => {\n    if (!selectedAccountSeq)")
+const holdingsEffectResetLoading = source.indexOf("setHoldingsLoading(false)", holdingsEffectStart)
+const holdingsEffectRequestStart = source.indexOf("let ignore = false", holdingsEffectStart)
+assert.ok(
+  holdingsEffectStart >= 0 &&
+    holdingsEffectResetLoading > holdingsEffectStart &&
+    holdingsEffectResetLoading < holdingsEffectRequestStart,
+  "Charts page should clear holdings loading when account selection becomes empty",
+)
+const candlesEffectStart = source.indexOf(
+  "useEffect(() => {\n    if (!selectedHolding || !selectedAccountSeq)",
+)
+const candlesEffectResetLoading = source.indexOf("setCandlesLoading(false)", candlesEffectStart)
+const candlesEffectRequestStart = source.indexOf("let ignore = false", candlesEffectStart)
+assert.ok(
+  candlesEffectStart >= 0 &&
+    candlesEffectResetLoading > candlesEffectStart &&
+    candlesEffectResetLoading < candlesEffectRequestStart,
+  "Charts page should clear candle loading when holding selection becomes empty",
+)
 assert.ok(source.includes("<svg"), "Charts page should render an SVG candlestick chart")
 assert.ok(source.includes("candle-chart-svg"), "Charts page should use stable chart SVG styling")
 assert.ok(

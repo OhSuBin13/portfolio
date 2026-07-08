@@ -689,6 +689,25 @@ export function ChartsPage() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        setHoldingsLoading(false)
+        setHoldings([])
+        setSelectedHoldingKey("")
+        setCandles([])
+        setOrders([])
+        setMarkerMemos([])
+        setChartZoomWindow(null)
+        setChartPanOffset(0)
+        setChartDragState(null)
+        setSelectedMarkerKey("")
+        setMarkerMemoDraft("")
+        setMarkerMemoOpen(false)
+        setMemoManageMode(false)
+        setHoldingsError("")
+        setCandlesError("")
+        setOrdersError("")
+        setMemoError("")
+      })
       return undefined
     }
 
@@ -767,6 +786,22 @@ export function ChartsPage() {
 
   useEffect(() => {
     if (!selectedHolding || !selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        setCandlesLoading(false)
+        setCandles([])
+        setOrders([])
+        setMarkerMemos([])
+        setChartZoomWindow(null)
+        setChartPanOffset(0)
+        setChartDragState(null)
+        setSelectedMarkerKey("")
+        setMarkerMemoDraft("")
+        setMarkerMemoOpen(false)
+        setMemoManageMode(false)
+        setCandlesError("")
+        setOrdersError("")
+        setMemoError("")
+      })
       return undefined
     }
 
