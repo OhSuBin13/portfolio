@@ -8,8 +8,7 @@ from portfolio_app.api.errors import toss_http_error_detail
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import SummaryResponse
 from portfolio_app.services import goals as goal_service
-from portfolio_app.services.fx_rates import CachedFxRateProvider
-from portfolio_app.services.market_data import default_fx_rate_provider
+from portfolio_app.services.fx_rates import CachedFxRateProvider, default_fx_rate_provider
 from portfolio_app.services.toss_portfolio import TossBrokerageProvider, fetch_toss_summary
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
