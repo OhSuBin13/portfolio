@@ -1,10 +1,9 @@
-import sqlite3
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from portfolio_app.api import get_db
+from portfolio_app.api.dependencies import Db
 from portfolio_app.api.errors import toss_http_error_detail
 from portfolio_app.api.validation import normalize_account_seq
 from portfolio_app.models import SummaryResponse
@@ -14,7 +13,6 @@ from portfolio_app.services.market_data import default_fx_rate_provider
 from portfolio_app.services.toss_portfolio import TossBrokerageProvider, fetch_toss_summary
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
 AccountSeq = Annotated[str, Query(min_length=1)]
 
 

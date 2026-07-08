@@ -1,14 +1,13 @@
 import sqlite3
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 
-from portfolio_app.api import get_db, row_to_dict
+from portfolio_app.api import row_to_dict
+from portfolio_app.api.dependencies import Db
 from portfolio_app.models import BackupRecord, BackupStatus
 from portfolio_app.services.backups import list_backup_records, reconcile_backup_records
 
 router = APIRouter(prefix="/api/backups", tags=["backups"])
-Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
 @router.get("", response_model=list[BackupRecord])
