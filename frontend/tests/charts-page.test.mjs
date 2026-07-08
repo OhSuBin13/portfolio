@@ -2,6 +2,11 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/ChartsPage.tsx", import.meta.url), "utf8")
+const candleChartSource = readFileSync(
+  new URL("../src/components/CandleChart.tsx", import.meta.url),
+  "utf8",
+)
+const chartFeatureSource = `${source}\n${candleChartSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const chartSeriesSource = readFileSync(new URL("../src/chartSeries.ts", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
@@ -153,19 +158,19 @@ for (const expectedText of [
   "chart-frame-status",
   "aria-busy={chartFrameLoading}",
 ]) {
-  assert.ok(source.includes(expectedText), `Charts page should include ${expectedText}`)
+  assert.ok(chartFeatureSource.includes(expectedText), `Charts feature should include ${expectedText}`)
 }
 
 assert.ok(
-  source.includes("const visibleMarkers = markerPlacementInputs.map"),
+  candleChartSource.includes("const visibleMarkers = markerPlacementInputs.map"),
   "Candle chart should derive visible markers before calculating price bounds",
 )
 assert.ok(
-  source.includes("priceBounds(candles, movingAverageSeries, visibleMarkers)"),
+  candleChartSource.includes("priceBounds(candles, movingAverageSeries, visibleMarkers)"),
   "Candle chart should scale the price axis from visible marker prices only",
 )
 assert.ok(
-  !source.includes("priceBounds(candles, movingAverageSeries, markers)"),
+  !candleChartSource.includes("priceBounds(candles, movingAverageSeries, markers)"),
   "Candle chart should not scale the visible price axis from off-window marker prices",
 )
 
@@ -193,8 +198,8 @@ assert.ok(
     candlesEffectResetLoading < candlesEffectRequestStart,
   "Charts page should clear candle loading when holding selection becomes empty",
 )
-assert.ok(source.includes("<svg"), "Charts page should render an SVG candlestick chart")
-assert.ok(source.includes("candle-chart-svg"), "Charts page should use stable chart SVG styling")
+assert.ok(chartFeatureSource.includes("<svg"), "Charts feature should render an SVG candlestick chart")
+assert.ok(candleChartSource.includes("candle-chart-svg"), "Candle chart should use stable chart SVG styling")
 assert.ok(
   source.includes('className="chart-symbol-summary"'),
   "Charts page should show a compact symbol and current price summary above the chart",
@@ -217,46 +222,46 @@ for (const removedSummaryLabel of [
   assert.ok(!source.includes(removedSummaryLabel), `Charts page should remove ${removedSummaryLabel}`)
 }
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-price-bg"[\s\S]*?width=\{104\}[\s\S]*?x=\{4\}/,
   "Hover price label background should keep tighter horizontal padding near the SVG left edge",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-price-label"[\s\S]*?x=\{56\}/,
   "Hover price label text should stay centered in the tighter label",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-ohlc-bg"[\s\S]*?width=\{504\}/,
   "Hover OHLC panel should use a tighter width",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-ohlc-bg"[\s\S]*?x=\{4\}/,
   "Hover OHLC panel should align fully left",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-ohlc-values"[\s\S]*?x=\{10\}/,
   "Hover OHLC values should use reduced horizontal padding at the left edge",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-ohlc-bg"[\s\S]*?height=\{44\}/,
   "Hover OHLC panel should shrink after removing the title row",
 )
 assert.match(
-  source,
+  candleChartSource,
   /className="chart-hover-ohlc-values"[\s\S]*?y=\{PRICE_TOP \+ 25\}/,
   "Hover OHLC values should move into the removed title row space",
 )
 assert.ok(
-  !source.includes('className="chart-hover-ohlc-title"'),
+  !chartFeatureSource.includes('className="chart-hover-ohlc-title"'),
   "Hover OHLC panel should not render a symbol/date title",
 )
 assert.match(
-  source,
+  candleChartSource,
   /chart-hover-change-\$\{changeRateTone\(chartHoverState\.changeRates\.open\)\}/,
   "Hover OHLC panel should color the open change rate from the computed tone",
 )
@@ -299,14 +304,20 @@ for (const expectedDateFormat of [
   "formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)",
   "formatChartDateTime(marker.timestamp)",
 ]) {
-  assert.ok(source.includes(expectedDateFormat), `Charts page should format dates with ${expectedDateFormat}`)
+  assert.ok(
+    chartFeatureSource.includes(expectedDateFormat),
+    `Charts feature should format dates with ${expectedDateFormat}`,
+  )
 }
 for (const expectedDateUsage of [
   "formatChartDateLabel(first.timestamp, selectedChartPeriod)",
   "formatChartDateLabel(last.timestamp, selectedChartPeriod)",
   "formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)",
 ]) {
-  assert.ok(source.includes(expectedDateUsage), `Charts page should use ${expectedDateUsage}`)
+  assert.ok(
+    chartFeatureSource.includes(expectedDateUsage),
+    `Charts feature should use ${expectedDateUsage}`,
+  )
 }
 assert.ok(
   source.includes("selectedChartPeriod={selectedChartPeriod}"),
@@ -332,18 +343,18 @@ for (const expectedOhlcValue of [
   "formatChangeRate(chartHoverState.changeRates.close)",
   "formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)",
 ]) {
-  assert.ok(source.includes(expectedOhlcValue), `Charts page should show ${expectedOhlcValue}`)
+  assert.ok(candleChartSource.includes(expectedOhlcValue), `Candle chart should show ${expectedOhlcValue}`)
 }
 assert.ok(
-  !source.includes("chartHoverState.candle.symbol"),
+  !chartFeatureSource.includes("chartHoverState.candle.symbol"),
   "Hover OHLC panel should not show the selected symbol",
 )
 assert.ok(
-  !source.includes(" · {formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)}"),
+  !chartFeatureSource.includes(" · {formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)}"),
   "Hover OHLC panel should not show a title date next to the symbol",
 )
 assert.ok(
-  !source.includes("변화율 {formatChangeRate(chartHoverState.changeRate)}"),
+  !chartFeatureSource.includes("변화율 {formatChangeRate(chartHoverState.changeRate)}"),
   "Charts page should not show a single standalone hover change rate",
 )
 assert.ok(
@@ -473,7 +484,7 @@ assert.ok(
   "Chart viewport should clear the selected marker on blank clicks",
 )
 assert.ok(
-  source.includes("event.stopPropagation()"),
+  candleChartSource.includes("event.stopPropagation()"),
   "Trade marker clicks should not bubble to the chart blank-click handler",
 )
 assert.match(
@@ -519,7 +530,7 @@ assert.ok(
   "Charts page should not keep the old bottom marker memo panel",
 )
 for (const legacyOhlcLabel of ["O {", "· H", "· L", "· C"]) {
-  assert.ok(!source.includes(legacyOhlcLabel), `Charts page should not show ${legacyOhlcLabel}`)
+  assert.ok(!chartFeatureSource.includes(legacyOhlcLabel), `Charts feature should not show ${legacyOhlcLabel}`)
 }
 assert.ok(source.includes("보유 종목 차트"), "Charts page should present one holdings chart panel")
 assert.ok(
