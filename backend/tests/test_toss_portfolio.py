@@ -178,6 +178,41 @@ async def test_toss_auth_client_reuses_token_before_expiry_and_refreshes_after_e
     assert len(httpx_mock.get_requests()) == 2
 
 
+@pytest.mark.asyncio
+async def test_toss_auth_client_reuses_short_lived_token_until_reduced_margin(
+    httpx_mock,
+):
+    now = [1000.0]
+
+    def fake_now() -> float:
+        return now[0]
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 30},
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-456", "token_type": "Bearer", "expires_in": 30},
+    )
+    auth_client = TossAuthClient("toss-client", "toss-secret", now=fake_now)
+
+    first_token = await auth_client.token()
+    now[0] = 1014.9
+    cached_token = await auth_client.token()
+    now[0] = 1015.1
+    refreshed_token = await auth_client.token()
+
+    assert [first_token, cached_token, refreshed_token] == [
+        "token-123",
+        "token-123",
+        "token-456",
+    ]
+    assert len(httpx_mock.get_requests()) == 2
+
+
 @pytest.mark.parametrize(
     ("headers", "expected_delay"),
     [
