@@ -14,6 +14,24 @@ assert.ok(source.includes("매수 가능 금액"), "Holdings page should show bu
 assert.ok(source.includes("cash_buying_power"), "Holdings page should render raw buying power amounts")
 assert.ok(source.includes("account_seq"), "Holdings page should use Toss account sequence identifiers")
 assert.ok(source.includes("readOnly"), "Holdings page should not present manual ledger writes")
+assert.ok(
+  source.includes("portfolioLoadedAccountSeq"),
+  "Holdings page should track whether selected-account data has finished loading",
+)
+assert.ok(
+  source.includes("disabled={accounts.length === 0}"),
+  "Holdings page should render the account selector immediately while accounts load",
+)
+assert.ok(
+  source.includes("buyingPowerEmptyMessage") && source.includes("holdingsEmptyMessage"),
+  "Holdings page should render stable table empty/loading rows before Toss data arrives",
+)
+assert.ok(
+  source.includes('className="empty-table-cell"') &&
+    source.includes("colSpan={2}") &&
+    source.includes("colSpan={7}"),
+  "Holdings page should keep buying-power and holdings table structures visible while loading",
+)
 
 const selectedAccountFetchStart = source.indexOf("if (!selectedAccountSeq)")
 const selectedAccountHoldingsClear = source.indexOf("setHoldings([])", selectedAccountFetchStart)
@@ -60,4 +78,12 @@ for (const removedText of ["계좌 만들기", "자산 만들기", "초기 잔�
 }
 
 assert.ok(!appSource.includes('active === "transactions"'), "App should not mount the local ledger page")
+assert.ok(
+  appSource.includes("holdingsMounted") && appSource.includes('hidden={active !== "holdings"}'),
+  "App should keep the holdings page mounted after first visit for fast return navigation",
+)
+assert.ok(
+  !appSource.includes('{active === "holdings" && <HoldingsPage />}'),
+  "App should not remount the holdings page when navigating back from another page",
+)
 assert.ok(!shellSource.includes('id: "transactions"'), "Navigation should not expose local transactions")

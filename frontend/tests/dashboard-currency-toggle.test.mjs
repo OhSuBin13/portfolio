@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../src/components/Dashboard.tsx", import.meta.url), "utf8")
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const goalsSource = readFileSync(new URL("../src/components/GoalsPage.tsx", import.meta.url), "utf8")
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
 const types = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8")
@@ -48,6 +49,14 @@ assert.match(
 )
 
 assert.ok(source.includes('type DisplayCurrency = "KRW" | "USD"'), "Dashboard should model display currency explicitly")
+assert.ok(
+  appSource.includes('hidden={active !== "dashboard"}'),
+  "App should preserve the mounted dashboard while other pages are active",
+)
+assert.ok(
+  !appSource.includes('{active === "dashboard" && <Dashboard />}'),
+  "App should not remount the dashboard when navigating back from another page",
+)
 assert.ok(
   source.includes('useState<DisplayCurrency>("KRW")'),
   "Dashboard should default the display currency to KRW",

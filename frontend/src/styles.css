@@ -765,6 +765,12 @@ select:focus {
   white-space: nowrap;
 }
 
+.data-table .empty-table-cell {
+  color: #64748b;
+  padding: 14px 10px;
+  text-align: center;
+}
+
 .data-table td.return-tone-positive {
   color: #047857;
   font-weight: 700;
