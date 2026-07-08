@@ -1613,6 +1613,10 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .chart-panel-layout.memo-expanded {
+    grid-template-columns: 1fr;
+  }
+
   .currency-toggle {
     width: 100%;
   }
