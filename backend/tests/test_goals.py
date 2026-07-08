@@ -1,6 +1,8 @@
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -105,6 +107,72 @@ def test_goal_payload_validation_rejects_invalid_type():
             type="wealth",
             target_amount_krw=100_000_000,
         )
+
+
+def test_goal_payload_validation_trims_type_before_literal_validation():
+    from portfolio_app.api import goals
+
+    payload = goals.GoalCreate(
+        name="월 배당 목표",
+        type=" monthly_income ",
+        target_amount_krw=1_000_000,
+    )
+
+    assert payload.type == "monthly_income"
+
+
+def test_create_goal_endpoint_maps_database_integrity_errors(monkeypatch):
+    from portfolio_app.api import goals
+
+    def raise_integrity_error(*args, **kwargs):
+        raise sqlite3.IntegrityError("constraint failed")
+
+    monkeypatch.setattr(goals.goal_service, "create_goal", raise_integrity_error)
+    payload = goals.GoalCreate(
+        name="순자산 1억",
+        type="net_worth",
+        target_amount_krw=100_000_000,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        goals.create_goal_endpoint(payload, object())
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "목표 정보를 저장할 수 없습니다."
+
+
+def test_summary_and_goal_models_reject_extra_fields():
+    summary_payload = {
+        "net_worth_krw": 1_000_000,
+        "gross_assets_krw": 1_000_000,
+        "debt_krw": 0,
+        "monthly_income_krw": 100_000,
+    }
+    goal = Goal(
+        id=1,
+        name="월 소득 100만",
+        type="monthly_income",
+        target_amount_krw=1_000_000,
+    )
+    progress_payload = {
+        "goal": goal,
+        "current_amount_krw": 100_000,
+        "percent": 10,
+        "remaining_krw": 900_000,
+    }
+
+    with pytest.raises(ValidationError):
+        PortfolioSummary(**summary_payload, unexpected=True)
+    with pytest.raises(ValidationError):
+        Goal(
+            id=2,
+            name="순자산 1억",
+            type="net_worth",
+            target_amount_krw=100_000_000,
+            unexpected=True,
+        )
+    with pytest.raises(ValidationError):
+        GoalProgress(**progress_payload, unexpected=True)
 
 
 @pytest.mark.asyncio

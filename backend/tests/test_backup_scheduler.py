@@ -49,6 +49,17 @@ async def test_run_backup_once_creates_recorded_automatic_backup(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_backup_once_does_not_create_missing_database(tmp_path):
+    settings = make_settings(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="데이터베이스 파일"):
+        await run_backup_once(settings=settings, db_path=settings.database_path)
+
+    assert not settings.database_path.exists()
+    assert not settings.backup_dir.exists()
+
+
+@pytest.mark.asyncio
 async def test_periodic_backups_wait_before_first_automatic_backup(tmp_path):
     settings = make_settings(tmp_path)
     calls: list[tuple[Settings, Path]] = []

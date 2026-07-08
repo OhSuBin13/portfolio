@@ -1,8 +1,18 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000"
+const API_BASE = import.meta.env?.VITE_API_BASE ?? "http://127.0.0.1:8000"
+
+const formatErrorLocation = (loc: unknown) => (Array.isArray(loc) ? loc.map(String).join(".") : "")
 
 const stringifyErrorItem = (item: unknown) => {
   if (typeof item === "string") {
     return item
+  }
+
+  if (item && typeof item === "object") {
+    const detailItem = item as { loc?: unknown; msg?: unknown }
+    if (typeof detailItem.msg === "string") {
+      const location = formatErrorLocation(detailItem.loc)
+      return location ? `${location}: ${detailItem.msg}` : detailItem.msg
+    }
   }
 
   try {

@@ -16,6 +16,8 @@ for (const expectedText of [
   "CLOSED",
   "Search",
   "periodFilter",
+  "debouncedSymbolFilter",
+  "ORDER_SYMBOL_FILTER_DEBOUNCE_MS",
   "order-period-toggle",
   "일",
   "월",
@@ -54,6 +56,30 @@ assert.ok(
   source.includes("setSymbolSearchOpen"),
   "Order history page should reveal symbol input from an interactive search button",
 )
+assert.match(
+  source,
+  /window\.setTimeout\([\s\S]*?setDebouncedSymbolFilter\(symbolFilter\)[\s\S]*?ORDER_SYMBOL_FILTER_DEBOUNCE_MS/,
+  "Order history page should debounce symbol search text before API requests",
+)
+assert.ok(
+  source.includes("window.clearTimeout(timeoutId)"),
+  "Order history page should cancel pending symbol search debounce timers",
+)
+assert.match(
+  source,
+  /const currentOrderQueryKey = orderQueryKeyFrom\(\{[\s\S]*?symbolFilter: debouncedSymbolFilter/,
+  "Order history visible query key should use the debounced symbol filter",
+)
+assert.match(
+  source,
+  /const requestSnapshot: OrderQuerySnapshot = \{[\s\S]*?symbolFilter: debouncedSymbolFilter/,
+  "Saved order reads should use the debounced symbol filter",
+)
+assert.match(
+  source,
+  /const submittedSnapshot: OrderQuerySnapshot = \{[\s\S]*?symbolFilter: debouncedSymbolFilter/,
+  "Order imports should use the debounced symbol filter",
+)
 assert.ok(source.includes("useRef"), "Order history page should use a stale-response guard ref")
 assert.ok(
   source.includes("latestOrderQueryKeyRef"),
@@ -70,6 +96,30 @@ assert.ok(
 assert.ok(
   source.includes("loadedOrderQueryKey === currentOrderQueryKey"),
   "Order history table should only render rows for the current visible query",
+)
+const ordersEffectStart = source.indexOf("useEffect(() => {\n    let ignore = false\n\n    if (!selectedAccountSeq)")
+const ordersEffectLoadingReset = source.indexOf("setOrdersLoading(false)", ordersEffectStart)
+const ordersEffectRowsClear = source.indexOf("setOrders([])", ordersEffectStart)
+const ordersEffectRequestStart = source.indexOf("const requestSnapshot", ordersEffectStart)
+assert.ok(
+  ordersEffectStart >= 0 &&
+    ordersEffectLoadingReset > ordersEffectStart &&
+    ordersEffectRowsClear > ordersEffectStart &&
+    ordersEffectLoadingReset < ordersEffectRequestStart &&
+    ordersEffectRowsClear < ordersEffectRequestStart,
+  "Order history page should clear order loading and rows when account selection becomes empty",
+)
+const importRunsEffectStart = source.indexOf(
+  "useEffect(() => {\n    let ignore = false\n\n    if (!selectedAccountSeq)",
+  ordersEffectRequestStart,
+)
+const importRunsClear = source.indexOf("setImportRuns([])", importRunsEffectStart)
+const importRunsRequestStart = source.indexOf("apiGet<TossOrderImportRun[]>", importRunsEffectStart)
+assert.ok(
+  importRunsEffectStart >= 0 &&
+    importRunsClear > importRunsEffectStart &&
+    importRunsClear < importRunsRequestStart,
+  "Order history page should clear import runs when account selection becomes empty",
 )
 assert.ok(
   source.includes("refreshImportRunsForSnapshot(submittedSnapshot, importRequestId)"),

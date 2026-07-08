@@ -8,6 +8,7 @@ const periodOptions = [
   { value: "month", label: "월" },
   { value: "year", label: "년" },
 ] as const
+const ORDER_SYMBOL_FILTER_DEBOUNCE_MS = 400
 
 type PeriodFilter = (typeof periodOptions)[number]["value"]
 
@@ -106,6 +107,7 @@ export function OrderHistoryPage() {
   const [selectedAccountSeq, setSelectedAccountSeq] = useState("")
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("day")
   const [symbolFilter, setSymbolFilter] = useState("")
+  const [debouncedSymbolFilter, setDebouncedSymbolFilter] = useState("")
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const [orders, setOrders] = useState<TossOrder[]>([])
   const [importRuns, setImportRuns] = useState<TossOrderImportRun[]>([])
@@ -121,9 +123,17 @@ export function OrderHistoryPage() {
   const latestImportRequestIdRef = useRef(0)
   const periodRange = useMemo(() => getPeriodRange(periodFilter), [periodFilter])
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSymbolFilter(symbolFilter)
+    }, ORDER_SYMBOL_FILTER_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [symbolFilter])
+
   const currentOrderQueryKey = orderQueryKeyFrom({
     accountSeq: selectedAccountSeq,
-    symbolFilter,
+    symbolFilter: debouncedSymbolFilter,
     fromDate: periodRange.fromDate,
     toDate: periodRange.toDate,
   })
@@ -198,46 +208,60 @@ export function OrderHistoryPage() {
   useEffect(() => {
     let ignore = false
 
-    if (selectedAccountSeq) {
-      const requestSnapshot: OrderQuerySnapshot = {
-        accountSeq: selectedAccountSeq,
-        symbolFilter,
-        fromDate: periodRange.fromDate,
-        toDate: periodRange.toDate,
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore || latestSelectedAccountSeqRef.current) {
+          return
+        }
+
+        setOrdersLoading(false)
+        setOrders([])
+        setOrdersError("")
+        setLoadedOrderQueryKey("")
+      })
+      return () => {
+        ignore = true
       }
-      const requestQueryKey = currentOrderQueryKey
-      void Promise.resolve()
-        .then(() => {
-          if (ignore) {
-            return []
-          }
-
-          setOrdersLoading(true)
-          setOrdersError("")
-          return apiGet<TossOrder[]>(buildOrderQueryFromSnapshot(requestSnapshot))
-        })
-        .then((orderData) => {
-          if (ignore) {
-            return
-          }
-
-          setOrders(orderData)
-          setOrdersError("")
-          setLoadedOrderQueryKey(requestQueryKey)
-        })
-        .catch((err) => {
-          if (!ignore) {
-            setOrders([])
-            setOrdersError(getErrorMessage(err))
-            setLoadedOrderQueryKey("")
-          }
-        })
-        .finally(() => {
-          if (!ignore) {
-            setOrdersLoading(false)
-          }
-        })
     }
+
+    const requestSnapshot: OrderQuerySnapshot = {
+      accountSeq: selectedAccountSeq,
+      symbolFilter: debouncedSymbolFilter,
+      fromDate: periodRange.fromDate,
+      toDate: periodRange.toDate,
+    }
+    const requestQueryKey = currentOrderQueryKey
+    void Promise.resolve()
+      .then(() => {
+        if (ignore) {
+          return []
+        }
+
+        setOrdersLoading(true)
+        setOrdersError("")
+        return apiGet<TossOrder[]>(buildOrderQueryFromSnapshot(requestSnapshot))
+      })
+      .then((orderData) => {
+        if (ignore) {
+          return
+        }
+
+        setOrders(orderData)
+        setOrdersError("")
+        setLoadedOrderQueryKey(requestQueryKey)
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setOrders([])
+          setOrdersError(getErrorMessage(err))
+          setLoadedOrderQueryKey("")
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setOrdersLoading(false)
+        }
+      })
 
     return () => {
       ignore = true
@@ -246,28 +270,40 @@ export function OrderHistoryPage() {
     currentOrderQueryKey,
     periodRange.fromDate,
     periodRange.toDate,
+    debouncedSymbolFilter,
     selectedAccountSeq,
-    symbolFilter,
   ])
 
   useEffect(() => {
     let ignore = false
 
-    if (selectedAccountSeq) {
-      apiGet<TossOrderImportRun[]>(buildImportRunsQuery(selectedAccountSeq))
-        .then((runData) => {
-          if (!ignore) {
-            setImportRuns(runData)
-            setImportError("")
-          }
-        })
-        .catch((err) => {
-          if (!ignore) {
-            setImportRuns([])
-            setImportError(getErrorMessage(err))
-          }
-        })
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore || latestSelectedAccountSeqRef.current) {
+          return
+        }
+
+        setImportRuns([])
+        setImportError("")
+      })
+      return () => {
+        ignore = true
+      }
     }
+
+    apiGet<TossOrderImportRun[]>(buildImportRunsQuery(selectedAccountSeq))
+      .then((runData) => {
+        if (!ignore) {
+          setImportRuns(runData)
+          setImportError("")
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setImportRuns([])
+          setImportError(getErrorMessage(err))
+        }
+      })
 
     return () => {
       ignore = true
@@ -305,7 +341,7 @@ export function OrderHistoryPage() {
 
     const submittedSnapshot: OrderQuerySnapshot = {
       accountSeq: selectedAccountSeq,
-      symbolFilter,
+      symbolFilter: debouncedSymbolFilter,
       fromDate: periodRange.fromDate,
       toDate: periodRange.toDate,
     }
@@ -376,8 +412,8 @@ export function OrderHistoryPage() {
     periodRange.fromDate,
     periodRange.toDate,
     refreshImportRunsForSnapshot,
+    debouncedSymbolFilter,
     selectedAccountSeq,
-    symbolFilter,
   ])
 
   return (
