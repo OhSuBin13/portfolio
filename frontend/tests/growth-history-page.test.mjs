@@ -97,6 +97,16 @@ assert.ok(
   "Page should ignore stale selected-account async results",
 )
 
+const emptyAccountGuardStart = pageSource.indexOf("if (!selectedAccountSeq)")
+const emptyAccountLoadingReset = pageSource.indexOf("setHistoryLoading(false)", emptyAccountGuardStart)
+const historyRequestSetup = pageSource.indexOf("let ignore = false", emptyAccountGuardStart)
+assert.ok(
+  emptyAccountGuardStart >= 0 &&
+    emptyAccountLoadingReset > emptyAccountGuardStart &&
+    emptyAccountLoadingReset < historyRequestSetup,
+  "Page should clear history loading when account selection becomes empty",
+)
+
 const historyFetchStart = pageSource.indexOf("setHistoryLoading(true)")
 const monthClearBeforeFetch = pageSource.indexOf("setMonthHistory([])", historyFetchStart)
 const annualClearBeforeFetch = pageSource.indexOf("setAnnualHistory([])", historyFetchStart)

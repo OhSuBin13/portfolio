@@ -147,6 +147,17 @@ export function GrowthHistoryPage() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (selectedAccountSeqRef.current) {
+          return
+        }
+
+        setHistoryLoading(false)
+        setHistoryError("")
+        setIsMonthDeleteMode(false)
+        setMonthHistory([])
+        setAnnualHistory([])
+      })
       return undefined
     }
 
