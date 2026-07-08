@@ -161,10 +161,17 @@ def test_openapi_exposes_toss_order_history_paths(tmp_path):
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
-    paths = set(response.json()["paths"])
+    schema = response.json()
+    paths = set(schema["paths"])
     assert "/api/toss/order-imports" in paths
     assert "/api/toss/orders" in paths
     assert "/api/transactions" not in paths
+    run_schema = schema["components"]["schemas"]["TossOrderImportRunResponse"]
+    assert run_schema["properties"]["run_status"]["enum"] == [
+        "running",
+        "success",
+        "failed",
+    ]
 
 
 @pytest.mark.parametrize(

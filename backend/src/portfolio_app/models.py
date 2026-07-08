@@ -10,6 +10,7 @@ GOAL_TYPES = frozenset(get_args(GoalType))
 BackupReason = Literal["startup", "automatic", "manual"]
 BACKUP_REASONS = frozenset(get_args(BackupReason))
 OrderHistoryStatus = Literal["OPEN", "CLOSED"]
+OrderImportRunStatus = Literal["running", "success", "failed"]
 
 
 class BuyingPower(BaseModel):
@@ -144,7 +145,7 @@ class TossOrderImportRunResponse(BaseModel):
     symbol_filter: str | None
     from_date: str | None
     to_date: str | None
-    run_status: str
+    run_status: OrderImportRunStatus
     imported_count: int
     error_message: str
     started_at: str
