@@ -8,6 +8,7 @@ const periodOptions = [
   { value: "month", label: "월" },
   { value: "year", label: "년" },
 ] as const
+const ORDER_SYMBOL_FILTER_DEBOUNCE_MS = 400
 
 type PeriodFilter = (typeof periodOptions)[number]["value"]
 
@@ -106,6 +107,7 @@ export function OrderHistoryPage() {
   const [selectedAccountSeq, setSelectedAccountSeq] = useState("")
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("day")
   const [symbolFilter, setSymbolFilter] = useState("")
+  const [debouncedSymbolFilter, setDebouncedSymbolFilter] = useState("")
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const [orders, setOrders] = useState<TossOrder[]>([])
   const [importRuns, setImportRuns] = useState<TossOrderImportRun[]>([])
@@ -121,9 +123,17 @@ export function OrderHistoryPage() {
   const latestImportRequestIdRef = useRef(0)
   const periodRange = useMemo(() => getPeriodRange(periodFilter), [periodFilter])
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSymbolFilter(symbolFilter)
+    }, ORDER_SYMBOL_FILTER_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [symbolFilter])
+
   const currentOrderQueryKey = orderQueryKeyFrom({
     accountSeq: selectedAccountSeq,
-    symbolFilter,
+    symbolFilter: debouncedSymbolFilter,
     fromDate: periodRange.fromDate,
     toDate: periodRange.toDate,
   })
@@ -201,7 +211,7 @@ export function OrderHistoryPage() {
     if (selectedAccountSeq) {
       const requestSnapshot: OrderQuerySnapshot = {
         accountSeq: selectedAccountSeq,
-        symbolFilter,
+        symbolFilter: debouncedSymbolFilter,
         fromDate: periodRange.fromDate,
         toDate: periodRange.toDate,
       }
@@ -246,8 +256,8 @@ export function OrderHistoryPage() {
     currentOrderQueryKey,
     periodRange.fromDate,
     periodRange.toDate,
+    debouncedSymbolFilter,
     selectedAccountSeq,
-    symbolFilter,
   ])
 
   useEffect(() => {
@@ -305,7 +315,7 @@ export function OrderHistoryPage() {
 
     const submittedSnapshot: OrderQuerySnapshot = {
       accountSeq: selectedAccountSeq,
-      symbolFilter,
+      symbolFilter: debouncedSymbolFilter,
       fromDate: periodRange.fromDate,
       toDate: periodRange.toDate,
     }
@@ -376,8 +386,8 @@ export function OrderHistoryPage() {
     periodRange.fromDate,
     periodRange.toDate,
     refreshImportRunsForSnapshot,
+    debouncedSymbolFilter,
     selectedAccountSeq,
-    symbolFilter,
   ])
 
   return (
