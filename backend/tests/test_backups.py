@@ -216,6 +216,22 @@ def test_backup_api_uses_typed_response_schema(tmp_path):
     ]
 
 
+def test_backup_status_api_returns_runtime_settings(tmp_path):
+    app, _settings = create_test_app(
+        tmp_path,
+        backup_enabled=False,
+        backup_interval_seconds=7200,
+    )
+
+    response = TestClient(app, raise_server_exceptions=False).get("/api/backups/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "enabled": False,
+        "interval_seconds": 7200,
+    }
+
+
 def test_backup_api_lists_service_created_backup(tmp_path):
     _app, settings = create_test_app(tmp_path)
     db = connect(settings.database_path)

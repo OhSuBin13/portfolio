@@ -118,6 +118,13 @@ class BackupRecord(BaseModel):
     created_at: str
 
 
+class BackupStatus(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    enabled: bool
+    interval_seconds: int = Field(gt=0)
+
+
 class TossOrderImportCreate(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
