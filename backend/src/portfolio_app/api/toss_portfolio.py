@@ -19,7 +19,13 @@ from portfolio_app.api.toss_responses import (
     candle_response,
     holding_response,
 )
-from portfolio_app.api.validation import normalize_account_seq
+from portfolio_app.api.validation import (
+    normalize_account_seq,
+    normalize_marker_key,
+    normalize_optional_uppercase,
+    normalize_required_symbol,
+    validate_date_range,
+)
 from portfolio_app.models import (
     TossOrderImportCreate,
     TossOrderImportRunResponse,
@@ -42,9 +48,6 @@ from portfolio_app.services.toss_portfolio import (
 
 router = APIRouter(prefix="/api/toss", tags=["toss"])
 AccountSeq = Annotated[str, Query(min_length=1)]
-CANDLE_SYMBOL_REQUIRED_MESSAGE = "Toss 캔들 조회 종목 심볼을 입력해 주세요."
-CHART_MARKER_REQUIRED_MESSAGE = "차트 마커 식별자를 입력해 주세요."
-DATE_RANGE_MESSAGE = "조회 시작일은 종료일보다 늦을 수 없습니다."
 
 
 class ChartMarkerMemoUpsert(BaseModel):
@@ -78,31 +81,6 @@ def _accounts_cache(request: Request) -> TossAccountsCache:
     return request.app.state.toss_accounts_cache
 
 
-def _normalize_optional_uppercase(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().upper()
-    return normalized or None
-
-
-def _normalize_marker_key(marker_key: str) -> str:
-    normalized = marker_key.strip()
-    if not normalized:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=CHART_MARKER_REQUIRED_MESSAGE,
-        )
-    return normalized
-
-
-def _validate_date_range(from_date: date | None, to_date: date | None) -> None:
-    if from_date is not None and to_date is not None and from_date > to_date:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=DATE_RANGE_MESSAGE,
-        )
-
-
 @router.post(
     "/order-imports",
     response_model=TossOrderImportRunResponse,
@@ -114,8 +92,8 @@ async def create_toss_order_import(
     db: Db,
 ) -> dict[str, object]:
     account_seq = normalize_account_seq(payload.account_seq)
-    symbol = _normalize_optional_uppercase(payload.symbol)
-    _validate_date_range(payload.from_date, payload.to_date)
+    symbol = normalize_optional_uppercase(payload.symbol)
+    validate_date_range(payload.from_date, payload.to_date)
     try:
         result = await import_toss_orders(
             db,
@@ -167,12 +145,12 @@ def list_toss_orders(
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> list[dict[str, object]]:
-    _validate_date_range(from_date, to_date)
+    validate_date_range(from_date, to_date)
     rows = fetch_toss_orders(
         db,
         account_seq=normalize_account_seq(account_seq),
-        symbol=_normalize_optional_uppercase(symbol),
-        order_status=_normalize_optional_uppercase(order_status),
+        symbol=normalize_optional_uppercase(symbol),
+        order_status=normalize_optional_uppercase(order_status),
         from_date=from_date.isoformat() if from_date else None,
         to_date=to_date.isoformat() if to_date else None,
     )
@@ -227,12 +205,7 @@ async def list_toss_candles(
     interval: Annotated[str, Query(min_length=1)] = "1d",
     limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
 ) -> list[TossCandleResponse]:
-    normalized_symbol = _normalize_optional_uppercase(symbol)
-    if normalized_symbol is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
-        )
+    normalized_symbol = normalize_required_symbol(symbol)
 
     try:
         candles = await _market_data_provider(request).fetch_candles(
@@ -260,12 +233,7 @@ def list_chart_marker_memos(
     account_seq: AccountSeq,
     symbol: Annotated[str, Query(min_length=1)],
 ) -> list[dict[str, object]]:
-    normalized_symbol = _normalize_optional_uppercase(symbol)
-    if normalized_symbol is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
-        )
+    normalized_symbol = normalize_required_symbol(symbol)
     rows = fetch_chart_marker_memos(
         db,
         account_seq=normalize_account_seq(account_seq),
@@ -279,17 +247,12 @@ def upsert_chart_marker_memo_endpoint(
     payload: ChartMarkerMemoUpsert,
     db: Db,
 ) -> dict[str, object]:
-    normalized_symbol = _normalize_optional_uppercase(payload.symbol)
-    if normalized_symbol is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
-        )
+    normalized_symbol = normalize_required_symbol(payload.symbol)
     row = upsert_chart_marker_memo(
         db,
         account_seq=normalize_account_seq(payload.account_seq),
         symbol=normalized_symbol,
-        marker_key=_normalize_marker_key(payload.marker_key),
+        marker_key=normalize_marker_key(payload.marker_key),
         memo=payload.memo.strip(),
     )
     return row_to_dict(row)
@@ -302,17 +265,12 @@ def delete_chart_marker_memo_endpoint(
     symbol: Annotated[str, Query(min_length=1)],
     marker_key: Annotated[str, Query(min_length=1, max_length=200)],
 ) -> None:
-    normalized_symbol = _normalize_optional_uppercase(symbol)
-    if normalized_symbol is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=CANDLE_SYMBOL_REQUIRED_MESSAGE,
-        )
+    normalized_symbol = normalize_required_symbol(symbol)
     delete_chart_marker_memo(
         db,
         account_seq=normalize_account_seq(account_seq),
         symbol=normalized_symbol,
-        marker_key=_normalize_marker_key(marker_key),
+        marker_key=normalize_marker_key(marker_key),
     )
 
 
