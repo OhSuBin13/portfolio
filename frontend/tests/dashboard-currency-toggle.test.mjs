@@ -64,6 +64,15 @@ assert.ok(
 assert.ok(source.includes('aria-label="표시 통화 선택"'), "Dashboard should expose an accessible currency toggle")
 assert.ok(source.includes('aria-pressed={displayCurrency === currency}'), "Currency buttons should expose pressed state")
 assert.ok(source.includes("summary.usd_krw_rate"), "Dashboard should use the summary USD/KRW rate")
+const usdCurrencyBranchIndex = source.indexOf('if (currency === "USD")')
+const zeroUsdFallbackIndex = source.indexOf("if (valueKrw === 0)", usdCurrencyBranchIndex)
+const missingUsdRateFallbackIndex = source.indexOf('return "환율 없음"', usdCurrencyBranchIndex)
+assert.ok(
+  usdCurrencyBranchIndex >= 0 &&
+    zeroUsdFallbackIndex > usdCurrencyBranchIndex &&
+    zeroUsdFallbackIndex < missingUsdRateFallbackIndex,
+  "Dashboard should show zero KRW amounts as $0 in USD mode even when the FX rate is missing",
+)
 assert.ok(source.includes("/api/toss/accounts"), "Dashboard should load Toss brokerage accounts first")
 assert.ok(
   source.includes("/api/summary?account_seq="),

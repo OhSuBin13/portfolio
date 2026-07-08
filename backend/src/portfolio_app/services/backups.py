@@ -72,6 +72,13 @@ def _backup_files(backup_dir: Path) -> list[Path]:
     ]
 
 
+def _backup_retention_key(path: Path) -> tuple[str, str]:
+    metadata = _metadata_from_filename(path)
+    if metadata is None:
+        return "", path.name
+    return metadata[1], path.name
+
+
 def create_backup(*, db_path: Path, backup_dir: Path, reason: str) -> Path:
     normalized_reason = _backup_reason(reason)
     if not db_path.exists():
@@ -110,7 +117,7 @@ def prune_backups(*, backup_dir: Path, keep: int = 30) -> list[Path]:
 
     backups = sorted(
         _backup_files(backup_dir),
-        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        key=_backup_retention_key,
         reverse=True,
     )
     keep_count = max(0, keep)

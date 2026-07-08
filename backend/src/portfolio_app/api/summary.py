@@ -8,6 +8,7 @@ from portfolio_app.api import get_db
 from portfolio_app.api.toss_portfolio import normalize_account_seq, toss_http_error_detail
 from portfolio_app.models import SummaryResponse
 from portfolio_app.services import goals as goal_service
+from portfolio_app.services.fx_rates import CachedFxRateProvider
 from portfolio_app.services.market_data import default_fx_rate_provider
 from portfolio_app.services.toss_portfolio import TossBrokerageProvider, fetch_toss_summary
 
@@ -34,7 +35,10 @@ async def get_summary(
         result = await fetch_toss_summary(
             normalized_account_seq,
             provider,
-            fx_provider=default_fx_rate_provider(settings, auth_client=auth_client),
+            fx_provider=CachedFxRateProvider(
+                db,
+                provider=default_fx_rate_provider(settings, auth_client=auth_client),
+            ),
         )
     except ValueError as exc:
         raise HTTPException(

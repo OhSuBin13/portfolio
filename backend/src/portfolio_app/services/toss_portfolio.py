@@ -357,7 +357,9 @@ def build_toss_summary(
     usd_krw_rate: float | None,
 ) -> TossSummaryResult:
     buying_power_rows = buying_power or []
-    needs_usd_rate = any(holding.currency == "USD" for holding in holdings) or any(
+    needs_usd_rate = any(
+        holding.currency == "USD" and holding.market_value > 0 for holding in holdings
+    ) or any(
         row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power_rows
     )
     if needs_usd_rate:
@@ -368,7 +370,7 @@ def build_toss_summary(
     allocation_values: list[tuple[TossHolding, float]] = []
     for holding in holdings:
         value_krw = holding.market_value
-        if holding.currency == "USD":
+        if holding.currency == "USD" and holding.market_value > 0:
             value_krw = holding.market_value * float(rate)
         allocation_values.append((holding, value_krw))
 
@@ -434,7 +436,9 @@ async def fetch_toss_summary(
         await provider.fetch_buying_power(account_seq, "USD"),
     ]
     usd_krw_rate: float | None = None
-    if any(holding.currency == "USD" for holding in holdings) or any(
+    if any(
+        holding.currency == "USD" and holding.market_value > 0 for holding in holdings
+    ) or any(
         row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power
     ):
         resolved_fx_provider = fx_provider or default_fx_rate_provider()
@@ -519,19 +523,19 @@ def _parse_holding(item: dict[str, Any]) -> TossHolding:
         name=_required_text(item.get("name"), "Toss 보유자산명이 필요합니다."),
         market=market,
         currency=currency,
-        quantity=_positive_number(item.get("quantity"), "Toss 보유수량은 0보다 커야 합니다."),
-        average_purchase_price=_positive_number(
+        quantity=_non_negative_number(item.get("quantity"), "Toss 보유수량은 0 이상이어야 합니다."),
+        average_purchase_price=_non_negative_number(
             item.get("averagePurchasePrice"),
-            "Toss 평균매입가는 0보다 커야 합니다.",
+            "Toss 평균매입가는 0 이상이어야 합니다.",
         ),
         last_price=(
-            _positive_number(last_price, "Toss 현재가는 0보다 커야 합니다.")
+            _non_negative_number(last_price, "Toss 현재가는 0 이상이어야 합니다.")
             if last_price is not None
             else None
         ),
-        market_value=_positive_number(
+        market_value=_non_negative_number(
             market_value.get("amount"),
-            "Toss 평가금액은 0보다 커야 합니다.",
+            "Toss 평가금액은 0 이상이어야 합니다.",
         ),
     )
 
