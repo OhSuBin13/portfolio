@@ -20,16 +20,22 @@ type Sp500ProxyForm = {
   price: string
 }
 
-const today = new Date()
-const initialForm: GrowthForm = {
-  year: String(today.getFullYear()),
-  month: String(today.getMonth() + 1),
-  netWorthKrw: "",
-  monthlyDividendKrw: "",
+const defaultGrowthForm = (): GrowthForm => {
+  const today = new Date()
+  return {
+    year: String(today.getFullYear()),
+    month: String(today.getMonth() + 1),
+    netWorthKrw: "",
+    monthlyDividendKrw: "",
+  }
 }
-const initialSp500ProxyForm: Sp500ProxyForm = {
-  year: String(today.getFullYear() - 1),
-  price: "",
+
+const defaultSp500ProxyForm = (): Sp500ProxyForm => {
+  const today = new Date()
+  return {
+    year: String(today.getFullYear() - 1),
+    price: "",
+  }
 }
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -82,8 +88,8 @@ export function GrowthHistoryPage() {
   const [saving, setSaving] = useState(false)
   const [savingSp500Proxy, setSavingSp500Proxy] = useState(false)
   const [fillingSummary, setFillingSummary] = useState(false)
-  const [form, setForm] = useState<GrowthForm>(initialForm)
-  const [sp500ProxyForm, setSp500ProxyForm] = useState<Sp500ProxyForm>(initialSp500ProxyForm)
+  const [form, setForm] = useState<GrowthForm>(defaultGrowthForm)
+  const [sp500ProxyForm, setSp500ProxyForm] = useState<Sp500ProxyForm>(defaultSp500ProxyForm)
   const [message, setMessage] = useState("")
   const [accountsError, setAccountsError] = useState("")
   const [historyError, setHistoryError] = useState("")
