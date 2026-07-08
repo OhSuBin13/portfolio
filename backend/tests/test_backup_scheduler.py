@@ -5,7 +5,14 @@ from types import SimpleNamespace
 import pytest
 
 from portfolio_app.config import Settings
-from portfolio_app.services.backup_scheduler import run_periodic_backups, start_backup_task
+from portfolio_app.db import connect
+from portfolio_app.migrations import migrate
+from portfolio_app.services.backup_scheduler import (
+    run_backup_once,
+    run_periodic_backups,
+    start_backup_task,
+    stop_backup_task,
+)
 
 
 def make_settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -23,6 +30,22 @@ def test_backup_interval_defaults_to_one_hour(tmp_path, monkeypatch):
     settings = make_settings(tmp_path)
 
     assert settings.backup_interval_seconds == 3600
+
+
+@pytest.mark.asyncio
+async def test_run_backup_once_creates_recorded_automatic_backup(tmp_path):
+    settings = make_settings(tmp_path)
+    db = connect(settings.database_path)
+    try:
+        migrate(db)
+    finally:
+        db.close()
+
+    row = await run_backup_once(settings=settings, db_path=settings.database_path)
+
+    assert row["reason"] == "automatic"
+    assert Path(row["path"]).exists()
+    assert Path(row["path"]).parent == settings.backup_dir
 
 
 @pytest.mark.asyncio
@@ -88,3 +111,19 @@ async def test_start_backup_task_skips_when_disabled(tmp_path):
     task = start_backup_task(app)
 
     assert task is None
+
+
+@pytest.mark.asyncio
+async def test_start_backup_task_creates_named_task_until_stopped(tmp_path):
+    settings = make_settings(tmp_path)
+    app = SimpleNamespace(state=SimpleNamespace(settings=settings, db_path=settings.database_path))
+
+    task = start_backup_task(app)
+    try:
+        assert task is not None
+        assert task.get_name() == "automatic-backup"
+        assert not task.done()
+    finally:
+        await stop_backup_task(task)
+
+    assert task.done()
