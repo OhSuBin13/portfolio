@@ -3,49 +3,19 @@ import { Search, X } from "lucide-react"
 import { formatTossAccountLabel } from "../accountLabels"
 import { apiGet, apiPost } from "../api"
 import { getErrorMessage } from "../errors"
+import {
+  buildImportRunsQuery,
+  buildOrderQueryFromSnapshot,
+  ORDER_SYMBOL_FILTER_DEBOUNCE_MS,
+  orderQueryKeyFrom,
+  periodOptions,
+  getPeriodRange,
+  type OrderQuerySnapshot,
+  type PeriodFilter,
+} from "../orderHistoryQuery"
 import type { TossAccount, TossOrder, TossOrderImportRun } from "../types"
 
-const periodOptions = [
-  { value: "day", label: "일" },
-  { value: "month", label: "월" },
-  { value: "year", label: "년" },
-] as const
-const ORDER_SYMBOL_FILTER_DEBOUNCE_MS = 400
-
-type PeriodFilter = (typeof periodOptions)[number]["value"]
-
-type OrderQuerySnapshot = {
-  accountSeq: string
-  symbolFilter: string
-  fromDate: string
-  toDate: string
-}
-
 const displayValue = (value: string | null) => value || "-"
-
-const formatDatePart = (date: Date) => {
-  const year = String(date.getFullYear())
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-
-  return `${year}-${month}-${day}`
-}
-
-const getPeriodRange = (periodFilter: PeriodFilter) => {
-  const today = new Date()
-  const from = new Date(today)
-
-  if (periodFilter === "year") {
-    from.setMonth(0, 1)
-  } else if (periodFilter === "month") {
-    from.setDate(1)
-  }
-
-  return {
-    fromDate: formatDatePart(from),
-    toDate: formatDatePart(today),
-  }
-}
 
 const formatDateTime = (value: string | null) => {
   if (!value) {
@@ -62,42 +32,6 @@ const formatDateTime = (value: string | null) => {
     timeStyle: "short",
   })
 }
-
-const buildOrderQuery = (
-  selectedAccountSeq: string,
-  symbolFilter: string,
-  fromDate: string,
-  toDate: string,
-) => {
-  const params = new URLSearchParams({ account_seq: selectedAccountSeq })
-
-  const symbol = symbolFilter.trim()
-  if (symbol) {
-    params.set("symbol", symbol)
-  }
-  if (fromDate) {
-    params.set("from", fromDate)
-  }
-  if (toDate) {
-    params.set("to", toDate)
-  }
-
-  return `/api/toss/orders?${params.toString()}`
-}
-
-const orderQueryKeyFrom = (snapshot: OrderQuerySnapshot) =>
-  JSON.stringify([
-    snapshot.accountSeq,
-    snapshot.symbolFilter.trim(),
-    snapshot.fromDate,
-    snapshot.toDate,
-  ])
-
-const buildOrderQueryFromSnapshot = (snapshot: OrderQuerySnapshot) =>
-  buildOrderQuery(snapshot.accountSeq, snapshot.symbolFilter, snapshot.fromDate, snapshot.toDate)
-
-const buildImportRunsQuery = (accountSeq: string) =>
-  `/api/toss/order-imports?account_seq=${encodeURIComponent(accountSeq)}`
 
 export function OrderHistoryPage() {
   const [accounts, setAccounts] = useState<TossAccount[]>([])
