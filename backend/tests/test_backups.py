@@ -108,6 +108,22 @@ def test_prune_backups_keeps_newest_files(tmp_path):
     assert (backup_dir / "portfolio-20260612-120000-000035-manual.sqlite").exists()
 
 
+def test_prune_backups_uses_filename_timestamp_when_mtime_differs(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    older = backup_dir / "portfolio-20260612-120000-000001-manual.sqlite"
+    newer = backup_dir / "portfolio-20260612-120000-000002-manual.sqlite"
+    older.write_text("older", encoding="utf-8")
+    newer.write_text("newer", encoding="utf-8")
+    os.utime(older, (100, 100))
+    os.utime(newer, (1, 1))
+
+    prune_backups(backup_dir=backup_dir, keep=1)
+
+    assert newer.exists()
+    assert not older.exists()
+
+
 def test_prune_backups_only_deletes_service_owned_files(tmp_path):
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
