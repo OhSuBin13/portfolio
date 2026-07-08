@@ -14,6 +14,7 @@ assert.ok(!typesSource.includes("export type Transaction ="), "Local transaction
 assert.ok(!existsSync(removedPageFile), "Local transaction page should be removed")
 assert.ok(!holdingsSource.includes(removedEndpoint), "Holdings should not write local transactions")
 assert.ok(
-  packageSource.includes("transactions-nullable-relations.test.mjs"),
+  packageSource.includes("node --test tests/*.test.mjs") ||
+    packageSource.includes("transactions-nullable-relations.test.mjs"),
   "package test script should include the Toss-only transaction removal guard",
 )
