@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { formatTossAccountLabel } from "../accountLabels"
 import { apiGet } from "../api"
 import type { TossAccount, TossBuyingPower, TossHolding } from "../types"
 
@@ -13,9 +14,6 @@ const formatMoney = (value: number | null, currency: TossHolding["currency"]) =>
   value === null
     ? "-"
     : `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} ${currency}`
-
-const accountLabel = (account: TossAccount) =>
-  `${account.display_name} (${account.account_type})`
 
 export function HoldingsPage() {
   const readOnly = true
@@ -193,7 +191,7 @@ export function HoldingsPage() {
             {accounts.length > 0 ? (
               accounts.map((account) => (
                 <option key={account.account_seq} value={account.account_seq}>
-                  {accountLabel(account)}
+                  {formatTossAccountLabel(account)}
                 </option>
               ))
             ) : (
