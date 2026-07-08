@@ -34,10 +34,17 @@ assert.ok(
 )
 
 const selectedAccountFetchStart = source.indexOf("if (!selectedAccountSeq)")
+const selectedAccountLoadingReset = source.indexOf("setHoldingsLoading(false)", selectedAccountFetchStart)
 const selectedAccountHoldingsClear = source.indexOf("setHoldings([])", selectedAccountFetchStart)
 const selectedAccountHoldingsErrorClear = source.indexOf('setHoldingsError("")', selectedAccountFetchStart)
 const selectedAccountBuyingPowerClear = source.indexOf("setBuyingPower([])", selectedAccountFetchStart)
 const selectedAccountFetchRequest = source.indexOf("Promise.allSettled([", selectedAccountFetchStart)
+assert.ok(
+  selectedAccountFetchStart >= 0 &&
+    selectedAccountLoadingReset > selectedAccountFetchStart &&
+    selectedAccountLoadingReset < selectedAccountFetchRequest,
+  "Holdings page should clear loading when account selection becomes empty",
+)
 assert.ok(
   selectedAccountFetchStart >= 0 &&
     selectedAccountHoldingsClear > selectedAccountFetchStart &&

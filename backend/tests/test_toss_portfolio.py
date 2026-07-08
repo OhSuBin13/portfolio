@@ -178,6 +178,41 @@ async def test_toss_auth_client_reuses_token_before_expiry_and_refreshes_after_e
     assert len(httpx_mock.get_requests()) == 2
 
 
+@pytest.mark.asyncio
+async def test_toss_auth_client_reuses_short_lived_token_until_reduced_margin(
+    httpx_mock,
+):
+    now = [1000.0]
+
+    def fake_now() -> float:
+        return now[0]
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 30},
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-456", "token_type": "Bearer", "expires_in": 30},
+    )
+    auth_client = TossAuthClient("toss-client", "toss-secret", now=fake_now)
+
+    first_token = await auth_client.token()
+    now[0] = 1014.9
+    cached_token = await auth_client.token()
+    now[0] = 1015.1
+    refreshed_token = await auth_client.token()
+
+    assert [first_token, cached_token, refreshed_token] == [
+        "token-123",
+        "token-123",
+        "token-456",
+    ]
+    assert len(httpx_mock.get_requests()) == 2
+
+
 @pytest.mark.parametrize(
     ("headers", "expected_delay"),
     [
@@ -361,6 +396,31 @@ async def test_toss_market_data_provider_retries_candles_after_429(httpx_mock):
     assert candles[0].close == 75000
     assert candles[0].volume == 123456
     assert sleeps == [0.75]
+
+
+@pytest.mark.asyncio
+async def test_toss_market_data_provider_treats_empty_candle_page_as_empty_result(
+    httpx_mock,
+):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/candles?symbol=005930&interval=1d&count=200&adjusted=true",
+        json={"result": {"candles": []}},
+    )
+    provider = TossMarketDataProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    candles = await provider.fetch_candles("005930")
+
+    assert candles == []
 
 
 @pytest.mark.asyncio
@@ -846,6 +906,55 @@ async def test_toss_brokerage_provider_fetches_holdings(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_toss_brokerage_provider_allows_zero_valued_holding_fields(httpx_mock):
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        json={
+            "result": {
+                "items": [
+                    {
+                        "symbol": "VOO",
+                        "name": "Vanguard S&P 500 ETF",
+                        "marketCountry": "US",
+                        "currency": "USD",
+                        "quantity": "0",
+                        "lastPrice": "0",
+                        "averagePurchasePrice": "0",
+                        "marketValue": {"amount": "0"},
+                    }
+                ]
+            }
+        },
+    )
+    provider = TossBrokerageProvider(
+        "toss-client",
+        "toss-secret",
+        auth_client=TossAuthClient("toss-client", "toss-secret"),
+    )
+
+    holdings = await provider.fetch_holdings("12345")
+
+    assert holdings == [
+        TossHolding(
+            symbol="VOO",
+            name="Vanguard S&P 500 ETF",
+            market="US",
+            currency="USD",
+            quantity=0,
+            average_purchase_price=0,
+            last_price=0,
+            market_value=0,
+        )
+    ]
+
+
+@pytest.mark.asyncio
 async def test_toss_brokerage_provider_fetches_buying_power(httpx_mock):
     httpx_mock.add_response(
         method="POST",
@@ -1115,6 +1224,38 @@ async def test_fetch_toss_summary_fetches_fx_once_for_usd_holdings():
     assert provider.requested_accounts == ["12345"]
     assert fx_provider.calls == [("USD", "KRW")]
     assert result.summary.net_worth_krw == 2_100_000
+
+
+@pytest.mark.asyncio
+async def test_fetch_toss_summary_does_not_fetch_fx_for_zero_value_usd_holdings():
+    provider = StubTossBrokerageProvider(
+        [
+            TossHolding(
+                symbol="VOO",
+                name="Vanguard S&P 500 ETF",
+                market="US",
+                currency="USD",
+                quantity=0,
+                average_purchase_price=0,
+                last_price=0,
+                market_value=0,
+            )
+        ]
+    )
+    fx_provider = StubFxProvider()
+
+    result = await fetch_toss_summary(
+        "acct-1",
+        provider,
+        fx_provider=fx_provider,
+    )
+
+    assert result.summary.net_worth_krw == 0
+    assert result.summary.usd_krw_rate is None
+    assert result.asset_mix == {}
+    assert result.asset_allocations[0]["value_krw"] == 0
+    assert result.asset_allocations[0]["percent"] == 0
+    assert fx_provider.calls == []
 
 
 @pytest.mark.asyncio

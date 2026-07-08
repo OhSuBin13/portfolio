@@ -274,6 +274,35 @@ async def test_import_toss_orders_rejects_has_next_without_cursor(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_import_toss_orders_rejects_repeated_next_cursor(tmp_path):
+    db = _db(tmp_path)
+    provider = RecordingOrderProvider(
+        pages=[
+            TossOrderPage(
+                orders=[_order(order_id="order-1")],
+                next_cursor="cursor-2",
+                has_next=True,
+            ),
+            TossOrderPage(
+                orders=[_order(order_id="order-2")],
+                next_cursor="cursor-2",
+                has_next=True,
+            ),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="반복"):
+        await import_toss_orders(db, provider=provider, account_seq="account-1", status="OPEN")
+
+    assert [call["cursor"] for call in provider.calls] == [None, "cursor-2"]
+    assert db.execute("select count(*) from toss_orders").fetchone()[0] == 0
+    run = _import_run(db)
+    assert run["run_status"] == "failed"
+    assert run["imported_count"] == 0
+    assert "반복" in run["error_message"]
+
+
+@pytest.mark.asyncio
 async def test_fetch_toss_orders_filters_by_original_ordered_at_calendar_date(tmp_path):
     db = _db(tmp_path)
     provider = RecordingOrderProvider(

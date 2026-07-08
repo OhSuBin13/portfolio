@@ -38,6 +38,7 @@ Db = Annotated[sqlite3.Connection, Depends(get_db)]
 ACCOUNT_SEQ_REQUIRED_MESSAGE = "Toss 계좌 식별자를 입력해 주세요."
 CANDLE_SYMBOL_REQUIRED_MESSAGE = "Toss 캔들 조회 종목 심볼을 입력해 주세요."
 CHART_MARKER_REQUIRED_MESSAGE = "차트 마커 식별자를 입력해 주세요."
+DATE_RANGE_MESSAGE = "조회 시작일은 종료일보다 늦을 수 없습니다."
 
 
 class TossAccountResponse(BaseModel):
@@ -198,6 +199,14 @@ def _normalize_marker_key(marker_key: str) -> str:
     return normalized
 
 
+def _validate_date_range(from_date: date | None, to_date: date | None) -> None:
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=DATE_RANGE_MESSAGE,
+        )
+
+
 @router.post(
     "/order-imports",
     response_model=TossOrderImportRunResponse,
@@ -210,6 +219,7 @@ async def create_toss_order_import(
 ) -> dict[str, object]:
     account_seq = normalize_account_seq(payload.account_seq)
     symbol = _normalize_optional_uppercase(payload.symbol)
+    _validate_date_range(payload.from_date, payload.to_date)
     try:
         result = await import_toss_orders(
             db,
@@ -261,6 +271,7 @@ def list_toss_orders(
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
 ) -> list[dict[str, object]]:
+    _validate_date_range(from_date, to_date)
     rows = fetch_toss_orders(
         db,
         account_seq=normalize_account_seq(account_seq),

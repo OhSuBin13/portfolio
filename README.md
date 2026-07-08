@@ -92,9 +92,10 @@ npm run lint
    Toss-derived KRW/USD buying power.
 5. Open `차트` and select one held stock/ETF to inspect daily, weekly, or annual
    candles, moving averages, volume, and saved trade-marker notes.
-6. Open `주문내역` and import OPEN Toss order history for the selected account.
-7. Review imported orders from the local read-only cache. CLOSED imports may fail
-   if Toss reports `closed-not-supported`.
+6. Open `주문내역` and start the CLOSED Toss order-history import for the
+   selected account. If Toss reports `closed-not-supported`, the failed import
+   run is recorded and shown in the same screen.
+7. Review imported orders from the local read-only cache.
 8. Create or review local goals and confirm automatic backup records appear after
    the backend has been running.
 

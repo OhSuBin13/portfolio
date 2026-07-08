@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 TOSS_ONLY_REMOVED_TABLES = (
     "import_rows",
@@ -112,7 +112,7 @@ def _create_fx_rates_table_sql(table_name: str) -> str:
           id integer primary key,
           base_currency text not null check (base_currency in ('USD','KRW')),
           quote_currency text not null check (quote_currency in ('USD','KRW')) default 'KRW',
-          rate real not null,
+          rate real not null check (rate > 0),
           source text not null,
           fetched_at text not null,
           change_percent real,
@@ -384,9 +384,37 @@ def _rebuild_fx_rates_for_toss_only_schema(db: sqlite3.Connection) -> None:
           fetched_at,
           {change_percent_expr}
         from fx_rates_v10_legacy
+        where rate > 0
         """
     )
     db.execute("drop table fx_rates_v10_legacy")
+
+
+def _rebuild_fx_rates_with_positive_rate_check(db: sqlite3.Connection) -> None:
+    if not _table_exists(db, "fx_rates"):
+        return
+
+    db.execute("drop index if exists idx_fx_rates_summary_pair_latest")
+    db.execute("alter table fx_rates rename to fx_rates_v18_legacy")
+    db.execute(_create_fx_rates_table_sql("fx_rates"))
+    db.execute(
+        """
+        insert into fx_rates(
+          id, base_currency, quote_currency, rate, source, fetched_at, change_percent
+        )
+        select
+          id,
+          base_currency,
+          quote_currency,
+          rate,
+          source,
+          fetched_at,
+          change_percent
+        from fx_rates_v18_legacy
+        where rate > 0
+        """
+    )
+    db.execute("drop table fx_rates_v18_legacy")
 
 
 def _migrate_from_9_to_10(db: sqlite3.Connection) -> None:
@@ -456,6 +484,14 @@ def _migrate_from_16_to_17(db: sqlite3.Connection) -> None:
         db.execute("begin")
         db.execute("drop table if exists canslim_cache_entries")
         db.execute("insert or ignore into schema_migrations(version) values (17)")
+
+
+def _migrate_from_17_to_18(db: sqlite3.Connection) -> None:
+    with db:
+        db.execute("begin")
+        _rebuild_fx_rates_with_positive_rate_check(db)
+        _create_summary_indexes(db)
+        db.execute("insert or ignore into schema_migrations(version) values (18)")
 
 
 def migrate(db: sqlite3.Connection) -> None:
@@ -539,6 +575,10 @@ def migrate(db: sqlite3.Connection) -> None:
     if version == 16:
         _migrate_from_16_to_17(db)
         version = 17
+
+    if version == 17:
+        _migrate_from_17_to_18(db)
+        version = 18
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(
