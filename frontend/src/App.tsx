@@ -11,10 +11,14 @@ import { SettingsPage } from "./components/SettingsPage"
 export default function App() {
   const [active, setActive] = useState("dashboard")
   const [holdingsMounted, setHoldingsMounted] = useState(false)
+  const [chartsMounted, setChartsMounted] = useState(false)
 
   const navigate = (screen: string) => {
     if (screen === "holdings") {
       setHoldingsMounted(true)
+    }
+    if (screen === "charts") {
+      setChartsMounted(true)
     }
     setActive(screen)
   }
@@ -29,7 +33,11 @@ export default function App() {
           <HoldingsPage />
         </div>
       )}
-      {active === "charts" && <ChartsPage />}
+      {(active === "charts" || chartsMounted) && (
+        <div hidden={active !== "charts"}>
+          <ChartsPage />
+        </div>
+      )}
       {active === "orders" && <OrderHistoryPage />}
       {active === "growth" && <GrowthHistoryPage />}
       {active === "goals" && <GoalsPage />}
