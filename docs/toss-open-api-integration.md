@@ -126,11 +126,12 @@ also includes the seeded VOO-based `S&P 500 연 성장률` benchmark for complet
 years.
 
 The order-history page loads imported orders from the local read-only cache and
-can start an order-history import for the selected Toss account. OPEN order
-imports are supported through the Toss order list API. CLOSED imports can fail
-while the Toss OpenAPI reports `closed-not-supported`; the app records the failed
-import run and surfaces the provider failure instead of assuming closed history
-is available.
+can start an order-history import for the selected Toss account. The backend
+import API accepts `OPEN` or `CLOSED`, while the current page starts a `CLOSED`
+import for the selected period and optional symbol. CLOSED imports can fail while
+the Toss OpenAPI reports `closed-not-supported`; the app records the failed import
+run and surfaces the provider failure instead of assuming closed history is
+available.
 
 The chart page starts from the selected Toss account's holdings. It keeps a
 single chart panel, lets the user select one held stock/ETF, and requests up to
