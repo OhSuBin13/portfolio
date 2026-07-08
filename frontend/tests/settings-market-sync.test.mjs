@@ -8,6 +8,11 @@ const removedStatusPath = "/api/market-data/" + "status"
 assert.ok(source.includes("Toss API 인증 정보"), "Settings page should explain Toss credentials are required")
 assert.ok(source.includes("자동 백업"), "Settings page should describe backend automatic backups")
 assert.ok(source.includes('"/api/backups"'), "Settings page should still read backup records")
+assert.match(
+  typesSource,
+  /reason:\s*"startup"\s*\|\s*"automatic"\s*\|\s*"manual"/,
+  "Frontend backup records should type the backend backup reason enum",
+)
 assert.ok(source.includes('"/api/backups/status"'), "Settings page should read backup runtime status")
 assert.ok(source.includes("BackupStatus"), "Settings page should type backup runtime status")
 assert.ok(source.includes("formatBackupInterval"), "Settings page should format configured backup intervals")
