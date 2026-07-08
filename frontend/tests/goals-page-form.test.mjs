@@ -5,8 +5,8 @@ const source = readFileSync(new URL("../src/components/GoalsPage.tsx", import.me
 
 assert.ok(source.includes("목표 금액"), "Goals page should render the target amount field")
 assert.ok(
-  source.includes('const normalizeNumericInput = (value: string) => value.replaceAll(",", "").trim()'),
-  "Goals page should normalize comma-formatted numeric input",
+  source.includes('import { normalizeNumericInput } from "../numberInputs"'),
+  "Goals page should reuse the shared numeric input normalizer",
 )
 assert.ok(
   source.includes("Number(normalizeNumericInput(form.targetAmountKrw))"),
