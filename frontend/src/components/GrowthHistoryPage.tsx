@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { formatTossAccountLabel } from "../accountLabels"
 import { apiDelete, apiGet, apiPut } from "../api"
 import { getErrorMessage } from "../errors"
+import { normalizeNumericInput, parseRequiredNumber } from "../numberInputs"
 import type {
   GrowthAnnualHistoryRow,
   GrowthMonthHistoryRow,
@@ -52,9 +53,6 @@ const formatReturnPercent = (value: number | null) => {
   const normalized = Object.is(rounded, -0) ? 0 : rounded
   return `${normalized.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%`
 }
-const normalizeNumericInput = (value: string) => value.replaceAll(",", "").trim()
-const parseRequiredNumber = (value: string) => Number(normalizeNumericInput(value))
-
 const buildAccountQuery = (path: string, accountSeq: string) =>
   `${path}?account_seq=${encodeURIComponent(accountSeq)}`
 const monthRowKey = (row: GrowthMonthHistoryRow) => `${row.account_seq}:${row.year}:${row.month}`
