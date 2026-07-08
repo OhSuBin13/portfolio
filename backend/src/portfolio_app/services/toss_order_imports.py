@@ -46,6 +46,7 @@ async def import_toss_orders(
     try:
         with db:
             cursor: str | None = None
+            seen_cursors: set[str] = set()
             while True:
                 page = await provider.fetch_orders(
                     account_seq,
@@ -71,6 +72,9 @@ async def import_toss_orders(
                     break
                 if page.next_cursor is None:
                     raise ValueError("Toss 주문 목록 nextCursor가 필요합니다.")
+                if page.next_cursor in seen_cursors:
+                    raise ValueError("Toss 주문 목록 nextCursor가 반복되었습니다.")
+                seen_cursors.add(page.next_cursor)
                 cursor = page.next_cursor
 
             finish_toss_order_import_run(
