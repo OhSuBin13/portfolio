@@ -187,28 +187,7 @@ class TossBrokerageProvider:
         if not isinstance(result, list):
             raise ValueError("Toss 응답에서 계좌 목록을 찾을 수 없습니다.")
 
-        accounts: list[TossAccount] = []
-        for item in result:
-            if not isinstance(item, dict):
-                raise ValueError("Toss 계좌 항목은 객체여야 합니다.")
-            account_no = required_text(item.get("accountNo"), "Toss 계좌번호가 필요합니다.")
-            account_seq = required_text(
-                item.get("accountSeq"),
-                "Toss 계좌 식별자가 필요합니다.",
-            )
-            account_type = required_text(
-                item.get("accountType"),
-                "Toss 계좌 유형이 필요합니다.",
-            )
-            accounts.append(
-                TossAccount(
-                    account_seq=account_seq,
-                    account_no=account_no,
-                    account_type=account_type,
-                    display_name=f"토스증권 {account_no}",
-                )
-            )
-        return accounts
+        return [_parse_account(item) for item in result]
 
     async def fetch_holdings(self, account_seq: str) -> list[TossHolding]:
         token = await self._token()
@@ -364,6 +343,26 @@ async def fetch_toss_summary(
         holdings,
         buying_power=buying_power,
         usd_krw_rate=usd_krw_rate,
+    )
+
+
+def _parse_account(item: Any) -> TossAccount:
+    if not isinstance(item, dict):
+        raise ValueError("Toss 계좌 항목은 객체여야 합니다.")
+    account_no = required_text(item.get("accountNo"), "Toss 계좌번호가 필요합니다.")
+    account_seq = required_text(
+        item.get("accountSeq"),
+        "Toss 계좌 식별자가 필요합니다.",
+    )
+    account_type = required_text(
+        item.get("accountType"),
+        "Toss 계좌 유형이 필요합니다.",
+    )
+    return TossAccount(
+        account_seq=account_seq,
+        account_no=account_no,
+        account_type=account_type,
+        display_name=f"토스증권 {account_no}",
     )
 
 
