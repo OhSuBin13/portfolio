@@ -14,7 +14,7 @@ Status: Toss-based portfolio runtime with local support tables
 앱 시작 시 다음 순서로 공통 준비가 진행된다.
 
 1. `Settings`를 읽고 `data_dir`, `backup_dir`를 준비한다.
-2. SQLite에 연결한 뒤 `migrate()`로 schema version 17까지 적용한다.
+2. SQLite에 연결한 뒤 `migrate()`로 schema version 18까지 적용한다.
 3. 기존 DB 파일이 있으면 시작 백업을 생성한다.
 4. FastAPI 앱을 만들고 CORS, validation error handler, `/health`를 등록한다.
 5. `app.state`에 설정, Toss 인증 클라이언트, Toss 계좌 캐시, DB 경로를 저장한다.
@@ -208,7 +208,7 @@ CAN SLIM 분석 기능과 cache table은 현재 구현 흐름에서 제거되었
 - stock metadata lookup service
 - market sync scheduler
 
-마이그레이션 코드는 오래된 SQLite 파일을 v17로 올려야 하므로 과거 로컬 원장 테이블
+마이그레이션 코드는 오래된 SQLite 파일을 v18로 올려야 하므로 과거 로컬 원장 테이블
 DDL과 drop 경로를 일부 보존한다. 테스트 fixture 역시 migration 호환성 검증을 위해
 과거 테이블 정의를 포함할 수 있다. 향후 현금, 예금, 부채, 수기 조정, 거래 기반 원장
 기능을 다시 도입하려면 현재 Toss-only 흐름에 단순히 연결하기보다 별도 product/schema

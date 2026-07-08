@@ -7,7 +7,7 @@ create table if not exists fx_rates (
   id integer primary key,
   base_currency text not null check (base_currency in ('USD','KRW')),
   quote_currency text not null check (quote_currency in ('USD','KRW')) default 'KRW',
-  rate real not null,
+  rate real not null check (rate > 0),
   source text not null,
   fetched_at text not null,
   change_percent real,
