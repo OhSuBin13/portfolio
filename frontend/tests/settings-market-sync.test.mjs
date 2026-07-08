@@ -13,6 +13,10 @@ assert.match(
   /reason:\s*"startup"\s*\|\s*"automatic"\s*\|\s*"manual"/,
   "Frontend backup records should type the backend backup reason enum",
 )
+assert.ok(source.includes('"/api/backups/status"'), "Settings page should read backup runtime status")
+assert.ok(source.includes("BackupStatus"), "Settings page should type backup runtime status")
+assert.ok(source.includes("formatBackupInterval"), "Settings page should format configured backup intervals")
+assert.ok(!source.includes("1시간마다"), "Settings page should not hardcode the default backup interval")
 
 assert.ok(!source.includes(removedStatusPath), "Settings page should not read removed market status")
 assert.ok(!source.includes("MARKET_STATUS_POLL_INTERVAL_MS"), "Settings page should remove market status polling")

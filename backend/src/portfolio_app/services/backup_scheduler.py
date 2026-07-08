@@ -16,6 +16,9 @@ BackupOnce = Callable[..., Awaitable[object]]
 
 
 async def run_backup_once(*, settings: Settings, db_path: Path) -> object:
+    if not db_path.exists():
+        raise FileNotFoundError("데이터베이스 파일을 찾을 수 없습니다.")
+
     db = connect(db_path)
     try:
         return create_recorded_backup(

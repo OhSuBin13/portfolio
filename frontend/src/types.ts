@@ -163,3 +163,8 @@ export type BackupRecord = {
   reason: "startup" | "automatic" | "manual"
   created_at: string
 }
+
+export type BackupStatus = {
+  enabled: boolean
+  interval_seconds: number
+}

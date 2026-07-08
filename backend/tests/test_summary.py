@@ -1,3 +1,6 @@
+import sqlite3
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from portfolio_app.config import Settings
@@ -213,6 +216,79 @@ def test_summary_endpoint_fetches_toss_fx_for_usd_holdings(tmp_path, httpx_mock)
     ]
 
 
+def test_summary_endpoint_uses_fresh_cached_fx_for_usd_holdings(tmp_path, httpx_mock):
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "portfolio.sqlite",
+        backup_dir=tmp_path / "backups",
+        toss_api_key="toss-client",
+        toss_secret_key="toss-secret",
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    db = sqlite3.connect(settings.database_path)
+    try:
+        db.execute(
+            """
+            insert into fx_rates(base_currency, quote_currency, rate, source, fetched_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("USD", "KRW", 1350, "toss", datetime.now(UTC).isoformat(timespec="seconds")),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://openapi.tossinvest.com/oauth2/token",
+        json={"access_token": "token-123", "token_type": "Bearer", "expires_in": 3600},
+        is_reusable=True,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/holdings",
+        json={
+            "result": {
+                "items": [
+                    {
+                        "symbol": "VOO",
+                        "name": "Vanguard S&P 500 ETF",
+                        "marketCountry": "US",
+                        "currency": "USD",
+                        "quantity": "3",
+                        "lastPrice": "500",
+                        "averagePurchasePrice": "450",
+                        "marketValue": {"amount": "1500"},
+                    }
+                ]
+            }
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=KRW",
+        json={"result": {"currency": "KRW", "cashBuyingPower": "0"}},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://openapi.tossinvest.com/api/v1/buying-power?currency=USD",
+        json={"result": {"currency": "USD", "cashBuyingPower": "0"}},
+    )
+
+    response = client.get("/api/summary?account_seq=acct-1")
+
+    exchange_requests = [
+        request
+        for request in httpx_mock.get_requests()
+        if request.url.path == "/api/v1/exchange-rate"
+    ]
+    assert response.status_code == 200
+    assert response.json()["net_worth_krw"] == 2_025_000.0
+    assert response.json()["usd_krw_rate"] == 1350.0
+    assert exchange_requests == []
+
+
 def test_summary_endpoint_includes_buying_power_in_goal_progress(tmp_path, httpx_mock):
     settings = Settings(
         data_dir=tmp_path,
@@ -223,7 +299,6 @@ def test_summary_endpoint_includes_buying_power_in_goal_progress(tmp_path, httpx
     )
     app = create_app(settings=settings)
     client = TestClient(app)
-    import sqlite3
 
     from portfolio_app.services import goals as goal_service
 
