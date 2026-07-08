@@ -6,7 +6,11 @@ const candleChartSource = readFileSync(
   new URL("../src/components/CandleChart.tsx", import.meta.url),
   "utf8",
 )
-const chartFeatureSource = `${source}\n${candleChartSource}`
+const chartSettingsDialogSource = readFileSync(
+  new URL("../src/components/ChartSettingsDialog.tsx", import.meta.url),
+  "utf8",
+)
+const chartFeatureSource = `${source}\n${candleChartSource}\n${chartSettingsDialogSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const chartSeriesSource = readFileSync(new URL("../src/chartSeries.ts", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
@@ -542,11 +546,11 @@ assert.ok(
   "Chart heading should open settings from the gear button",
 )
 assert.ok(
-  source.includes("onClick={() => setChartSettingsOpen(false)}"),
+  chartSettingsDialogSource.includes("onClick={onClose}"),
   "Chart settings dialog should include an explicit close control",
 )
 assert.ok(
-  source.includes("event.target === event.currentTarget"),
+  chartSettingsDialogSource.includes("event.target === event.currentTarget"),
   "Chart settings overlay should close when the backdrop is clicked",
 )
 assert.ok(
@@ -559,7 +563,7 @@ assert.match(
   "Chart heading should expose chart settings through a gear icon button",
 )
 assert.match(
-  source,
+  chartFeatureSource,
   /\{chartSettingsOpen && \([\s\S]*?<div[\s\S]*?className="chart-settings-overlay"[\s\S]*?<section[\s\S]*?aria-label="차트 설정"[\s\S]*?aria-modal="true"[\s\S]*?className="panel chart-settings-panel chart-settings-dialog"[\s\S]*?role="dialog"/,
   "Chart settings should open in a screen overlay dialog",
 )
