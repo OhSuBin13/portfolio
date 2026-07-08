@@ -13,11 +13,9 @@ from portfolio_app.models import (
 )
 from portfolio_app.services.market_data import (
     FxRateProvider,
-    Sleep,
-    TossAuthClient,
     default_fx_rate_provider,
-    request_with_toss_retry,
 )
+from portfolio_app.services.toss_http import Sleep, TossAuthClient, request_with_toss_retry
 from portfolio_app.services.toss_payloads import (
     non_negative_number,
     optional_text,
