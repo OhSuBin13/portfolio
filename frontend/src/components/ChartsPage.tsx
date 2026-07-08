@@ -4,6 +4,7 @@ import {
   type WheelEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import {
@@ -88,6 +89,9 @@ const holdingKey = (holding: TossHolding) => `${holding.market}:${holding.symbol
 
 const holdingLabel = (holding: TossHolding) =>
   `${holding.symbol} · ${holding.name} · ${holding.market}`
+
+const chartMemoScopeKey = (accountSeq: string, symbol: string) =>
+  JSON.stringify([accountSeq, symbol])
 
 const formatPrice = (value: number, currency: TossHolding["currency"] | undefined) => {
   const formatted = value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })
@@ -629,6 +633,8 @@ export function ChartsPage() {
   const [holdingsLoading, setHoldingsLoading] = useState(false)
   const [candlesLoading, setCandlesLoading] = useState(false)
   const [memoSaving, setMemoSaving] = useState(false)
+  const currentMemoScopeKeyRef = useRef("")
+  const memoSaveRequestIdRef = useRef(0)
 
   useEffect(() => {
     let ignore = false
@@ -764,6 +770,13 @@ export function ChartsPage() {
   }, [selectedAccountSeq])
 
   const selectedHolding = holdings.find((holding) => holdingKey(holding) === selectedHoldingKey)
+
+  useEffect(() => {
+    currentMemoScopeKeyRef.current =
+      selectedHolding && selectedAccountSeq
+        ? chartMemoScopeKey(selectedAccountSeq, selectedHolding.symbol)
+        : ""
+  }, [selectedAccountSeq, selectedHolding])
 
   useEffect(() => {
     if (!selectedHolding || !selectedAccountSeq) {
@@ -1036,6 +1049,7 @@ export function ChartsPage() {
       return
     }
     setMemoError("")
+    const requestScopeKey = chartMemoScopeKey(selectedAccountSeq, selectedHolding.symbol)
     const path = `/api/toss/chart-marker-memos?account_seq=${encodeURIComponent(
       selectedAccountSeq,
     )}&symbol=${encodeURIComponent(selectedHolding.symbol)}&marker_key=${encodeURIComponent(
@@ -1043,6 +1057,9 @@ export function ChartsPage() {
     )}`
     apiDelete(path)
       .then(() => {
+        if (currentMemoScopeKeyRef.current !== requestScopeKey) {
+          return
+        }
         setMarkerMemos((current) => current.filter((memo) => memo.marker_key !== marker.key))
         if (selectedMarkerKey === marker.key) {
           setSelectedMarkerKey("")
@@ -1050,13 +1067,20 @@ export function ChartsPage() {
           setMarkerMemoOpen(false)
         }
       })
-      .catch((err) => setMemoError(getErrorMessage(err)))
+      .catch((err) => {
+        if (currentMemoScopeKeyRef.current === requestScopeKey) {
+          setMemoError(getErrorMessage(err))
+        }
+      })
   }
 
   const saveMarkerMemo = () => {
     if (!selectedMarker || !selectedHolding || !selectedAccountSeq) {
       return
     }
+    const requestScopeKey = chartMemoScopeKey(selectedAccountSeq, selectedHolding.symbol)
+    const requestId = memoSaveRequestIdRef.current + 1
+    memoSaveRequestIdRef.current = requestId
     setMemoSaving(true)
     setMemoError("")
     apiPost<ChartMarkerMemo>("/api/toss/chart-marker-memos", {
@@ -1066,6 +1090,12 @@ export function ChartsPage() {
       memo: markerMemoDraft,
     })
       .then((saved) => {
+        if (
+          currentMemoScopeKeyRef.current !== requestScopeKey ||
+          memoSaveRequestIdRef.current !== requestId
+        ) {
+          return
+        }
         setMarkerMemos((current) => [
           saved,
           ...current.filter((memo) => memo.marker_key !== saved.marker_key),
@@ -1073,8 +1103,19 @@ export function ChartsPage() {
         setSelectedMarkerKey(saved.marker_key)
         setMarkerMemoOpen(false)
       })
-      .catch((err) => setMemoError(getErrorMessage(err)))
-      .finally(() => setMemoSaving(false))
+      .catch((err) => {
+        if (
+          currentMemoScopeKeyRef.current === requestScopeKey &&
+          memoSaveRequestIdRef.current === requestId
+        ) {
+          setMemoError(getErrorMessage(err))
+        }
+      })
+      .finally(() => {
+        if (memoSaveRequestIdRef.current === requestId) {
+          setMemoSaving(false)
+        }
+      })
   }
 
   return (
