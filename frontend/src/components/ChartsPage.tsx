@@ -35,6 +35,14 @@ import {
   movingAveragePoints,
   priceBounds,
 } from "../chartSeries"
+import {
+  buildVisibleChartWindow,
+  chartPanSteps,
+  DRAG_PAN_STEP_PIXELS,
+  nextChartPanOffset,
+  nextChartZoom,
+  visibleChartWindowSize,
+} from "../chartViewport"
 import { getErrorMessage } from "../errors"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
@@ -47,10 +55,6 @@ const VOLUME_TOP = 360
 const VOLUME_BOTTOM = 452
 const PLOT_LEFT = 62
 const PLOT_RIGHT = 28
-const MIN_VISIBLE_CANDLES = 20
-const ZOOM_IN_RATIO = 0.8
-const ZOOM_OUT_RATIO = 1.25
-const DRAG_PAN_STEP_PIXELS = 36
 
 const chartPeriodOptions: ReadonlyArray<{
   value: ChartPeriod
@@ -707,22 +711,7 @@ export function ChartsPage() {
     [candles, selectedChartPeriod],
   )
   const visibleChartWindow = useMemo(() => {
-    const totalCandles = chartCandles.length
-    if (totalCandles === 0) {
-      return { candles: chartCandles, startIndex: 0 }
-    }
-
-    const visibleCount =
-      chartZoomWindow === null ? totalCandles : Math.min(chartZoomWindow, totalCandles)
-    if (visibleCount >= totalCandles) {
-      return { candles: chartCandles, startIndex: 0 }
-    }
-
-    const maxPanOffset = Math.max(totalCandles - visibleCount, 0)
-    const clampedPanOffset = Math.min(Math.max(chartPanOffset, 0), maxPanOffset)
-    const end = totalCandles - clampedPanOffset
-    const start = Math.max(0, end - visibleCount)
-    return { candles: chartCandles.slice(start, end), startIndex: start }
+    return buildVisibleChartWindow(chartCandles, chartZoomWindow, chartPanOffset)
   }, [chartCandles, chartPanOffset, chartZoomWindow])
   const visibleChartCandles = visibleChartWindow.candles
   const visibleCandleStartIndex = visibleChartWindow.startIndex
@@ -767,21 +756,9 @@ export function ChartsPage() {
     event.preventDefault()
 
     const totalCandles = chartCandles.length
-    const currentWindow = chartZoomWindow ?? totalCandles
-    const minWindow = Math.min(MIN_VISIBLE_CANDLES, totalCandles)
-    const nextWindow =
-      event.deltaY > 0
-        ? Math.min(totalCandles, Math.ceil(currentWindow * ZOOM_OUT_RATIO))
-        : Math.max(minWindow, Math.floor(currentWindow * ZOOM_IN_RATIO))
-
-    if (nextWindow >= totalCandles) {
-      setChartZoomWindow(null)
-      setChartPanOffset(0)
-      return
-    }
-
-    setChartZoomWindow(nextWindow)
-    setChartPanOffset((current) => Math.min(current, Math.max(totalCandles - nextWindow, 0)))
+    const nextZoom = nextChartZoom(totalCandles, chartZoomWindow, chartPanOffset, event.deltaY > 0)
+    setChartZoomWindow(nextZoom.zoomWindow)
+    setChartPanOffset(nextZoom.panOffset)
   }
 
   const handleChartMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -799,7 +776,7 @@ export function ChartsPage() {
     event.preventDefault()
 
     const totalCandles = chartCandles.length
-    const visibleWindow = Math.min(chartZoomWindow ?? totalCandles, totalCandles)
+    const visibleWindow = visibleChartWindowSize(totalCandles, chartZoomWindow)
     const maxPanOffset = Math.max(totalCandles - visibleWindow, 0)
     if (maxPanOffset === 0) {
       setChartDragState({ lastX: event.clientX })
@@ -807,12 +784,14 @@ export function ChartsPage() {
     }
 
     const deltaX = event.clientX - chartDragState.lastX
-    const steps = Math.trunc(deltaX / DRAG_PAN_STEP_PIXELS)
+    const steps = chartPanSteps(deltaX)
     if (steps === 0) {
       return
     }
 
-    setChartPanOffset((current) => Math.min(maxPanOffset, Math.max(0, current + steps)))
+    setChartPanOffset((current) =>
+      nextChartPanOffset(current, steps, totalCandles, visibleWindow),
+    )
     setChartDragState({ lastX: chartDragState.lastX + steps * DRAG_PAN_STEP_PIXELS })
   }
 
