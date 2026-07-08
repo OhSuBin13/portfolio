@@ -256,15 +256,6 @@ class TossBrokerageProvider:
         limit: int = 100,
     ) -> TossOrderPage:
         token = await self._token()
-        params: dict[str, object] = {"status": status, "limit": limit}
-        if symbol:
-            params["symbol"] = symbol
-        if from_date:
-            params["from"] = from_date
-        if to_date:
-            params["to"] = to_date
-        if cursor:
-            params["cursor"] = cursor
 
         async with httpx.AsyncClient(timeout=10) as client:
             response = await request_with_toss_retry(
@@ -275,7 +266,14 @@ class TossBrokerageProvider:
                     "Authorization": f"Bearer {token}",
                     "x-tossinvest-account": account_seq,
                 },
-                params=params,
+                params=_order_page_params(
+                    status=status,
+                    symbol=symbol,
+                    from_date=from_date,
+                    to_date=to_date,
+                    cursor=cursor,
+                    limit=limit,
+                ),
                 sleep=self._sleep,
             )
             response.raise_for_status()
@@ -344,6 +342,27 @@ async def fetch_toss_summary(
         buying_power=buying_power,
         usd_krw_rate=usd_krw_rate,
     )
+
+
+def _order_page_params(
+    *,
+    status: str,
+    symbol: str | None,
+    from_date: str | None,
+    to_date: str | None,
+    cursor: str | None,
+    limit: int,
+) -> dict[str, object]:
+    params: dict[str, object] = {"status": status, "limit": limit}
+    if symbol:
+        params["symbol"] = symbol
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
+    if cursor:
+        params["cursor"] = cursor
+    return params
 
 
 def _parse_account(item: Any) -> TossAccount:
