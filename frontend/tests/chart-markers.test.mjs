@@ -4,7 +4,14 @@ import vm from "node:vm"
 import ts from "typescript"
 
 const source = readFileSync(new URL("../src/chartMarkers.ts", import.meta.url), "utf8")
+const chartDatesSource = readFileSync(new URL("../src/chartDates.ts", import.meta.url), "utf8")
 const { outputText } = ts.transpileModule(source, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+  },
+})
+const { outputText: chartDatesOutputText } = ts.transpileModule(chartDatesSource, {
   compilerOptions: {
     module: ts.ModuleKind.CommonJS,
     target: ts.ScriptTarget.ES2022,
@@ -19,8 +26,17 @@ vm.runInNewContext(outputText, {
     throw new Error(`Unexpected require from chartMarkers test: ${name}`)
   },
 })
+const chartDatesModule = { exports: {} }
+vm.runInNewContext(chartDatesOutputText, {
+  exports: chartDatesModule.exports,
+  module: chartDatesModule,
+  require: (name) => {
+    throw new Error(`Unexpected require from chartDates test: ${name}`)
+  },
+})
 
 const { buildTradeMarkers, spreadOverlappingMarkers } = module.exports
+const { chartDateKey, chartPeriodGroupKey, formatChartDateLabel } = chartDatesModule.exports
 
 const markerLabels = (orders) =>
   Array.from(buildTradeMarkers(orders, []), (marker) => marker.label)
@@ -112,6 +128,15 @@ assert.deepEqual(
 )
 
 assert.deepEqual(
+  markerOrderKeys([
+    order({ order_id: "20", side: "SELL", filled_quantity: "1", ordered_at: "2026-01-27T09:00:00Z" }),
+    order({ order_id: "19", side: "BUY", filled_quantity: "1", ordered_at: "2026-01-27T09:00:00Z" }),
+    order({ order_id: "21", side: "BUY", filled_quantity: "2", ordered_at: "2026-01-28T09:00:00Z" }),
+  ]),
+  ["order:21"],
+)
+
+assert.deepEqual(
   spreadOverlappingMarkers([
     { marker: marker("first"), candleIndex: 3 },
     { marker: marker("second"), candleIndex: 3 },
@@ -126,4 +151,23 @@ assert.deepEqual(
     { key: "second", candleIndex: 3, xOffset: 8 },
     { key: "third", candleIndex: 5, xOffset: 0 },
   ],
+)
+
+assert.equal(
+  chartDateKey("2026-03-25T00:30:00+09:00"),
+  "2026-03-25",
+  "Chart date keys should preserve the source calendar date instead of the runtime timezone",
+)
+assert.equal(
+  formatChartDateLabel("2026-03-25T00:30:00+09:00", "daily"),
+  "26-03-25",
+)
+assert.equal(
+  formatChartDateLabel("2026-03-25T00:30:00+09:00", "monthly"),
+  "26-03",
+)
+assert.equal(
+  chartPeriodGroupKey("2026-03-01T00:30:00+09:00", "weekly"),
+  "2026-02-23",
+  "Weekly candle grouping should use the source calendar date for week boundaries",
 )

@@ -77,6 +77,14 @@ export function HoldingsPage() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        setHoldingsLoading(false)
+        setHoldings([])
+        setHoldingsError("")
+        setBuyingPower([])
+        setBuyingPowerError("")
+        setPortfolioLoadedAccountSeq("")
+      })
       return
     }
 

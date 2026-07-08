@@ -51,16 +51,21 @@ const pieChart = {
   width: 360,
 }
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const formatUsdCurrency = (valueUsd: number) =>
+  valueUsd.toLocaleString("en-US", {
+    currency: "USD",
+    maximumFractionDigits: 2,
+    style: "currency",
+  })
 const formatCurrency = (valueKrw: number, currency: DisplayCurrency, usdKrwRate: number | null) => {
   if (currency === "USD") {
+    if (valueKrw === 0) {
+      return formatUsdCurrency(0)
+    }
     if (usdKrwRate === null || !Number.isFinite(usdKrwRate) || usdKrwRate <= 0) {
       return "환율 없음"
     }
-    return (valueKrw / usdKrwRate).toLocaleString("en-US", {
-      currency: "USD",
-      maximumFractionDigits: 2,
-      style: "currency",
-    })
+    return formatUsdCurrency(valueKrw / usdKrwRate)
   }
 
   return `${valueKrw.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} 원`
@@ -301,11 +306,21 @@ export function Dashboard() {
   }, [])
 
   useEffect(() => {
-    if (!selectedAccountSeq) {
-      return
-    }
-
     let ignore = false
+
+    if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        if (ignore) {
+          return
+        }
+
+        setSummaryLoading(false)
+        setSummary(emptySummary)
+      })
+      return () => {
+        ignore = true
+      }
+    }
 
     void Promise.resolve().then(() => {
       if (ignore) {

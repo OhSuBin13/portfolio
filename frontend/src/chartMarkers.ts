@@ -43,6 +43,17 @@ const numericOrderQuantity = (order: TossOrder) => {
 
 const orderDateKey = (order: TossOrder) => (order.filled_at ?? order.ordered_at).slice(0, 10)
 
+const compareOrdersByTradeTime = (left: TossOrder, right: TossOrder) => {
+  const leftDate = parseOrderDate(left.filled_at ?? left.ordered_at)?.getTime() ?? 0
+  const rightDate = parseOrderDate(right.filled_at ?? right.ordered_at)?.getTime() ?? 0
+
+  if (leftDate !== rightDate) {
+    return leftDate - rightDate
+  }
+
+  return left.id - right.id
+}
+
 type OpenPositionLot = {
   orderKey: string
   dateKey: string
@@ -123,11 +134,7 @@ export const buildTradeMarkers = (
 ): TradeMarker[] => {
   const memosByKey = new Map(markerMemos.map((memo) => [memo.marker_key, memo.memo]))
   let positionQuantity = 0
-  const sortedOrders = [...orders].sort((left, right) => {
-    const leftDate = parseOrderDate(left.filled_at ?? left.ordered_at)?.getTime() ?? 0
-    const rightDate = parseOrderDate(right.filled_at ?? right.ordered_at)?.getTime() ?? 0
-    return leftDate - rightDate
-  })
+  const sortedOrders = [...orders].sort(compareOrdersByTradeTime)
   const hiddenOrderKeys = hiddenSameDayRoundTripOrderKeys(sortedOrders)
 
   return sortedOrders

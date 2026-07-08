@@ -19,6 +19,14 @@ import {
   X,
 } from "lucide-react"
 import { apiDelete, apiGet, apiPost } from "../api"
+import {
+  chartDateKey,
+  chartPeriodGroupKey,
+  formatChartDateLabel,
+  formatChartDateTime,
+  parseChartDate,
+  type ChartPeriod,
+} from "../chartDates"
 import { buildTradeMarkers, spreadOverlappingMarkers, type TradeMarker } from "../chartMarkers"
 import type { ChartMarkerMemo, TossAccount, TossCandle, TossHolding, TossOrder } from "../types"
 
@@ -36,14 +44,16 @@ const ZOOM_IN_RATIO = 0.8
 const ZOOM_OUT_RATIO = 1.25
 const DRAG_PAN_STEP_PIXELS = 36
 
-const chartPeriodOptions = [
+const chartPeriodOptions: ReadonlyArray<{
+  value: ChartPeriod
+  label: string
+  shortLabel: string
+}> = [
   { value: "daily", label: "일봉", shortLabel: "일" },
   { value: "weekly", label: "주봉", shortLabel: "주" },
   { value: "monthly", label: "월봉", shortLabel: "월" },
   { value: "annual", label: "연봉", shortLabel: "연" },
-] as const
-
-type ChartPeriod = (typeof chartPeriodOptions)[number]["value"]
+]
 
 type ChangeRateTone = "up" | "down" | "flat"
 
@@ -127,80 +137,12 @@ const changeRateTone = (value: number | null): ChangeRateTone => {
 const changeRateForPrice = (value: number, previousClose: number | null) =>
   previousClose !== null && previousClose > 0 ? ((value - previousClose) / previousClose) * 100 : null
 
-const parseDate = (value: string) => {
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-const dateKey = (value: string) => {
-  const parsed = parseDate(value)
-  if (!parsed) {
-    return value.slice(0, 10)
-  }
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(
-    parsed.getDate(),
-  ).padStart(2, "0")}`
-}
-
-const formatChartDateLabel = (value: string, selectedChartPeriod: ChartPeriod) => {
-  const parsed = parseDate(value)
-  if (!parsed) {
-    return selectedChartPeriod === "annual"
-      ? value.slice(2, 4)
-      : selectedChartPeriod === "monthly"
-        ? value.slice(2, 7)
-        : value.slice(2, 10)
-  }
-  const year = String(parsed.getFullYear()).slice(2)
-  const month = String(parsed.getMonth() + 1).padStart(2, "0")
-  const day = String(parsed.getDate()).padStart(2, "0")
-  if (selectedChartPeriod === "annual") {
-    return year
-  }
-  return selectedChartPeriod === "monthly" ? `${year}-${month}` : `${year}-${month}-${day}`
-}
-
-const formatDateTime = (value: string) => {
-  const parsed = parseDate(value)
-  if (!parsed) {
-    return value
-  }
-  return parsed.toLocaleString("ko-KR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  })
-}
-
 const sortCandlesAscending = (candles: TossCandle[]) =>
   [...candles].sort((left, right) => {
-    const leftDate = parseDate(left.timestamp)?.getTime() ?? 0
-    const rightDate = parseDate(right.timestamp)?.getTime() ?? 0
+    const leftDate = parseChartDate(left.timestamp)?.getTime() ?? 0
+    const rightDate = parseChartDate(right.timestamp)?.getTime() ?? 0
     return leftDate - rightDate
   })
-
-const weekGroupKey = (timestamp: string) => {
-  const parsed = parseDate(timestamp)
-  if (!parsed) {
-    return timestamp.slice(0, 10)
-  }
-  const day = parsed.getDay() || 7
-  const monday = new Date(parsed)
-  monday.setDate(parsed.getDate() - day + 1)
-  return dateKey(monday.toISOString())
-}
-
-const monthGroupKey = (timestamp: string) => {
-  const parsed = parseDate(timestamp)
-  if (!parsed) {
-    return timestamp.slice(0, 7)
-  }
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`
-}
-
-const yearGroupKey = (timestamp: string) => {
-  const parsed = parseDate(timestamp)
-  return parsed ? String(parsed.getFullYear()) : timestamp.slice(0, 4)
-}
 
 const aggregateGroup = (group: TossCandle[]): TossCandle => {
   const first = group[0]
@@ -224,10 +166,7 @@ const aggregateCandles = (candles: TossCandle[], selectedChartPeriod: ChartPerio
 
   const grouped = new Map<string, TossCandle[]>()
   for (const candle of sorted) {
-    const key =
-      selectedChartPeriod === "weekly"
-        ? weekGroupKey(candle.timestamp)
-        : selectedChartPeriod === "monthly" ? monthGroupKey(candle.timestamp) : yearGroupKey(candle.timestamp)
+    const key = chartPeriodGroupKey(candle.timestamp, selectedChartPeriod)
     const group = grouped.get(key)
     if (group) {
       group.push(candle)
@@ -265,9 +204,15 @@ const movingAveragePoints = (candles: TossCandle[], days: number) => {
 }
 
 const markerIndex = (candles: TossCandle[], marker: TradeMarker) => {
-  const markerTime = parseDate(marker.timestamp)?.getTime()
-  const firstTime = parseDate(candles[0]?.timestamp ?? "")?.getTime()
-  const lastTime = parseDate(candles[candles.length - 1]?.timestamp ?? "")?.getTime()
+  const key = chartDateKey(marker.timestamp)
+  const exact = candles.findIndex((candle) => chartDateKey(candle.timestamp) === key)
+  if (exact >= 0) {
+    return exact
+  }
+
+  const markerTime = parseChartDate(marker.timestamp)?.getTime()
+  const firstTime = parseChartDate(candles[0]?.timestamp ?? "")?.getTime()
+  const lastTime = parseChartDate(candles[candles.length - 1]?.timestamp ?? "")?.getTime()
   if (
     markerTime !== undefined &&
     firstTime !== undefined &&
@@ -277,18 +222,13 @@ const markerIndex = (candles: TossCandle[], marker: TradeMarker) => {
     return -1
   }
 
-  const key = dateKey(marker.timestamp)
-  const exact = candles.findIndex((candle) => dateKey(candle.timestamp) === key)
-  if (exact >= 0) {
-    return exact
-  }
   if (markerTime === undefined) {
     return -1
   }
   let closestIndex = -1
   let closestDistance = Number.POSITIVE_INFINITY
   candles.forEach((candle, index) => {
-    const candleTime = parseDate(candle.timestamp)?.getTime()
+    const candleTime = parseChartDate(candle.timestamp)?.getTime()
     if (candleTime === undefined) {
       return
     }
@@ -333,7 +273,12 @@ function CandleChart({
       )
       .map((point) => ({ ...point, index: point.index - visibleCandleStartIndex })),
   )
-  const bounds = priceBounds(candles, movingAverageSeries, markers)
+  const markerPlacementInputs = markers.flatMap((marker) => {
+    const candleIndex = markerIndex(candles, marker)
+    return candleIndex >= 0 ? [{ marker, candleIndex }] : []
+  })
+  const visibleMarkers = markerPlacementInputs.map(({ marker }) => marker)
+  const bounds = priceBounds(candles, movingAverageSeries, visibleMarkers)
   const priceBottom = showVolume ? PRICE_BOTTOM_WITH_VOLUME : PRICE_BOTTOM_WITHOUT_VOLUME
   const priceRange = bounds.max - bounds.min || 1
   const plotWidth = CHART_WIDTH - PLOT_LEFT - PLOT_RIGHT
@@ -356,12 +301,7 @@ function CandleChart({
         return `${command}${xForIndex(point.index).toFixed(2)},${yForPrice(point.value).toFixed(2)}`
       })
       .join(" ")
-  const markerPlacements = spreadOverlappingMarkers(
-    markers.flatMap((marker) => {
-      const candleIndex = markerIndex(candles, marker)
-      return candleIndex >= 0 ? [{ marker, candleIndex }] : []
-    }),
-  )
+  const markerPlacements = spreadOverlappingMarkers(markerPlacementInputs)
   const [chartHoverState, setChartHoverState] = useState<ChartHoverState | null>(null)
 
   const handleChartHoverMove = (event: ReactMouseEvent<SVGSVGElement>) => {
@@ -571,7 +511,7 @@ function CandleChart({
           const y = yForPrice(marker.price)
           return (
             <g
-              aria-label={`${marker.label} ${formatDateTime(marker.timestamp)} ${formatPrice(marker.price, currency)}`}
+              aria-label={`${marker.label} ${formatChartDateTime(marker.timestamp)} ${formatPrice(marker.price, currency)}`}
               className={`chart-marker chart-marker-${marker.tone} ${selectedMarkerKey === marker.key ? "selected" : ""}`}
               key={marker.key}
               onClick={(event) => {
@@ -587,7 +527,7 @@ function CandleChart({
                 {marker.label}
               </text>
               <title>
-                {marker.label} · {formatDateTime(marker.timestamp)} · {formatPrice(marker.price, currency)}
+                {marker.label} · {formatChartDateTime(marker.timestamp)} · {formatPrice(marker.price, currency)}
               </title>
             </g>
           )
@@ -695,6 +635,25 @@ export function ChartsPage() {
 
   useEffect(() => {
     if (!selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        setHoldingsLoading(false)
+        setHoldings([])
+        setSelectedHoldingKey("")
+        setCandles([])
+        setOrders([])
+        setMarkerMemos([])
+        setChartZoomWindow(null)
+        setChartPanOffset(0)
+        setChartDragState(null)
+        setSelectedMarkerKey("")
+        setMarkerMemoDraft("")
+        setMarkerMemoOpen(false)
+        setMemoManageMode(false)
+        setHoldingsError("")
+        setCandlesError("")
+        setOrdersError("")
+        setMemoError("")
+      })
       return undefined
     }
 
@@ -780,6 +739,22 @@ export function ChartsPage() {
 
   useEffect(() => {
     if (!selectedHolding || !selectedAccountSeq) {
+      void Promise.resolve().then(() => {
+        setCandlesLoading(false)
+        setCandles([])
+        setOrders([])
+        setMarkerMemos([])
+        setChartZoomWindow(null)
+        setChartPanOffset(0)
+        setChartDragState(null)
+        setSelectedMarkerKey("")
+        setMarkerMemoDraft("")
+        setMarkerMemoOpen(false)
+        setMemoManageMode(false)
+        setCandlesError("")
+        setOrdersError("")
+        setMemoError("")
+      })
       return undefined
     }
 
@@ -1316,7 +1291,7 @@ export function ChartsPage() {
                           <span className={`marker-memo-list-badge marker-memo-list-badge-${marker.tone}`}>
                             {marker.label}
                           </span>
-                          <time>{formatDateTime(marker.timestamp)}</time>
+                          <time>{formatChartDateTime(marker.timestamp)}</time>
                         </span>
                         <strong>{formatPrice(marker.price, selectedHolding.currency)}</strong>
                         <span className="marker-memo-preview">{marker.memo.trim()}</span>
@@ -1482,7 +1457,7 @@ export function ChartsPage() {
                 <div>
                   <span className="marker-selected-badge">{selectedMarker.label}</span>
                   <h4>{selectedMarker.label} 판단 기록</h4>
-                  <p>{formatDateTime(selectedMarker.timestamp)}</p>
+                  <p>{formatChartDateTime(selectedMarker.timestamp)}</p>
                 </div>
                 <div className="marker-selected-price">
                   <span>체결가</span>
@@ -1495,7 +1470,7 @@ export function ChartsPage() {
                   <Calendar size={18} />
                   <div>
                     <span>시점</span>
-                    <strong>{formatDateTime(selectedMarker.timestamp)}</strong>
+                    <strong>{formatChartDateTime(selectedMarker.timestamp)}</strong>
                   </div>
                 </div>
                 <div className="marker-detail-item">

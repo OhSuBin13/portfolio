@@ -10,6 +10,7 @@ GOAL_TYPES = frozenset(get_args(GoalType))
 BackupReason = Literal["startup", "automatic", "manual"]
 BACKUP_REASONS = frozenset(get_args(BackupReason))
 OrderHistoryStatus = Literal["OPEN", "CLOSED"]
+OrderImportRunStatus = Literal["running", "success", "failed"]
 
 
 class BuyingPower(BaseModel):
@@ -21,7 +22,7 @@ class BuyingPower(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     net_worth_krw: float = Field(allow_inf_nan=False)
     gross_assets_krw: float = Field(ge=0, allow_inf_nan=False)
@@ -87,7 +88,7 @@ class TossAssetAllocation(BaseModel):
 
 
 class Goal(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     id: int
     name: str
@@ -96,7 +97,7 @@ class Goal(BaseModel):
 
 
 class GoalProgress(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     goal: Goal
     current_amount_krw: float = Field(ge=0, allow_inf_nan=False)
@@ -116,6 +117,13 @@ class BackupRecord(BaseModel):
     path: str
     reason: BackupReason
     created_at: str
+
+
+class BackupStatus(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    enabled: bool
+    interval_seconds: int = Field(gt=0)
 
 
 class TossOrderImportCreate(BaseModel):
@@ -144,7 +152,7 @@ class TossOrderImportRunResponse(BaseModel):
     symbol_filter: str | None
     from_date: str | None
     to_date: str | None
-    run_status: str
+    run_status: OrderImportRunStatus
     imported_count: int
     error_message: str
     started_at: str

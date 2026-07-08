@@ -36,8 +36,9 @@ for (const expectedText of [
   "연봉",
   "shortLabel",
   "monthly",
-  "monthGroupKey",
+  "chartPeriodGroupKey",
   "formatChartDateLabel",
+  "formatChartDateTime",
   "movingAverageConfigs",
   "movingAverageForm",
   "type=\"color\"",
@@ -99,6 +100,8 @@ for (const expectedText of [
   "chartMemoScopeKey",
   "currentMemoScopeKeyRef",
   "memoSaveRequestIdRef",
+  "markerPlacementInputs",
+  "visibleMarkers",
   "markerMemoDraft",
   "markerMemoOpen",
   "setMarkerMemoOpen",
@@ -152,10 +155,43 @@ for (const expectedText of [
   assert.ok(source.includes(expectedText), `Charts page should include ${expectedText}`)
 }
 
+assert.ok(
+  source.includes("const visibleMarkers = markerPlacementInputs.map"),
+  "Candle chart should derive visible markers before calculating price bounds",
+)
+assert.ok(
+  source.includes("priceBounds(candles, movingAverageSeries, visibleMarkers)"),
+  "Candle chart should scale the price axis from visible marker prices only",
+)
+assert.ok(
+  !source.includes("priceBounds(candles, movingAverageSeries, markers)"),
+  "Candle chart should not scale the visible price axis from off-window marker prices",
+)
+
 assert.ok(source.includes("TossCandle"), "Charts page should type candle data")
 assert.ok(source.includes("TossOrder"), "Charts page should use Toss orders for trade markers")
 assert.ok(source.includes("ChartMarkerMemo"), "Charts page should type marker memos")
 assert.ok(source.includes("selectedHoldingKey"), "Charts page should select a held symbol")
+const holdingsEffectStart = source.indexOf("useEffect(() => {\n    if (!selectedAccountSeq)")
+const holdingsEffectResetLoading = source.indexOf("setHoldingsLoading(false)", holdingsEffectStart)
+const holdingsEffectRequestStart = source.indexOf("let ignore = false", holdingsEffectStart)
+assert.ok(
+  holdingsEffectStart >= 0 &&
+    holdingsEffectResetLoading > holdingsEffectStart &&
+    holdingsEffectResetLoading < holdingsEffectRequestStart,
+  "Charts page should clear holdings loading when account selection becomes empty",
+)
+const candlesEffectStart = source.indexOf(
+  "useEffect(() => {\n    if (!selectedHolding || !selectedAccountSeq)",
+)
+const candlesEffectResetLoading = source.indexOf("setCandlesLoading(false)", candlesEffectStart)
+const candlesEffectRequestStart = source.indexOf("let ignore = false", candlesEffectStart)
+assert.ok(
+  candlesEffectStart >= 0 &&
+    candlesEffectResetLoading > candlesEffectStart &&
+    candlesEffectResetLoading < candlesEffectRequestStart,
+  "Charts page should clear candle loading when holding selection becomes empty",
+)
 assert.ok(source.includes("<svg"), "Charts page should render an SVG candlestick chart")
 assert.ok(source.includes("candle-chart-svg"), "Charts page should use stable chart SVG styling")
 assert.ok(
@@ -249,14 +285,14 @@ assert.ok(
   "Charts page should not use a select change handler for the chart period",
 )
 assert.ok(
-  source.includes('selectedChartPeriod === "monthly" ? monthGroupKey'),
-  "Charts page should aggregate monthly candles with monthGroupKey",
+  source.includes("chartPeriodGroupKey(candle.timestamp, selectedChartPeriod)"),
+  "Charts page should aggregate candles with source-date period grouping",
 )
 for (const expectedDateFormat of [
-  'selectedChartPeriod === "annual"',
-  'selectedChartPeriod === "monthly"',
-  "`${year}-${month}-${day}`",
-  "`${year}-${month}`",
+  "formatChartDateLabel(first.timestamp, selectedChartPeriod)",
+  "formatChartDateLabel(last.timestamp, selectedChartPeriod)",
+  "formatChartDateLabel(chartHoverState.candle.timestamp, selectedChartPeriod)",
+  "formatChartDateTime(marker.timestamp)",
 ]) {
   assert.ok(source.includes(expectedDateFormat), `Charts page should format dates with ${expectedDateFormat}`)
 }

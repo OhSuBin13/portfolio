@@ -357,7 +357,9 @@ def build_toss_summary(
     usd_krw_rate: float | None,
 ) -> TossSummaryResult:
     buying_power_rows = buying_power or []
-    needs_usd_rate = any(holding.currency == "USD" for holding in holdings) or any(
+    needs_usd_rate = any(
+        holding.currency == "USD" and holding.market_value > 0 for holding in holdings
+    ) or any(
         row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power_rows
     )
     if needs_usd_rate:
@@ -368,7 +370,7 @@ def build_toss_summary(
     allocation_values: list[tuple[TossHolding, float]] = []
     for holding in holdings:
         value_krw = holding.market_value
-        if holding.currency == "USD":
+        if holding.currency == "USD" and holding.market_value > 0:
             value_krw = holding.market_value * float(rate)
         allocation_values.append((holding, value_krw))
 
@@ -434,7 +436,9 @@ async def fetch_toss_summary(
         await provider.fetch_buying_power(account_seq, "USD"),
     ]
     usd_krw_rate: float | None = None
-    if any(holding.currency == "USD" for holding in holdings) or any(
+    if any(
+        holding.currency == "USD" and holding.market_value > 0 for holding in holdings
+    ) or any(
         row.currency == "USD" and row.cash_buying_power > 0 for row in buying_power
     ):
         resolved_fx_provider = fx_provider or default_fx_rate_provider()
@@ -451,16 +455,21 @@ async def fetch_toss_summary(
 def _parse_order(item: dict[str, Any]) -> TossOrder:
     if not isinstance(item, dict):
         raise ValueError("Toss 주문 항목은 객체여야 합니다.")
-    execution = item.get("execution")
-    if not isinstance(execution, dict):
-        raise ValueError("Toss 주문 체결 정보가 필요합니다.")
+    status = _required_text(item.get("status"), "Toss 주문 상태가 필요합니다.")
+    execution = _execution_payload_for_order(item.get("execution"), status)
+    filled_quantity = _optional_text(execution.get("filledQuantity"))
+    if filled_quantity is None:
+        if _allows_empty_execution(status):
+            filled_quantity = "0"
+        else:
+            raise ValueError("Toss 체결 수량이 필요합니다.")
     return TossOrder(
         order_id=_required_text(item.get("orderId"), "Toss 주문 식별자가 필요합니다."),
         symbol=_required_text(item.get("symbol"), "Toss 주문 종목 심볼이 필요합니다.").upper(),
         side=_required_text(item.get("side"), "Toss 주문 방향이 필요합니다."),
         order_type=_required_text(item.get("orderType"), "Toss 주문 유형이 필요합니다."),
         time_in_force=_required_text(item.get("timeInForce"), "Toss 주문 유효 조건이 필요합니다."),
-        status=_required_text(item.get("status"), "Toss 주문 상태가 필요합니다."),
+        status=status,
         price=_optional_text(item.get("price")),
         quantity=_required_text(item.get("quantity"), "Toss 주문 수량이 필요합니다."),
         order_amount=_optional_text(item.get("orderAmount")),
@@ -468,10 +477,7 @@ def _parse_order(item: dict[str, Any]) -> TossOrder:
         ordered_at=_required_text(item.get("orderedAt"), "Toss 주문 시간이 필요합니다."),
         canceled_at=_optional_text(item.get("canceledAt")),
         execution=TossOrderExecution(
-            filled_quantity=_required_text(
-                execution.get("filledQuantity"),
-                "Toss 체결 수량이 필요합니다.",
-            ),
+            filled_quantity=filled_quantity,
             average_filled_price=_optional_text(execution.get("averageFilledPrice")),
             filled_amount=_optional_text(execution.get("filledAmount")),
             commission=_optional_text(execution.get("commission")),
@@ -481,6 +487,18 @@ def _parse_order(item: dict[str, Any]) -> TossOrder:
         ),
         raw=dict(item),
     )
+
+
+def _execution_payload_for_order(value: Any, status: str) -> dict[str, Any]:
+    if value is None and _allows_empty_execution(status):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("Toss 주문 체결 정보가 필요합니다.")
+    return value
+
+
+def _allows_empty_execution(status: str) -> bool:
+    return status.strip().upper() in {"OPEN", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED"}
 
 
 def _parse_buying_power(payload: Any, requested_currency: str) -> TossBuyingPower:
@@ -519,19 +537,19 @@ def _parse_holding(item: dict[str, Any]) -> TossHolding:
         name=_required_text(item.get("name"), "Toss 보유자산명이 필요합니다."),
         market=market,
         currency=currency,
-        quantity=_positive_number(item.get("quantity"), "Toss 보유수량은 0보다 커야 합니다."),
-        average_purchase_price=_positive_number(
+        quantity=_non_negative_number(item.get("quantity"), "Toss 보유수량은 0 이상이어야 합니다."),
+        average_purchase_price=_non_negative_number(
             item.get("averagePurchasePrice"),
-            "Toss 평균매입가는 0보다 커야 합니다.",
+            "Toss 평균매입가는 0 이상이어야 합니다.",
         ),
         last_price=(
-            _positive_number(last_price, "Toss 현재가는 0보다 커야 합니다.")
+            _non_negative_number(last_price, "Toss 현재가는 0 이상이어야 합니다.")
             if last_price is not None
             else None
         ),
-        market_value=_positive_number(
+        market_value=_non_negative_number(
             market_value.get("amount"),
-            "Toss 평가금액은 0보다 커야 합니다.",
+            "Toss 평가금액은 0 이상이어야 합니다.",
         ),
     )
 

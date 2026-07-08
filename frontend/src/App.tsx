@@ -12,6 +12,10 @@ export default function App() {
   const [active, setActive] = useState("dashboard")
   const [holdingsMounted, setHoldingsMounted] = useState(false)
   const [chartsMounted, setChartsMounted] = useState(false)
+  const [ordersMounted, setOrdersMounted] = useState(false)
+  const [growthMounted, setGrowthMounted] = useState(false)
+  const [goalsMounted, setGoalsMounted] = useState(false)
+  const [settingsMounted, setSettingsMounted] = useState(false)
 
   const navigate = (screen: string) => {
     if (screen === "holdings") {
@@ -19,6 +23,18 @@ export default function App() {
     }
     if (screen === "charts") {
       setChartsMounted(true)
+    }
+    if (screen === "orders") {
+      setOrdersMounted(true)
+    }
+    if (screen === "growth") {
+      setGrowthMounted(true)
+    }
+    if (screen === "goals") {
+      setGoalsMounted(true)
+    }
+    if (screen === "settings") {
+      setSettingsMounted(true)
     }
     setActive(screen)
   }
@@ -38,10 +54,26 @@ export default function App() {
           <ChartsPage />
         </div>
       )}
-      {active === "orders" && <OrderHistoryPage />}
-      {active === "growth" && <GrowthHistoryPage />}
-      {active === "goals" && <GoalsPage />}
-      {active === "settings" && <SettingsPage />}
+      {(active === "orders" || ordersMounted) && (
+        <div hidden={active !== "orders"}>
+          <OrderHistoryPage />
+        </div>
+      )}
+      {(active === "growth" || growthMounted) && (
+        <div hidden={active !== "growth"}>
+          <GrowthHistoryPage />
+        </div>
+      )}
+      {(active === "goals" || goalsMounted) && (
+        <div hidden={active !== "goals"}>
+          <GoalsPage />
+        </div>
+      )}
+      {(active === "settings" || settingsMounted) && (
+        <div hidden={active !== "settings"}>
+          <SettingsPage />
+        </div>
+      )}
     </AppShell>
   )
 }

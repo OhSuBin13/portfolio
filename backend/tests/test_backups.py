@@ -108,6 +108,22 @@ def test_prune_backups_keeps_newest_files(tmp_path):
     assert (backup_dir / "portfolio-20260612-120000-000035-manual.sqlite").exists()
 
 
+def test_prune_backups_uses_filename_timestamp_when_mtime_differs(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    older = backup_dir / "portfolio-20260612-120000-000001-manual.sqlite"
+    newer = backup_dir / "portfolio-20260612-120000-000002-manual.sqlite"
+    older.write_text("older", encoding="utf-8")
+    newer.write_text("newer", encoding="utf-8")
+    os.utime(older, (100, 100))
+    os.utime(newer, (1, 1))
+
+    prune_backups(backup_dir=backup_dir, keep=1)
+
+    assert newer.exists()
+    assert not older.exists()
+
+
 def test_prune_backups_only_deletes_service_owned_files(tmp_path):
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
@@ -214,6 +230,22 @@ def test_backup_api_uses_typed_response_schema(tmp_path):
         "automatic",
         "manual",
     ]
+
+
+def test_backup_status_api_returns_runtime_settings(tmp_path):
+    app, _settings = create_test_app(
+        tmp_path,
+        backup_enabled=False,
+        backup_interval_seconds=7200,
+    )
+
+    response = TestClient(app, raise_server_exceptions=False).get("/api/backups/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "enabled": False,
+        "interval_seconds": 7200,
+    }
 
 
 def test_backup_api_lists_service_created_backup(tmp_path):
