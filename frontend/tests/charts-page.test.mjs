@@ -10,7 +10,11 @@ const chartSettingsDialogSource = readFileSync(
   new URL("../src/components/ChartSettingsDialog.tsx", import.meta.url),
   "utf8",
 )
-const chartFeatureSource = `${source}\n${candleChartSource}\n${chartSettingsDialogSource}`
+const markerMemoDialogSource = readFileSync(
+  new URL("../src/components/MarkerMemoDialog.tsx", import.meta.url),
+  "utf8",
+)
+const chartFeatureSource = `${source}\n${candleChartSource}\n${chartSettingsDialogSource}\n${markerMemoDialogSource}`
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 const chartSeriesSource = readFileSync(new URL("../src/chartSeries.ts", import.meta.url), "utf8")
 const shellSource = readFileSync(new URL("../src/components/AppShell.tsx", import.meta.url), "utf8")
@@ -505,7 +509,7 @@ assert.ok(
   "Charts page should not keep hidden-state copy for a disabled plus button",
 )
 assert.match(
-  source,
+  chartFeatureSource,
   /\{markerMemoOpen && selectedMarker && \([\s\S]*?<div[\s\S]*?className="marker-memo-overlay"[\s\S]*?<section[\s\S]*?aria-label="판단 메모 세부 정보"[\s\S]*?aria-modal="true"[\s\S]*?className="panel marker-memo-dialog"[\s\S]*?role="dialog"/,
   "Marker memo editing should open in a floating dialog",
 )
@@ -525,8 +529,8 @@ assert.match(
   "Saving a marker memo should ignore stale save results after the selected account or symbol changes",
 )
 assert.match(
-  source,
-  /\{markerMemoOpen && selectedMarker && \([\s\S]*?aria-label="판단 메모 작성 화면 닫기"[\s\S]*?onClick=\{\(\) => setMarkerMemoOpen\(false\)\}[\s\S]*?<X size=\{16\} \/>/,
+  chartFeatureSource,
+  /\{markerMemoOpen && selectedMarker && \([\s\S]*?aria-label="판단 메모 작성 화면 닫기"[\s\S]*?onClick=\{onClose\}[\s\S]*?<X size=\{16\} \/>/,
   "Marker memo dialog should close from the x button",
 )
 assert.ok(
