@@ -21,7 +21,7 @@ class BuyingPower(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     net_worth_krw: float = Field(allow_inf_nan=False)
     gross_assets_krw: float = Field(ge=0, allow_inf_nan=False)
@@ -87,7 +87,7 @@ class TossAssetAllocation(BaseModel):
 
 
 class Goal(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     id: int
     name: str
@@ -96,7 +96,7 @@ class Goal(BaseModel):
 
 
 class GoalProgress(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     goal: Goal
     current_amount_krw: float = Field(ge=0, allow_inf_nan=False)
